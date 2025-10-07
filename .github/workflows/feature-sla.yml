@@ -1,0 +1,262 @@
+name: feature-sla
+
+on:
+  schedule:
+    # Nightly at 02:23 UTC
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: feature-sla-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sla:
+    name: Check Feature Request SLAs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate Feature SLAs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // SLA (acknowledgement) in BUSINESS DAYS
+            const ACK_BDAYS = { P0: 1, P1: 2, P2: 5, P3: 10 };
+
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+
+            const STATUS_SET = [
+              'status/proposed',
+              'status/discovery',
+              'status/planned',
+              'status/in progress',
+              'status/done',
+              'status/rejected',
+              'status/needs-info'
+            ];
+
+            // Label helpers ---------------------------------------------------
+            async function ensureLabel(name, color='cfd3d7', description='feature sla/status') {
+              try { await github.rest.issues.getLabel({ owner, repo, name }); }
+              catch (e) {
+                if (e.status === 404) {
+                  await github.rest.issues.createLabel({ owner, repo, name, color, description }).catch(()=>{});
+                }
+              }
+            }
+            async function addLabel(number, name) {
+              try {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [name] });
+              } catch (e) { /* ignore if already exists */ }
+            }
+            async function removeLabel(number, name) {
+              try { await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name }); }
+              catch (e) { /* ignore */ }
+            }
+
+            // Business-day math ----------------------------------------------
+            function startOfDay(d) { const x = new Date(d); x.setUTCHours(0,0,0,0); return x; }
+            function isBiz(d) { const w = d.getUTCDay(); return w !== 0 && w !== 6; } // Mon..Fri
+            function businessDaysBetween(a, b) {
+              let start = startOfDay(a), end = startOfDay(b);
+              if (end < start) return 0;
+              let days = 0, cur = new Date(start);
+              while (cur <= end) {
+                if (isBiz(cur)) days++;
+                cur.setUTCDate(cur.getUTCDate() + 1);
+              }
+              // Count creation day as day 1; subtract 1 to treat "within same biz day" as 0 elapsed
+              return Math.max(0, days - 1);
+            }
+
+            async function* openIssuesPaginated() {
+              let page = 1;
+              while (true) {
+                const res = await github.rest.issues.listForRepo({
+                  owner, repo, state: 'open', per_page: 100, page
+                });
+                if (!res.data.length) break;
+                for (const it of res.data) {
+                  if (!it.pull_request) yield it;
+                }
+                page++;
+              }
+            }
+
+            function hasLabel(issue, name) {
+              const n = name.toLowerCase();
+              return (issue.labels || []).some(l => (l.name || l).toLowerCase() === n);
+            }
+            function labelsByPrefix(issue, prefix) {
+              const p = prefix.toLowerCase() + '/';
+              return (issue.labels || [])
+                .map(l => (l.name || '').toLowerCase())
+                .filter(n => n.startsWith(p));
+            }
+            function getPriority(issue) {
+              const l = labelsByPrefix(issue, 'priority')[0];
+              return l ? l.split('/')[1].toUpperCase() : 'P3';
+            }
+            function getStatusLabels(issue) {
+              const ls = (issue.labels || []).map(l => (l.name || ''));
+              return ls.filter(n => STATUS_SET.includes(n));
+            }
+
+            async function firstNonAuthorCommentAt(number, author) {
+              let page = 1;
+              while (true) {
+                const res = await github.rest.issues.listComments({ owner, repo, issue_number: number, per_page: 100, page });
+                if (!res.data.length) return null;
+                for (const c of res.data) {
+                  const login = (c.user?.login || '').toLowerCase();
+                  if (login && login !== (author || '').toLowerCase()) {
+                    return c.created_at;
+                  }
+                }
+                page++;
+              }
+            }
+
+            async function firstAckEventAt(number) {
+              // Look for: unlabeled 'needs triage' or labeled a non-proposed status/*
+              let page = 1, best = null;
+              while (true) {
+                const res = await github.rest.issues.listEvents({ owner, repo, issue_number: number, per_page: 100, page });
+                const evts = res.data || [];
+                if (!evts.length) break;
+                for (const e of evts) {
+                  if (e.event === 'unlabeled' && e.label?.name?.toLowerCase() === 'needs triage') {
+                    best = best ?? e.created_at;
+                  }
+                  if (e.event === 'labeled' && e.label?.name && /^status\//.test(e.label.name)) {
+                    const nm = e.label.name;
+                    if (nm !== 'status/proposed') best = best ?? e.created_at;
+                  }
+                }
+                if (res.data.length < 100) break;
+                page++;
+              }
+              return best;
+            }
+
+            const MARKER = '<!-- feature-sla-bot -->';
+
+            // Pre-create the status & SLA labels with sensible colors
+            const labelPalette = {
+              'status/proposed':     'c5def5',
+              'status/discovery':    'cfd3d7',
+              'status/planned':      '5319e7',
+              'status/in progress':  '0e8a16',
+              'status/done':         '2ea44f',
+              'status/rejected':     'b60205',
+              'status/needs-info':   'd93f0b',
+              'sla/feature-ack-warn':'fbca04',
+              'sla/feature-ack-breached':'b60205'
+            };
+            await Promise.all(Object.entries(labelPalette).map(([n,c]) => ensureLabel(n,c)));
+
+            let scanned = 0, warned = 0, breached = 0, defaulted = 0, multiStatus = 0;
+
+            for await (const issue of openIssuesPaginated()) {
+              // Work on Feature Requests only
+              const labels = (issue.labels || []).map(l => (l.name || '').toLowerCase());
+              const isFeature = labels.includes('enhancement') || labels.includes('feature') ||
+                                /BrikByteOS Feature Request/i.test(issue.body || '') ||
+                                /^feat:\s/i.test(issue.title || '');
+              if (!isFeature) continue;
+
+              scanned++;
+              const number = issue.number;
+              const author = (issue.user?.login || '').toLowerCase();
+              const createdAt = issue.created_at;
+
+              // Ensure exactly one status label exists (initialize to proposed if none)
+              const statusLs = getStatusLabels(issue);
+              if (statusLs.length === 0) {
+                await addLabel(number, 'status/proposed');
+                defaulted++;
+              } else if (statusLs.length > 1) {
+                // Don't auto-change; just flag in comment to fix manually
+                multiStatus++;
+              }
+
+              // Determine priority and SLA window
+              const prio = getPriority(issue); // default P3
+              const limitBDays = ACK_BDAYS[prio] ?? ACK_BDAYS.P3;
+
+              // Determine ack time: first non-author comment OR unlabeled 'needs triage' OR first non-proposed status/*
+              const firstReplyAt = await firstNonAuthorCommentAt(number, author);
+              const ackEventAt   = await firstAckEventAt(number);
+              const ackAt        = firstReplyAt && ackEventAt
+                                    ? (new Date(firstReplyAt) < new Date(ackEventAt) ? firstReplyAt : ackEventAt)
+                                    : (firstReplyAt || ackEventAt || null);
+
+              const now = new Date();
+              const bdElapsed = businessDaysBetween(createdAt, ackAt || now);
+
+              const warnThresh = Math.max(1, Math.floor(limitBDays / 2)); // warn at half, min 1
+              const isBreached = !ackAt && bdElapsed > limitBDays;
+              const isWarn     = !ackAt && !isBreached && bdElapsed >= warnThresh;
+
+              // Reset SLA labels before applying fresh state
+              await removeLabel(number, 'sla/feature-ack-warn');
+              await removeLabel(number, 'sla/feature-ack-breached');
+
+              if (isBreached) {
+                await addLabel(number, 'sla/feature-ack-breached');
+                breached++;
+              } else if (isWarn) {
+                await addLabel(number, 'sla/feature-ack-warn');
+                warned++;
+              }
+
+              // Upsert a single SLA summary comment
+              const lines = [];
+              lines.push(`**Priority:** ${prio}`);
+              lines.push(`**Ack window (business days):** ${limitBDays}`);
+              lines.push(`**Elapsed (business days):** ${bdElapsed}`);
+              lines.push(`**First maintainer ack:** ${ackAt ? ackAt : '_none yet_'} (${ackAt ? '✅ within target' : (isBreached ? '❌ breach' : (isWarn ? '⚠️ warn' : '⏳ pending'))})`);
+              if (statusLs.length > 1) {
+                lines.push(`**Status labels:** ${statusLs.join(', ')} → _keep exactly one status/\*_ label_`);
+              } else if (statusLs.length === 1) {
+                lines.push(`**Status:** ${statusLs[0]}`);
+              } else {
+                lines.push(`**Status:** status/proposed _(auto-initialized)_`);
+              }
+
+              const body =
+                `${MARKER}
+                ### Feature SLA (nightly)
+                - ${lines.join('\n- ')}
+                `;
+
+              const comments = await github.rest.issues.listComments({ owner, repo, issue_number: number, per_page: 100 });
+              const existing = comments.data.find(c =>
+                (c.user?.type === 'Bot' || /github-actions\[bot\]/i.test(c.user?.login || '')) &&
+                (c.body || '').includes(MARKER)
+              );
+
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+              }
+            }
+
+            await core.summary
+              .addHeading('Feature SLA — Nightly Report', 2)
+              .addList([
+                `Scanned: **${scanned}** open feature requests`,
+                `Auto-initialized status/proposed: **${defaulted}**`,
+                `Multi-status issues (manual fix needed): **${multiStatus}**`,
+                `Warnings: **${warned}**`,
+                `Breaches: **${breached}**`
+              ]).write();
+
+            if (breached > 0) core.warning(`Feature ack SLA breaches: ${breached}`);
+            else core.notice('No feature ack SLA breaches detected.');
