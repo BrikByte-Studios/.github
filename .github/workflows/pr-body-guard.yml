@@ -1,0 +1,107 @@
+name: pr-body-guard
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard:
+    name: Lint PR body
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const pr = context.payload.pull_request;
+            if (!pr) { core.setFailed('No pull_request in context'); return; }
+
+            const title = pr.title || '';
+            const body  = pr.body  || '';
+            const issues = [];
+
+            // --- helpers ---
+            const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            function sectionText(h) {
+              const re = new RegExp(`^##\\s*${escape(h)}[\\s\\S]*?(?=\\n##\\s|\\n###\\s|\\n---|$)`, 'm');
+              const m = body.match(re);
+              if (!m) return '';
+              return m[0].replace(/^##[^\n]*\n?/, '').trim();
+            }
+
+            // 1) Title must follow conventional commit type
+            const allowed = ['feat','fix','refactor','perf','test','docs','build','ci','chore'];
+            if (!new RegExp(`^(${allowed.join('|')}):\\s`).test(title)) {
+              issues.push(`Title must start with one of ${allowed.join(', ')} followed by ": ". Got: "${title}"`);
+            }
+
+            // 2) Block obvious placeholders anywhere
+            const placeholderRules = [
+              {re: /(^|\s)\.\.\.(\s|$)/, msg: 'Remove "..." placeholder'},
+              {re: /…/,                  msg: 'Remove "…" placeholder'},
+              {re: /<summary>/i,         msg: 'Remove "<summary>" placeholder'},
+              {re: /<scope>/i,           msg: 'Remove "<scope>" placeholder'}
+            ];
+            placeholderRules.forEach(({re,msg}) => { if (re.test(body)) issues.push(msg); });
+
+            // 3) Required sections must have meaningful content (>= 10 chars after stripping markup)
+            const requiredSections = [
+              '🧭 Summary',
+              '🔗 Linked Issues / Tickets',
+              '✅ Validation & Evidence',
+              '🧱 Breaking Changes?',
+              '🚀 Deployment Notes',
+              '🔒 Security & Privacy',
+              '📈 Performance & Budgets',
+              '👀 Observability',
+              '🗂 Documentation',
+              '🧪 Scope & Risk',
+              '🧾 Release Notes (user-facing)'
+            ];
+            for (const h of requiredSections) {
+              const txt = sectionText(h)
+                .replace(/^[>\s-]+/gm,'')  // strip bullets/quotes
+                .replace(/!\[[^\]]*\]\([^)]+\)/g,'') // images
+                .replace(/`[^`]*`/g,'')    // inline code
+                .trim();
+              if (!txt || txt.length < 10) {
+                issues.push(`Section "${h}" appears empty or too short. Provide meaningful content (≥10 chars).`);
+              }
+            }
+
+            // 4) "What Changed" must have at least one checked box
+            const whatChanged = body.match(/##\s*🧩 What Changed[\s\S]*?(?=\n##\s|\n---|$)/m);
+            if (whatChanged) {
+              const checked = (whatChanged[0].match(/\[x\]/gi) || []).length;
+              if (checked < 1) issues.push('Select at least one item under "🧩 What Changed".');
+            } else {
+              issues.push('Missing "🧩 What Changed" section.');
+            }
+
+            // 5) If Breaking Changes = Yes, Migration/Rollback details must be filled
+            const bc = body.match(/##\s*🧱 Breaking Changes\?[\s\S]*?(?=\n##\s|\n---|$)/m);
+            if (bc) {
+              const yesChecked = /\[x\]\s*\*\*Yes\*\*|\[x\]\s*Yes/i.test(bc[0]);
+              if (yesChecked) {
+                const details = body.match(/<details>\s*<summary>Migration \/ Rollback Plan<\/summary>[\s\S]*?<\/details>/m);
+                const plain = details ? details[0].replace(/<[^>]+>/g,'').trim() : '';
+                if (!plain || plain.length < 40) {
+                  issues.push('Breaking change marked **Yes** but Migration/Rollback plan is missing or too short (≥40 chars).');
+                }
+              }
+            }
+
+            // Summary & fail/pass
+            if (issues.length) {
+              let md = `### PR Body Guard — Issues Found (${issues.length})\n\n` + issues.map(i => `- ${i}`).join('\n');
+              core.summary.addRaw(md); await core.summary.write();
+              core.setFailed('PR body failed guard checks. See job summary for details.');
+            } else {
+              core.summary.addRaw('### PR Body Guard — All checks passed ✅'); await core.summary.write();
+              core.notice('PR body passed all required checks.');
+            }
