@@ -130,12 +130,19 @@ jobs:
         run: |
           set -euo pipefail
           day=$(date +%F)
+
+          # (Optional) push using PAT if your org blocks GITHUB_TOKEN pushes
+          # git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+
           git config user.name  "brikbyte-bot"
           git config user.email "bot@brikbyte.dev"
+
           git checkout -b "audit/$day"
-          git add ".audit/$day"
+          # Force-add because .audit/ is ignored by .gitignore
+          git add -f ".audit/$day"
           git commit -m "audit: branch protection export ($day)"
           git push -u origin "audit/$day"
+
           gh pr create \
             --title "audit: branch protection export ($day)" \
             --body  "Automated evidence export for branch-protection toggle ($day)." \
