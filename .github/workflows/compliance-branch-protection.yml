@@ -7,11 +7,19 @@ on:
 
 permissions:
   contents: read
+  # (Optional) If your org restricts admin endpoints, add:
+  # administration: read
+
+concurrency:
+  group: compliance-branch-protection
+  cancel-in-progress: false
 
 jobs:
   check:
     name: Validate branch-protection vs policy
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}   # <-- gh CLI reads this
 
     steps:
       - uses: actions/checkout@v4
@@ -43,12 +51,12 @@ jobs:
           )
 
           MODE=$(jq -r '.mode' <<<"$POL")
-          mapfile -t BRANCHES < <(jq -r '.branches[]' <<<"$POL")
-          mapfile -t WANT_STRICT < <(jq -r '.strict_ctx[]' <<<"$POL")
-          mapfile -t WANT_SOLO   < <(jq -r '.solo_ctx[]' <<<"$POL")
+          mapfile -t BRANCHES     < <(jq -r '.branches[]' <<<"$POL")
+          mapfile -t WANT_STRICT  < <(jq -r '.strict_ctx[]' <<<"$POL")
+          mapfile -t WANT_SOLO    < <(jq -r '.solo_ctx[]' <<<"$POL")
 
           if [[ "$MODE" == "strict" ]]; then
-            STRICT=true; APPR_MIN=1; COREQ=true; ENFADM=true; REQSIG=true
+            STRICT=true;  APPR_MIN=1; COREQ=true;  ENFADM=true;  REQSIG=true
             WANT=("${WANT_STRICT[@]}")
           else
             STRICT=false; APPR_MIN=0; COREQ=false; ENFADM=false; REQSIG=false
@@ -57,10 +65,10 @@ jobs:
 
           hdr=(-H "Accept: application/vnd.github+json")
 
-          fail() { echo "::error::$*"; exit 1; }
-          bool() { jq -r "$1 // false" <<<"$2"; }
+          # Collect mismatches so we can print them all, then fail once
+          mismatches=()
+
           enabled_or_bool() {
-            # Accept either nested {enabled:bool} or bare bool
             jq -r "($1|.enabled) // ($1 // false)" <<<"$2"
           }
 
@@ -68,33 +76,48 @@ jobs:
             J=$(gh api "${hdr[@]}" "repos/$REPO/branches/$B/protection")
 
             # base toggles
-            [[ "$(enabled_or_bool '.required_linear_history' "$J")" == "true" ]] || fail "$B: required_linear_history != true"
-            [[ "$(enabled_or_bool '.allow_force_pushes' "$J")"   == "false" ]]   || fail "$B: allow_force_pushes != false"
-            [[ "$(enabled_or_bool '.allow_deletions' "$J")"      == "false" ]]   || fail "$B: allow_deletions != false"
+            [[ "$(enabled_or_bool '.required_linear_history' "$J")" == "true" ]] || mismatches+=("$B: required_linear_history != true")
+            [[ "$(enabled_or_bool '.allow_force_pushes' "$J")"   == "false" ]]   || mismatches+=("$B: allow_force_pushes != false")
+            [[ "$(enabled_or_bool '.allow_deletions' "$J")"      == "false" ]]   || mismatches+=("$B: allow_deletions != false")
 
             # admins/signatures
-            [[ "$(enabled_or_bool '.enforce_admins' "$J")"       == "$( $ENFADM && echo true || echo false )" ]] || fail "$B: enforce_admins mismatch"
-            [[ "$(enabled_or_bool '.required_signatures' "$J")"  == "$( $REQSIG && echo true || echo false )" ]] || fail "$B: required_signatures mismatch"
+            want_admins=$($ENFADM && echo true || echo false)
+            want_signs=$($REQSIG && echo true || echo false)
+            [[ "$(enabled_or_bool '.enforce_admins' "$J")"      == "$want_admins" ]] || mismatches+=("$B: enforce_admins mismatch")
+            [[ "$(enabled_or_bool '.required_signatures' "$J")" == "$want_signs"  ]] || mismatches+=("$B: required_signatures mismatch")
 
-            # status checks
-            CUR_STRICT=$(jq -r '.required_status_checks.strict' <<<"$J")
-            [[ "$CUR_STRICT" == "$( $STRICT && echo true || echo false )" ]] || fail "$B: strict (up-to-date) mismatch"
+            # status checks (nil-safe)
+            cur_strict=$(jq -r '(.required_status_checks.strict // false)' <<<"$J")
+            want_strict=$($STRICT && echo true || echo false)
+            [[ "$cur_strict" == "$want_strict" ]] || mismatches+=("$B: required_status_checks.strict mismatch")
+
             for want in "${WANT[@]}"; do
-              jq -e --arg c "$want" '.required_status_checks.contexts[] | select(.==$c)' <<<"$J" >/dev/null \
-                || fail "$B: missing required status check '$want'"
+              jq -e --arg c "$want" '(.required_status_checks.contexts // [])[] | select(.==$c)' <<<"$J" >/dev/null \
+                || mismatches+=("$B: missing required status check '$want'")
             done
 
-            # reviews
-            RPR=$(jq -r '.required_pull_request_reviews' <<<"$J")
+            # reviews (nil-safe)
             if $COREQ || [[ $APPR_MIN -gt 0 ]]; then
-              [[ "$RPR" != "null" ]] || fail "$B: reviews should be present"
-              cur_approvals=$(jq -r '.required_pull_request_reviews.required_approving_review_count' <<<"$J")
-              [[ "$cur_approvals" -ge "$APPR_MIN" ]] || fail "$B: approvals < $APPR_MIN"
-              [[ "$(jq -r '.required_pull_request_reviews.require_code_owner_reviews' <<<"$J")" == "$( $COREQ && echo true || echo false )" ]] \
-                || fail "$B: require_code_owner_reviews mismatch"
+              if [[ "$(jq -r '.required_pull_request_reviews' <<<"$J")" == "null" ]]; then
+                mismatches+=("$B: reviews should be present")
+              else
+                cur_approvals=$(jq -r '(.required_pull_request_reviews.required_approving_review_count // 0)' <<<"$J")
+                [[ "$cur_approvals" -ge "$APPR_MIN" ]] || mismatches+=("$B: approvals < $APPR_MIN")
+                cur_coreq=$(jq -r '(.required_pull_request_reviews.require_code_owner_reviews // false)' <<<"$J")
+                want_coreq=$($COREQ && echo true || echo false)
+                [[ "$cur_coreq" == "$want_coreq" ]] || mismatches+=("$B: require_code_owner_reviews mismatch")
+              fi
             else
-              [[ "$RPR" == "null" ]] || fail "$B: reviews should be null in SOLO"
+              [[ "$(jq -r '.required_pull_request_reviews' <<<"$J")" == "null" ]] || mismatches+=("$B: reviews should be null in SOLO")
             fi
           done
 
-          echo "✅ Branch protection matches policy ($MODE)"
+          if ((${#mismatches[@]})); then
+            {
+              echo "❌ Branch protection drift detected against policy ($MODE):"
+              printf -- " - %s\n" "${mismatches[@]}"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          else
+            echo "✅ Branch protection matches policy ($MODE)" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
