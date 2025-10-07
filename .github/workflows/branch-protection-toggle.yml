@@ -12,7 +12,6 @@ permissions:
   contents: write          # needed to push audit branch
   pull-requests: write     # needed to open the audit PR
   issues: write
-  administration: write    # needed to update branch protection
 
 jobs:
   apply:
