@@ -18,7 +18,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // { core, github, context } are provided by github-script.
+            // { core, github, context } are provided by github-script..
             const pr = context.payload.pull_request;
             if (!pr) { core.setFailed('No pull_request in context'); return; }
 
