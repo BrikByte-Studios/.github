@@ -19,7 +19,7 @@ jobs:
     name: Validate branch-protection vs policy
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ github.token }}   # <-- gh CLI reads this
+      GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}   # <-- gh CLI reads this
 
     steps:
       - uses: actions/checkout@v4

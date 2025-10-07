@@ -18,7 +18,7 @@ jobs:
     name: Apply branch-protection profile
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ github.token }}   # gh CLI reads this
+      GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
 
     steps:
       - name: Checkout policy
