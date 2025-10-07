@@ -129,21 +129,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          day=$(date +%F)
 
-          # (Optional) push using PAT if your org blocks GITHUB_TOKEN pushes
-          # git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+          day=$(date +%F)
+          base="audit/$day"
+          # Make a unique branch per run to avoid collisions:
+          br="${base}-${GITHUB_RUN_ID:-local}"
 
           git config user.name  "brikbyte-bot"
           git config user.email "bot@brikbyte.dev"
 
-          git checkout -b "audit/$day"
-          # Force-add because .audit/ is ignored by .gitignore
+          # (Optional) ensure pushes use PAT, not checkout's token
+          # git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+
+          # Create the unique audit branch off the current HEAD
+          git switch -c "$br"
+
+          # Force-add because .audit/ is gitignored
           git add -f ".audit/$day"
           git commit -m "audit: branch protection export ($day)"
-          git push -u origin "audit/$day"
+          git push -u origin "$br"
 
+          # Create PR from the unique branch
           gh pr create \
             --title "audit: branch protection export ($day)" \
             --body  "Automated evidence export for branch-protection toggle ($day)." \
-            --base  main
+            --base  main \
+            --head  "$br"
+
+          echo "Opened PR from $br → main"
