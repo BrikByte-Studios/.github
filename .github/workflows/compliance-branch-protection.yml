@@ -1,0 +1,100 @@
+name: compliance-branch-protection
+
+on:
+  schedule:
+    - cron: "17 2 * * *"   # Nightly 02:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Validate branch-protection vs policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tooling (jq, python yaml)
+        run: |
+          set -e
+          sudo apt-get update -y
+          sudo apt-get install -y jq python3-yaml
+
+      - name: Validate protection
+        shell: bash
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Load policy
+          POL=$(python3 - <<'PY'
+          import yaml, json
+          d=yaml.safe_load(open(".governance/policy.yml","r"))
+          print(json.dumps({
+            "mode": d.get("mode","solo"),
+            "branches": d.get("branches",["main"]),
+            "strict_ctx": d.get("checks",{}).get("strict",{}).get("contexts",["lint","test","codeql"]),
+            "solo_ctx": d.get("checks",{}).get("solo",{}).get("contexts",["test"])
+          }))
+          PY
+          )
+
+          MODE=$(jq -r '.mode' <<<"$POL")
+          mapfile -t BRANCHES < <(jq -r '.branches[]' <<<"$POL")
+          mapfile -t WANT_STRICT < <(jq -r '.strict_ctx[]' <<<"$POL")
+          mapfile -t WANT_SOLO   < <(jq -r '.solo_ctx[]' <<<"$POL")
+
+          if [[ "$MODE" == "strict" ]]; then
+            STRICT=true; APPR_MIN=1; COREQ=true; ENFADM=true; REQSIG=true
+            WANT=("${WANT_STRICT[@]}")
+          else
+            STRICT=false; APPR_MIN=0; COREQ=false; ENFADM=false; REQSIG=false
+            WANT=("${WANT_SOLO[@]}")
+          fi
+
+          hdr=(-H "Accept: application/vnd.github+json")
+
+          fail() { echo "::error::$*"; exit 1; }
+          bool() { jq -r "$1 // false" <<<"$2"; }
+          enabled_or_bool() {
+            # Accept either nested {enabled:bool} or bare bool
+            jq -r "($1|.enabled) // ($1 // false)" <<<"$2"
+          }
+
+          for B in "${BRANCHES[@]}"; do
+            J=$(gh api "${hdr[@]}" "repos/$REPO/branches/$B/protection")
+
+            # base toggles
+            [[ "$(enabled_or_bool '.required_linear_history' "$J")" == "true" ]] || fail "$B: required_linear_history != true"
+            [[ "$(enabled_or_bool '.allow_force_pushes' "$J")"   == "false" ]]   || fail "$B: allow_force_pushes != false"
+            [[ "$(enabled_or_bool '.allow_deletions' "$J")"      == "false" ]]   || fail "$B: allow_deletions != false"
+
+            # admins/signatures
+            [[ "$(enabled_or_bool '.enforce_admins' "$J")"       == "$( $ENFADM && echo true || echo false )" ]] || fail "$B: enforce_admins mismatch"
+            [[ "$(enabled_or_bool '.required_signatures' "$J")"  == "$( $REQSIG && echo true || echo false )" ]] || fail "$B: required_signatures mismatch"
+
+            # status checks
+            CUR_STRICT=$(jq -r '.required_status_checks.strict' <<<"$J")
+            [[ "$CUR_STRICT" == "$( $STRICT && echo true || echo false )" ]] || fail "$B: strict (up-to-date) mismatch"
+            for want in "${WANT[@]}"; do
+              jq -e --arg c "$want" '.required_status_checks.contexts[] | select(.==$c)' <<<"$J" >/dev/null \
+                || fail "$B: missing required status check '$want'"
+            done
+
+            # reviews
+            RPR=$(jq -r '.required_pull_request_reviews' <<<"$J")
+            if $COREQ || [[ $APPR_MIN -gt 0 ]]; then
+              [[ "$RPR" != "null" ]] || fail "$B: reviews should be present"
+              cur_approvals=$(jq -r '.required_pull_request_reviews.required_approving_review_count' <<<"$J")
+              [[ "$cur_approvals" -ge "$APPR_MIN" ]] || fail "$B: approvals < $APPR_MIN"
+              [[ "$(jq -r '.required_pull_request_reviews.require_code_owner_reviews' <<<"$J")" == "$( $COREQ && echo true || echo false )" ]] \
+                || fail "$B: require_code_owner_reviews mismatch"
+            else
+              [[ "$RPR" == "null" ]] || fail "$B: reviews should be null in SOLO"
+            fi
+          done
+
+          echo "✅ Branch protection matches policy ($MODE)"
