@@ -1,0 +1,188 @@
+name: feature-triage
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  triage:
+    name: Route feature request
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.issue.pull_request }} # skip PRs
+    steps:
+      - name: Read and route Feature Request
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // { core, github, context } are provided by github-script
+            const issue = context.payload.issue;
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+
+            // Run only for our Feature Request form (label 'enhancement' or recognizable header/title)
+            const labels = (issue.labels || []).map(l => (l.name || l).toString().toLowerCase());
+            const hasEnhancement = labels.includes('enhancement') || labels.includes('feature');
+            const body = issue.body || '';
+            const looksLikeFeatureForm = /BrikByteOS Feature Request/i.test(body) || /^feat:\s/i.test(issue.title);
+            if (!hasEnhancement && !looksLikeFeatureForm) {
+              core.notice('Skipping: not a Feature Request form.');
+              return;
+            }
+
+            // ---------- helpers ----------
+            const uniq = a => [...new Set(a.filter(Boolean))];
+            const esc  = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            function section(heading) {
+              // Issue Forms render headings as '##' or '###'; be liberal (##..####).
+              const re = new RegExp(`^#{2,4}\\s*${esc(heading)}\\s*\\n([\\s\\S]*?)(?=\\n#{2,4}\\s|$)`, 'm');
+              const m = body.match(re);
+              return m ? m[1].trim() : '';
+            }
+            const lower = s => (s || '').toLowerCase();
+
+            // ---------- extract fields from the form ----------
+            const scopeRaw   = section('🔭 Scope / Component') || section('Scope / Component');
+            const priorityRaw= section('🎯 Priority') || section('Priority');
+            const rolloutRaw = section('🚀 Rollout Strategy') || section('Rollout Strategy');
+            const areasRaw   = section('🧩 Impacted Area(s)') || section('Impacted Area(s)');
+
+            // ---------- normalize ----------
+            // scope tokens like: ci | api | ui | infra | security | docs | observability
+            let scope = lower(scopeRaw).split(/[,\s/|–—-]+/).filter(Boolean);
+
+            // priority from dropdown text -> P0..P3
+            const prio =
+              /p0/i.test(priorityRaw) ? 'P0' :
+              /p1/i.test(priorityRaw) ? 'P1' :
+              /p2/i.test(priorityRaw) ? 'P2' :
+              /p3/i.test(priorityRaw) ? 'P3' : null;
+
+            // rollout from dropdown text -> slug
+            const rollout =
+              /feature flag/i.test(rolloutRaw) ? 'feature-flag' :
+              /canary/i.test(rolloutRaw)       ? 'canary' :
+              /a\/?b/i.test(rolloutRaw)        ? 'ab' :
+              /blue\/?green/i.test(rolloutRaw) ? 'blue-green' :
+              /full rollout/i.test(rolloutRaw) ? 'full' :
+              /docs[- ]?only/i.test(rolloutRaw)? 'docs-only' : null;
+
+            // areas from checkbox text (keyword match)
+            const areas = [];
+            const ar = lower(areasRaw);
+            if (/ui\s*\/\s*frontend|frontend|\bui\b/.test(ar)) areas.push('ui');
+            if (/api\s*\/\s*backend|backend|\bapi\b/.test(ar)) areas.push('api');
+            if (/build\s*\/\s*ci|\bci\b/.test(ar)) areas.push('ci');
+            if (/release\s*\/\s*cd|\bcd\b/.test(ar)) areas.push('cd');
+            if (/observability|monitoring/.test(ar)) areas.push('observability');
+            if (/\bsecurity\b/.test(ar)) areas.push('security');
+            if (/infrastructure|iac|\binfra\b/.test(ar)) areas.push('infra');
+            if (/documentation|docs/.test(ar)) areas.push('docs');
+
+            // also derive areas from scope hints
+            if (scope.includes('ci')) areas.push('ci');
+            if (scope.includes('api')) areas.push('api');
+            if (scope.includes('ui')) areas.push('ui');
+            if (scope.includes('infra')) areas.push('infra');
+            if (scope.includes('security')) areas.push('security');
+            if (scope.includes('docs')) areas.push('docs');
+            if (scope.includes('observability')) areas.push('observability');
+
+            const areasU = uniq(areas);
+            scope = uniq(scope);
+
+            // ---------- labels to apply ----------
+            // Normalize/cleanup any existing conflicting labels for idempotence
+            async function existingLabels() {
+              const { data } = await github.rest.issues.get({ owner, repo, issue_number: issue.number });
+              return (data.labels || []).map(l => l.name);
+            }
+            async function removePrefixLabels(prefix) {
+              const current = await existingLabels();
+              const toRemove = current.filter(n => n.toLowerCase().startsWith(prefix.toLowerCase() + '/'));
+              for (const name of toRemove) {
+                try { await github.rest.issues.removeLabel({ owner, repo, issue_number: issue.number, name }); }
+                catch { /* ignore */ }
+              }
+            }
+
+            // Build desired label set
+            const want = uniq([
+              hasEnhancement ? null : 'enhancement',
+              labels.includes('needs triage') ? null : 'needs triage',
+              prio ? `priority/${prio}` : null,
+              rollout ? `rollout/${rollout}` : null,
+              ...areasU.map(a => `area/${a}`),
+              ...scope.map(s => `scope/${s}`)
+            ]);
+
+            // Ensure label exists, then add
+            async function ensureAndAdd(name, color='0e8a16', description='feature triage') {
+              try {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: [name] });
+              } catch (e) {
+                if (e.status === 404 || /Label does not exist/i.test(e.message)) {
+                  try {
+                    await github.rest.issues.createLabel({ owner, repo, name, color, description });
+                    await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: [name] });
+                  } catch (e2) {
+                    core.warning(`Could not create/add label "${name}": ${e2.message}`);
+                  }
+                } else {
+                  core.warning(`Could not add label "${name}": ${e.message}`);
+                }
+              }
+            }
+
+            // Remove older priority/rollout labels so only one remains
+            await removePrefixLabels('priority');
+            await removePrefixLabels('rollout');
+
+            // Apply labels
+            for (const name of want) { if (name) await ensureAndAdd(name); }
+
+            // ---------- team routing (based on your CODEOWNERS domains) ----------
+            const teamForArea = {
+              ui:  '@BrikByte-Studios/qa-automation',
+              api: '@BrikByte-Studios/qa-automation',
+              ci:  '@BrikByte-Studios/devops',
+              cd:  '@BrikByte-Studios/devops',
+              infra: '@BrikByte-Studios/devops @BrikByte-Studios/sre',
+              observability: '@BrikByte-Studios/sre',
+              security: '@BrikByte-Studios/security',
+              docs: '@BrikByte-Studios/docs-platform',
+              data: '' // extend when you add a data team
+            };
+            const mentions = uniq(areasU.flatMap(a => (teamForArea[a] || '').split(/\s+/))).filter(Boolean);
+
+            // ---------- upsert a summary comment ----------
+            const MARKER = '<!-- feature-triage-bot -->';
+            const summary =
+              `${MARKER}
+              **Automated Feature Triage**
+
+              - **Priority:** ${prio || 'unspecified'} • **Rollout:** ${rollout || 'unspecified'}
+              - **Scope:** ${scope.length ? scope.join(', ') : 'unspecified'}
+              - **Areas:** ${areasU.length ? areasU.join(', ') : 'unspecified'}
+              - **Labels:** ${want.filter(Boolean).join(', ')}
+
+              ${mentions.length ? `Routing: ${mentions.join(' ')}` : 'Routing: (no team mapping found)'}
+              `;
+
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number: issue.number, per_page: 100 });
+            const existing = comments.data.find(c =>
+              (c.user?.type === 'Bot' || /github-actions\[bot\]/i.test(c.user?.login || '')) &&
+              (c.body || '').includes(MARKER)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: summary });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: summary });
+            }
+
+            core.notice('Feature triage complete.');
