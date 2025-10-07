@@ -18,7 +18,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // NOTE: github-script provides { core, github, context } globally.
+            // { core, github, context } are provided by github-script.
             const pr = context.payload.pull_request;
             if (!pr) { core.setFailed('No pull_request in context'); return; }
 
@@ -26,61 +26,51 @@ jobs:
             const body  = pr.body  ?? '';
             const issues = [];
 
-            // ---------- helpers ----------
             const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-            // Extract text of an H2 section by its exact heading label
             function sectionText(heading) {
-              const re = new RegExp(
-                `^##\\s*${esc(heading)}[\\s\\S]*?(?=\\n##\\s|\\n---|$)`,
-                'm'
-              );
+              const re = new RegExp(`^##\\s*${esc(heading)}[\\s\\S]*?(?=\\n##\\s|\\n---|$)`, 'm');
               const m = body.match(re);
-              if (!m) return '';
-              return m[0].replace(/^##[^\n]*\n?/, '').trim();
+              return m ? m[0].replace(/^##[^\n]*\n?/, '').trim() : '';
             }
 
-            // ---------- 1) Title lint (conventional commit) ----------
+            // 1) Conventional-commit title: allow optional (scope)
             const allowed = ['feat','fix','refactor','perf','test','docs','build','ci','chore'];
-            if (!new RegExp(`^(${allowed.join('|')}):\\s`).test(title)) {
-              issues.push(`Title must start with one of ${allowed.join(', ')} followed by ": ". Got: "${title}"`);
+            const cc = new RegExp(`^(${allowed.join('|')})(\\([^\\n)]+\\))?:\\s`);
+            if (!cc.test(title)) {
+              issues.push(`Title must match conventional commits, e.g. "ci: subject" or "ci(scope): subject". Got: "${title}"`);
             }
 
-            // ---------- 2) Block placeholders ----------
+            // 2) Block placeholders (keep <scope>, drop <summary> to avoid false positives)
             [
               {re: /(^|\s)\.\.\.(\s|$)/, msg: 'Remove "..." placeholder'},
               {re: /…/,                  msg: 'Remove "…" placeholder'},
-              {re: /<summary>/i,         msg: 'Remove "<summary>" placeholder'},
-              {re: /<scope>/i,           msg: 'Remove "<scope>" placeholder'}
+              {re: /<scope>/i,           msg: 'Remove "<scope>" placeholder from title or body'}
             ].forEach(({re,msg}) => { if (re.test(body)) issues.push(msg); });
 
-            // ---------- 3) Required sections must be substantive ----------
+            // 3) Required sections must be substantive
             const requiredSections = [
-              '🧭 Summary',
-              '🔗 Linked Issues / Tickets',
-              '✅ Validation & Evidence',
-              '🧱 Breaking Changes?',
-              '🚀 Deployment Notes',
-              '🔒 Security & Privacy',
-              '📈 Performance & Budgets',
-              '👀 Observability',
-              '🗂 Documentation',
-              '🧪 Scope & Risk',
-              '🧾 Release Notes (user-facing)'
+              '🧭 Summary','🔗 Linked Issues / Tickets','✅ Validation & Evidence','🧱 Breaking Changes?',
+              '🚀 Deployment Notes','🔒 Security & Privacy','📈 Performance & Budgets','👀 Observability',
+              '🗂 Documentation','🧪 Scope & Risk','🧾 Release Notes (user-facing)'
             ];
 
+            // Relax perf/observability for CI-only PRs
+            const isCI = /^ci(\([^)]*\))?:\s/i.test(title);
+            const skipForCI = new Set(['📈 Performance & Budgets','👀 Observability']);
+
             for (const h of requiredSections) {
+              if (isCI && skipForCI.has(h)) continue;
               const txt = sectionText(h)
-                .replace(/!\[[^\]]*\]\([^)]+\)/g,'') // strip images
-                .replace(/`[^`]*`/g,'')              // strip inline code
-                .replace(/^[>\s-]+/gm,'')            // trim bullets/quotes/space
+                .replace(/!\[[^\]]*\]\([^)]+\)/g,'')
+                .replace(/`[^`]*`/g,'')
+                .replace(/^[>\s-]+/gm,'')
                 .trim();
               if (!txt || txt.length < 10) {
                 issues.push(`Section "${h}" appears empty or too short. Provide meaningful content (≥10 chars).`);
               }
             }
 
-            // ---------- 4) "What Changed" needs at least one [x] ----------
+            // 4) What Changed must have at least one [x]
             {
               const sec = body.match(/##\s*🧩 What Changed[\s\S]*?(?=\n##\s|\n---|$)/m);
               if (sec) {
@@ -91,7 +81,7 @@ jobs:
               }
             }
 
-            // ---------- 5) If Breaking = Yes, require migration details ----------
+            // 5) If Breaking = Yes, require migration details
             {
               const bc = body.match(/##\s*🧱 Breaking Changes\?[\s\S]*?(?=\n##\s|\n---|$)/m);
               const yes = bc && /\-\s*\[\s*[xX]\s*\].*Yes/i.test(bc[0]);
@@ -104,16 +94,12 @@ jobs:
               }
             }
 
-            // ---------- Report ----------
+            // Report
             if (issues.length) {
-              await core.summary
-                .addHeading('PR Body Guard — Issues Found', 3)
-                .addList(issues)
-                .write();
+              issues.forEach(i => core.warning(i));
+              await core.summary.addHeading('PR Body Guard — Issues Found', 3).addList(issues).write();
               core.setFailed('PR body failed guard checks.');
             } else {
-              await core.summary
-                .addHeading('PR Body Guard — All checks passed ✅', 3)
-                .write();
+              await core.summary.addHeading('PR Body Guard — All checks passed ✅', 3).write();
               core.notice('PR body passed all required checks.');
             }
