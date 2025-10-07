@@ -1,0 +1,184 @@
+name: "🌟 Feature Request"
+description: "Propose a new feature or improvement for BrikByteOS."
+title: "feat: <scope> — <summary>"
+labels: ["enhancement", "needs triage", "feature"]
+# assignees: ["<optional-default>"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🌟 BrikByteOS Feature Request
+        Thanks for suggesting an improvement! Please fill in the details below so we can assess, plan, and build efficiently.
+
+  - type: input
+    id: scope
+    attributes:
+      label: "🔭 Scope / Component"
+      description: "What area does this affect?"
+      placeholder: "ci | api | ui | infra | security | docs | observability"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "🧠 Problem Statement"
+      description: "What problem are we solving and for whom? Describe current pain, context, and constraints."
+      placeholder: "Who is affected? What is hard today? Why now?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_story
+    attributes:
+      label: "👤 User Story"
+      description: "Frame it from the user's perspective."
+      placeholder: |
+        As a <role/user>,
+        I want <capability>,
+        so that <value/outcome>.
+    validations:
+      required: true
+
+  - type: textarea
+    id: value
+    attributes:
+      label: "📈 Value & Impact"
+      description: "What metrics or outcomes improve if we do this?"
+      placeholder: "e.g., Pipeline p95 -20%, MTTR -30%, Test coverage +10%, Dev onboarding -1 day"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "🎯 Priority"
+      description: "Product/Eng priority at intake."
+      options:
+        - "P0 — Must have (time critical)"
+        - "P1 — High (next release)"
+        - "P2 — Medium (backlog)"
+        - "P3 — Low (nice to have)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: areas
+    attributes:
+      label: "🧩 Impacted Area(s)"
+      options:
+        - label: "UI / Frontend"
+        - label: "API / Backend"
+        - label: "Build / CI"
+        - label: "Release / CD"
+        - label: "Observability / Monitoring"
+        - label: "Security"
+        - label: "Infrastructure / IaC"
+        - label: "Documentation"
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "🛠️ Proposed Solution (High-Level)"
+      description: "High-level approach, interfaces/contracts, data shape, or workflow. No secrets."
+      placeholder: "Describe the approach in 3–7 bullets; include links to design docs or PoCs."
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "🔀 Alternatives Considered"
+      placeholder: "Option A (tradeoffs), Option B (tradeoffs)…"
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "✅ Acceptance Criteria (Gherkin preferred)"
+      description: "Clear, testable outcomes."
+      placeholder: |
+        Given <context>
+        When <action>
+        Then <observable outcome>
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: nfr
+    attributes:
+      label: "🧾 Non-Functional Requirements"
+      description: "Select all that apply (add details below if selected)."
+      options:
+        - label: "Performance budgets (p95, throughput)"
+        - label: "Reliability (timeouts/retries/DLQ)"
+        - label: "Security (authz/rbac, secrets, scanning)"
+        - label: "Scalability (load/spikes)"
+        - label: "Accessibility (a11y)"
+        - label: "Compliance / auditability"
+
+  - type: textarea
+    id: nfr_details
+    attributes:
+      label: "📐 NFR Details"
+      placeholder: "e.g., API p95 ≤ 250ms, 99.9% SLO, rate limit policies, redaction, audit evidence"
+
+  - type: textarea
+    id: ux
+    attributes:
+      label: "🖌️ UX / Design Notes"
+      description: "Wireframes, screenshots, design tokens, or references."
+      placeholder: "Link Figma or attach images; note empty/error/loading states"
+
+  - type: input
+    id: dependencies
+    attributes:
+      label: "🧷 Dependencies / Blockers"
+      placeholder: "Depends on: #123, service-x v1.2, contract change, vendor approval"
+
+  - type: dropdown
+    id: rollout
+    attributes:
+      label: "🚀 Rollout Strategy"
+      options:
+        - "Feature flag (gradual)"
+        - "Canary"
+        - "A/B experiment"
+        - "Blue/Green"
+        - "Full rollout"
+        - "Docs-only change"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: testing
+    attributes:
+      label: "🧪 Testing Plan"
+      options:
+        - label: "Unit tests"
+        - label: "Integration/API tests (Karate)"
+        - label: "E2E/UI tests (Playwright)"
+        - label: "Performance (k6)"
+        - label: "Security review / CodeQL"
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: "⚠️ Risks & Mitigations"
+      placeholder: "Risk: … | Mitigation: …"
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: "📚 Docs & Comms"
+      placeholder: "README/ADR updates, changelog entry, internal announcement, runbooks"
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "✅ Pre-Submission Checklist"
+      options:
+        - label: "I searched existing issues and RFCs"
+          required: true
+        - label: "Problem, value, and acceptance criteria are clear and testable"
+          required: true
+        - label: "I provided links or images for designs/flows (if UI)"
+        - label: "No secrets or sensitive data included"
