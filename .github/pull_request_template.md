@@ -149,9 +149,23 @@ Notes: …
 ---
 
 ## 🧪 Scope & Risk
-**Size:** □ XS □ S □ M □ L □ XL  
-**Risk:** □ Low □ Medium □ High  
-**Fallback:** □ Not needed □ Feature flag □ Safe rollback path in place
+**Size:** 
+  - [ ] XS 
+  - [ ] S 
+  - [ ] M
+  - [ ] L
+  - [ ] XL
+   
+**Risk:** 
+  - [ ] Low
+  - [ ] Medium
+  - [ ] High  
+  
+**Fallback:**
+  - [ ] Not needed
+  - [ ] Feature flag
+  - [ ] Safe rollback path in place
+
 
 > Reviewer focus areas: …
 
