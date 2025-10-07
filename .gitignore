@@ -1,0 +1,160 @@
+# --------------------------------------------------------------------
+# BrikByte Studios — Governance Repo .gitignore
+# Purpose: keep audit evidence, local cruft, and large artifacts out
+# --------------------------------------------------------------------
+
+############################
+# Audit / Evidence (private)
+############################
+.audit/
+!.audit/.keep
+
+############################
+# Secrets & Local Env (never commit)
+############################
+.env
+.env.*
+*.env
+*.secret
+*.secrets
+secrets/
+.secrets/
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+*.asc
+*.age
+.kube/
+*.kubeconfig
+
+############################
+# OS / Filesystem noise
+############################
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.nfs*
+*.bak
+
+############################
+# Editors / IDEs
+############################
+.vscode/
+.vscode-*
+.history
+.idea/
+*.iml
+*.ipr
+*.iws
+*.sublime-*
+*.swp
+*.swo
+*~
+
+############################
+# Node / JS tooling (if used for scripts/docs)
+############################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# (Keep lockfiles if you add tooling)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+############################
+# Python (if used for tooling)
+############################
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.envrc
+
+############################
+# Go / Misc build outputs
+############################
+bin/
+*.test
+
+############################
+# Archives / binaries / logs
+############################
+*.log
+logs/
+*.zip
+*.tar
+*.gz
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.dmg
+*.iso
+*.exe
+*.dll
+*.so
+*.dylib
+
+############################
+# Coverage / local reports
+############################
+coverage/
+*.lcov
+coverage-final.json
+allure-results/
+allure-report/
+
+############################
+# Static site / doc generators (if used)
+############################
+.site/
+.cache/
+public/
+.out/
+.next/
+.docusaurus/
+build/
+dist/
+
+############################
+# Terraform / Helm (if templates live here)
+############################
+*.tfstate
+*.tfstate.*
+.crash
+*.tfplan
+charts/**/charts/
+charts/**/tmp/
+*.tgz
+
+############################
+# Docker local artifacts
+############################
+.docker/
+docker-data/
+*.tar
+
+# --------------------------------------------------------------------
+# Safety: ensure governance policies stay tracked
+# (Not strictly needed, but documents intent)
+# --------------------------------------------------------------------
+!.github/
+!CODE_OF_CONDUCT.md
+!SECURITY.md
+!LICENSE
+!.governance/
