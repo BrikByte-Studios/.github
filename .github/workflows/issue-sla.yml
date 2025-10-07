@@ -1,0 +1,206 @@
+name: issue-sla
+
+on:
+  schedule:
+    # Nightly at 02:17 UTC (adjust as needed)
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-sla-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sla:
+    name: Check issue SLAs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate SLAs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // SLA policy (hours / days). Tweak as needed.
+            const TRIAGE_HOURS = 24;             // time to remove "needs triage" or respond
+            const RESP_HOURS   = {               // first non-author response SLA
+              P0: 4,  P1: 24,  P2: 48,  P3: 120
+            };
+            const RESOLVE_DAYS = {               // target resolution window
+              P0: 2,  P1: 7,   P2: 30,  P3: 90
+            };
+
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+
+            // Utility helpers
+            const now = new Date();
+            const toHrs = (ms) => Math.round(ms / 36e5);
+            const toDays = (ms) => Math.round(ms / 8.64e7);
+            const ageHrs = (d) => toHrs(now - new Date(d));
+            const ageDays = (d) => toDays(now - new Date(d));
+
+            async function* openIssuesPaginated() {
+              let page = 1;
+              while (true) {
+                const res = await github.rest.issues.listForRepo({
+                  owner, repo, state: 'open', per_page: 100, page
+                });
+                if (!res.data.length) break;
+                for (const it of res.data) {
+                  if (!it.pull_request) yield it; // exclude PRs
+                }
+                page++;
+              }
+            }
+
+            function hasLabel(issue, name) {
+              const n = name.toLowerCase();
+              return (issue.labels || []).some(l => (l.name || l).toLowerCase() === n);
+            }
+            function getLabelValue(issue, prefix) {
+              // e.g., 'priority/P1' -> 'P1'
+              const p = prefix.toLowerCase() + '/';
+              const found = (issue.labels || []).map(l => (l.name || '').toLowerCase()).find(n => n.startsWith(p));
+              return found ? found.slice(p.length).toUpperCase() : null;
+            }
+
+            async function firstNonAuthorCommentAt(number, author) {
+              let page = 1, first = null;
+              while (true) {
+                const res = await github.rest.issues.listComments({ owner, repo, issue_number: number, per_page: 100, page });
+                if (!res.data.length) break;
+                for (const c of res.data) {
+                  const login = c.user?.login || '';
+                  if (login.toLowerCase() !== (author || '').toLowerCase()) {
+                    first = c.created_at;
+                    break;
+                  }
+                }
+                if (first) break;
+                page++;
+              }
+              return first;
+            }
+
+            // Label helpers: ensure exists, then add/remove
+            async function ensureLabel(name, color='b60205', description='SLA helper') {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (e) {
+                if (e.status === 404) {
+                  await github.rest.issues.createLabel({ owner, repo, name, color, description }).catch(()=>{});
+                }
+              }
+            }
+            async function addLabels(number, names) {
+              const existing = (await github.rest.issues.get({owner, repo, issue_number: number})).data.labels.map(l=>l.name);
+              const toAdd = names.filter(n => n && !existing.includes(n));
+              if (toAdd.length) await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: toAdd });
+            }
+            async function removeLabels(number, names) {
+              for (const n of names) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name: n });
+                } catch (e) { /* ignore */ }
+              }
+            }
+
+            // Marker for upserted comment
+            const MARKER = '<!-- sla-bot -->';
+
+            let scanned = 0, breaches = 0, warned = 0;
+
+            for await (const issue of openIssuesPaginated()) {
+              scanned++;
+              const number = issue.number;
+              const author = issue.user?.login || '';
+              const createdAt = issue.created_at;
+
+              // Read key labels derived by your triage workflow
+              const priority = getLabelValue(issue, 'priority') || 'P3';
+              const severity = getLabelValue(issue, 'severity'); // optional
+              const needsTriage = hasLabel(issue, 'needs triage');
+
+              // Compute response timing (first non-author comment)
+              const firstRespAt = await firstNonAuthorCommentAt(number, author);
+              const hoursSinceCreate = ageHrs(createdAt);
+              const triageBreached = needsTriage && hoursSinceCreate > TRIAGE_HOURS;
+
+              // Response SLA (if no first response yet)
+              const respLimitHrs = RESP_HOURS[priority] || RESP_HOURS.P3;
+              const responseBreached = !firstRespAt && hoursSinceCreate > respLimitHrs;
+
+              // Resolution SLA relative to creation (simple approach)
+              const resolveLimitDays = RESOLVE_DAYS[priority] || RESOLVE_DAYS.P3;
+              const resolutionBreached = ageDays(createdAt) > resolveLimitDays;
+
+              // Warning band (half of the limit)
+              const warnResponse = !firstRespAt && hoursSinceCreate > Math.floor(respLimitHrs / 2) && !responseBreached;
+              const warnResolution = ageDays(createdAt) > Math.floor(resolveLimitDays / 2) && !resolutionBreached;
+
+              // Prepare labels
+              const L_WARN  = 'sla/warn';
+              const L_FAIL  = 'sla/breached';
+              const L_TRIAGE= 'sla/triage-breached';
+              await Promise.all([ensureLabel(L_WARN,'fbca04','Approaching SLA breach'),
+                                 ensureLabel(L_FAIL,'b60205','SLA breached'),
+                                 ensureLabel(L_TRIAGE,'d93f0b','Triage SLA breached')]);
+
+              // Reset SLA labels before re-applying
+              await removeLabels(number, [L_WARN, L_FAIL, L_TRIAGE]);
+
+              const toAdd = [];
+              if (triageBreached) toAdd.push(L_TRIAGE);
+              if (responseBreached || resolutionBreached) toAdd.push(L_FAIL);
+              else if (warnResponse || warnResolution) toAdd.push(L_WARN);
+
+              if (toAdd.length) await addLabels(number, toAdd);
+
+              // Compose summary
+              const lines = [];
+              lines.push(`**Priority:** ${priority}${severity ? ` • **Severity:** ${severity}` : ''}`);
+              lines.push(`**Age:** ${ageDays(createdAt)}d (${hoursSinceCreate}h)`);
+              lines.push(`**Triage:** ${needsTriage ? 'needs triage' : 'triaged'} • limit ${TRIAGE_HOURS}h → ${triageBreached ? '❌ breach' : '✅ ok'}`);
+              lines.push(`**First response:** ${firstRespAt ? `at ${firstRespAt}` : 'none yet'} • limit ${respLimitHrs}h → ${responseBreached ? '❌ breach' : (warnResponse ? '⚠️ warn' : '✅ ok')}`);
+              lines.push(`**Resolution target:** ${resolveLimitDays}d → ${resolutionBreached ? '❌ breach' : (warnResolution ? '⚠️ warn' : '✅ ok')}`);
+
+              // Security escalation if labeled as security or area/security
+              const isSecurity = hasLabel(issue,'security') || hasLabel(issue,'area/security');
+              const route = isSecurity ? 'Routing: @BrikByte-Studios/security' : '';
+
+              const body = `${MARKER}
+              ### SLA Report (nightly)
+
+              ${lines.map(l=>`- ${l}`).join('\n')}
+
+              ${route}
+              `;
+
+              // Upsert comment
+              const comments = await github.rest.issues.listComments({ owner, repo, issue_number: number, per_page: 100 });
+              const existing = comments.data.find(c => (c.user?.type === 'Bot' || /github-actions\[bot\]/i.test(c.user?.login || '')) && (c.body || '').includes(MARKER));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+              }
+
+              if (triageBreached || responseBreached || resolutionBreached) breaches++;
+              else if (warnResponse || warnResolution) warned++;
+            }
+
+            await core.summary
+              .addHeading('Issue SLA — Nightly Report', 2)
+              .addRaw(`Scanned: **${scanned}** open issues`)
+              .addList([`Breaches: **${breaches}**`, `Warnings: **${warned}**`])
+              .write();
+
+            if (breaches > 0) {
+              core.warning(`SLA breaches found: ${breaches}`);
+            } else {
+              core.notice('No SLA breaches detected.');
+            }
