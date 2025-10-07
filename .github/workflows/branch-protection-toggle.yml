@@ -1,0 +1,143 @@
+name: branch-protection-toggle
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Policy mode to apply (solo|strict). If omitted, uses .governance/policy.yml"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  apply:
+    name: Apply branch-protection profile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout policy
+        uses: actions/checkout@v4
+
+      - name: Tooling (jq, python yaml)
+        run: |
+          set -e
+          sudo apt-get update -y
+          sudo apt-get install -y jq python3-yaml
+
+      - name: Resolve policy (mode, branches, contexts)
+        id: policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY=$(cat <<'PY'
+          import os,sys,yaml,json
+          data=yaml.safe_load(open(".governance/policy.yml","r"))
+          mode=os.environ.get("MODE_OVERRIDE") or data.get("mode","solo")
+          out={
+            "mode": mode,
+            "branches": data.get("branches",["main"]),
+            "strict_ctx": data.get("checks",{}).get("strict",{}).get("contexts",["lint","test","codeql"]),
+            "solo_ctx":   data.get("checks",{}).get("solo",{}).get("contexts",["test"])
+          }
+          print(json.dumps(out))
+          PY
+          )
+          MODE_OVERRIDE="${{ github.event.inputs.mode }}"
+          export MODE_OVERRIDE
+          POL=$(python3 - <<PY
+          $PY
+          PY
+          )
+          echo "$POL" | jq .
+          echo "json=$POL" >> $GITHUB_OUTPUT
+
+      - name: Apply protection to each branch
+        shell: bash
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          json='${{ steps.policy.outputs.json }}'
+          MODE=$(jq -r '.mode' <<<"$json")
+          mapfile -t BRANCHES < <(jq -r '.branches[]' <<<"$json")
+          mapfile -t STRICT_CTX < <(jq -r '.strict_ctx[]' <<<"$json")
+          mapfile -t SOLO_CTX   < <(jq -r '.solo_ctx[]' <<<"$json")
+
+          # Compose profile knobs
+          if [[ "$MODE" == "strict" ]]; then
+            STRICT=true;  APPROVALS=1; COREQ=true;  ENFADM=true;  REQSIG=true;  # signed commits ON
+            mapfile -t CTX < <(printf "%s\n" "${STRICT_CTX[@]}")
+          elif [[ "$MODE" == "solo" ]]; then
+            STRICT=false; APPROVALS=0; COREQ=false; ENFADM=false; REQSIG=false; # signed commits OFF
+            mapfile -t CTX < <(printf "%s\n" "${SOLO_CTX[@]}")
+          else
+            echo "Invalid mode: $MODE"; exit 1
+          fi
+
+          hdr=(-H "Accept: application/vnd.github+json")
+
+          day=$(date +%F)
+          mkdir -p ".audit/$day"
+
+          for B in "${BRANCHES[@]}"; do
+            echo "::group::Apply $MODE to $B"
+
+            # Build required_status_checks object
+            RS="$(jq -n --argjson strict "$STRICT" --argjson ctx "$(printf '%s\n' "${CTX[@]}" | jq -R . | jq -s .)" \
+                 '{strict:$strict, contexts:$ctx}')"
+
+            # Build required_pull_request_reviews object or null
+            if $COREQ || [[ $APPROVALS -gt 0 ]]; then
+              RPR="$(jq -n --argjson n "$APPROVALS" --argjson coreq "$COREQ" \
+                     '{required_approving_review_count:$n, require_code_owner_reviews:$coreq, dismiss_stale_reviews:true}')"
+            else
+              RPR=null
+            fi
+
+            # Build main JSON body (include keys required by the API)
+            BODY="$(jq -n \
+              --argjson rs "$RS" \
+              --argjson rpr "$RPR" \
+              --argjson enf "$ENFADM" \
+              '{required_status_checks:$rs,
+                enforce_admins:$enf,
+                required_pull_request_reviews:$rpr,
+                restrictions:null,
+                required_linear_history:true,
+                allow_force_pushes:false,
+                allow_deletions:false}')"
+
+            echo "$BODY" | jq . | sed 's/^/  /'
+            echo "PUT /repos/$REPO/branches/$B/protection"
+            gh api "${hdr[@]}" -X PUT "repos/$REPO/branches/$B/protection" --input - <<<"$BODY"
+
+            # Toggle signed commits via subresource (more reliable than inline)
+            if $REQSIG; then
+              echo "POST /repos/$REPO/branches/$B/protection/required_signatures"
+              gh api "${hdr[@]}" -X POST "repos/$REPO/branches/$B/protection/required_signatures" >/dev/null
+            else
+              echo "DELETE /repos/$REPO/branches/$B/protection/required_signatures"
+              gh api "${hdr[@]}" -X DELETE "repos/$REPO/branches/$B/protection/required_signatures" >/dev/null || true
+            fi
+
+            # Export evidence
+            gh api "${hdr[@]}" "repos/$REPO/branches/$B/protection" > ".audit/$day/branch_protection_${B}.json"
+
+            echo "::endgroup::"
+          done
+
+      - name: Commit evidence (PR)
+        shell: bash
+        run: |
+          set -euo pipefail
+          day=$(date +%F)
+          git config user.name  "brikbyte-bot"
+          git config user.email "bot@brikbyte.dev"
+          git checkout -b "audit/$day"
+          git add ".audit/$day"
+          git commit -m "audit: branch protection export ($day)"
+          git push -u origin "audit/$day"
+          gh pr create --title "audit: branch protection export ($day)" --body "Automated evidence export for branch-protection toggle ($day)." --base main

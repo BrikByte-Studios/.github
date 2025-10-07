@@ -1,0 +1,20 @@
+# BrikByteOS — Branch-Protection Policy (source of truth)
+# mode: "strict" (team repos) or "solo" (solo maintainer speed)
+mode: solo
+
+# Which branches the policy applies to
+branches:
+  - main
+
+# Canonical CI contexts per mode
+checks:
+  strict:
+    contexts: ["lint", "test", "codeql"]
+  solo:
+    contexts: ["test"]
+
+# Optional: team anchors (for docs/communication or future automation)
+teams:
+  owners:
+    governance: "@BrikByte-Studios/devops"
+    security: "@BrikByte-Studios/security"
