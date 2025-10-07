@@ -1,0 +1,176 @@
+name: issue-triage
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  triage:
+    name: Route bug report
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.issue.pull_request }} # skip PRs
+    steps:
+      - name: Read and route Bug Report
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // github-script exposes { core, github, context }
+            const issue = context.payload.issue;
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+
+            // Run only for our Bug Report template (label "bug" or recognizable header)
+            const hasBugLabel = (issue.labels || []).some(l => (l.name || l).toString().toLowerCase() === 'bug');
+            const body = issue.body || '';
+            const looksLikeBugForm = /BrikByteOS Bug Report/i.test(body) || /^bug:\s/i.test(issue.title);
+            if (!hasBugLabel && !looksLikeBugForm) {
+              core.notice('Skipping: not a Bug Report form.');
+              return;
+            }
+
+            // ---------- helpers ----------
+            const uniq = a => [...new Set(a.filter(Boolean))];
+            const esc  = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            function section(heading) {
+              // Issue Forms render headings as ###; be liberal (## to ####)
+              const re = new RegExp(`^#{2,4}\\s*${esc(heading)}\\s*\\n([\\s\\S]*?)(?=\\n#{2,4}\\s|$)`, 'm');
+              const m = body.match(re);
+              return m ? m[1].trim() : '';
+            }
+            const lower = s => (s || '').toLowerCase();
+
+            // Extract fields
+            const scopeRaw   = section('🔭 Affected Scope / Component') || section('Scope / Component');
+            const severityRaw= section('🚨 Severity') || section('Severity');
+            const freqRaw    = section('⏱️ Frequency') || section('Frequency');
+            const areasRaw   = section('🧩 Impacted Area(s)') || section('Impacted Area');
+
+            // Normalize tokens
+            let scope = lower(scopeRaw).split(/[,\s/|]+/).filter(Boolean); // e.g., ['ci','api']
+            const sev  = /s1/i.test(severityRaw) ? 'S1'
+                       : /s2/i.test(severityRaw) ? 'S2'
+                       : /s3/i.test(severityRaw) ? 'S3'
+                       : /s4/i.test(severityRaw) ? 'S4' : null;
+
+            const freq = /always/i.test(freqRaw) ? 'always'
+                       : /often/i.test(freqRaw)  ? 'often'
+                       : /intermittent/i.test(freqRaw) ? 'intermittent'
+                       : /rare/i.test(freqRaw) ? 'rare' : null;
+
+            // Areas: look for keywords in the section block (checkbox list)
+            const areas = [];
+            const ar = areasRaw.toLowerCase();
+            if (/ui\s*\/\s*frontend|frontend|ui/.test(ar)) areas.push('ui');
+            if (/api\s*\/\s*backend|backend|api/.test(ar)) areas.push('api');
+            if (/data\s*\/\s*storage|storage|data\b/.test(ar)) areas.push('data');
+            if (/build\s*\/\s*ci|\bci\b/.test(ar)) areas.push('ci');
+            if (/release\s*\/\s*cd|\bcd\b/.test(ar)) areas.push('cd');
+            if (/observability|monitoring/.test(ar)) areas.push('observability');
+            if (/\bsecurity\b/.test(ar)) areas.push('security');
+            if (/documentation|docs/.test(ar)) areas.push('docs');
+            if (/infrastructure|iac|\binfra\b/.test(ar)) areas.push('infra');
+
+            // Derive areas from scope hints, too
+            if (scope.includes('ci')) areas.push('ci');
+            if (scope.includes('infra')) areas.push('infra');
+            if (scope.includes('security')) areas.push('security');
+            if (scope.includes('api')) areas.push('api');
+            if (scope.includes('ui')) areas.push('ui');
+            if (scope.includes('docs')) areas.push('docs');
+
+            const areasU = uniq(areas);
+            scope = uniq(scope);
+
+            // Priority heuristic (Severity × Frequency)
+            let priority = 'P3';
+            if (sev === 'S1' && (freq === 'always' || freq === 'often')) priority = 'P0';
+            else if ((sev === 'S1' && freq) || (sev === 'S2' && (freq === 'always' || freq === 'often'))) priority = 'P1';
+            else if (sev === 'S2' || (sev === 'S3' && (freq === 'always' || freq === 'often'))) priority = 'P2';
+
+            // Label sets
+            const labelsToAdd = uniq([
+              hasBugLabel ? null : 'bug',
+              'needs triage',
+              sev ? `severity/${sev}` : null,
+              freq ? `frequency/${freq}` : null,
+              `priority/${priority}`,
+              ...areasU.map(a => `area/${a}`),
+              ...scope.map(s => `scope/${s}`)
+            ]);
+
+            // Team routing (based on your CODEOWNERS domains)
+            const teamForArea = {
+              ui:  '@BrikByte-Studios/qa-automation',
+              api: '@BrikByte-Studios/qa-automation',
+              ci:  '@BrikByte-Studios/devops',
+              cd:  '@BrikByte-Studios/devops',
+              infra: '@BrikByte-Studios/devops @BrikByte-Studios/sre',
+              observability: '@BrikByte-Studios/sre',
+              security: '@BrikByte-Studios/security',
+              docs: '@BrikByte-Studios/docs-platform',
+              data: '' // no explicit team listed; leave blank or map later
+            };
+            const mentions = uniq(
+              areasU.flatMap(a => (teamForArea[a] || '').split(/\s+/))
+            ).filter(Boolean);
+
+            // Ensure labels exist, then add to the issue
+            async function ensureAndAddLabels(names) {
+              const addable = [];
+              for (const name of names) {
+                try {
+                  await github.rest.issues.addLabels({owner, repo, issue_number: issue.number, labels: [name]});
+                  addable.push(name);
+                } catch (e) {
+                  if (e.status === 404 || /Label does not exist/i.test(e.message)) {
+                    // Try to create then add
+                    try {
+                      await github.rest.issues.createLabel({
+                        owner, repo, name,
+                        color: '0e8a16', description: 'Auto-created by issue triage'
+                      });
+                      await github.rest.issues.addLabels({owner, repo, issue_number: issue.number, labels: [name]});
+                      addable.push(name);
+                    } catch (e2) {
+                      core.warning(`Could not create/add label "${name}": ${e2.message}`);
+                    }
+                  } else {
+                    core.warning(`Could not add label "${name}": ${e.message}`);
+                  }
+                }
+              }
+              return addable;
+            }
+
+            await ensureAndAddLabels(labelsToAdd);
+
+            // Upsert a triage summary comment
+            const marker = '<!-- triage-bug-bot -->';
+            const triageSummary =
+              `${marker}
+              **Automated Triage Summary**
+
+              - **Severity:** ${sev || 'unspecified'} • **Frequency:** ${freq || 'unspecified'} • **Priority:** ${priority}
+              - **Scope:** ${scope.length ? scope.join(', ') : 'unspecified'}
+              - **Areas:** ${areasU.length ? areasU.join(', ') : 'unspecified'}
+              - **Labels:** ${labelsToAdd.join(', ')}
+
+              ${mentions.length ? `Routing: ${mentions.join(' ')}` : 'Routing: (no team mapping found)'}
+              `;
+
+            // Find existing bot comment to update
+            const comments = await github.rest.issues.listComments({owner, repo, issue_number: issue.number, per_page: 100});
+            const existing = comments.data.find(c => (c.user?.type === 'Bot' || /github-actions\[bot\]/i.test(c.user?.login || '')) && (c.body || '').includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: existing.id, body: triageSummary});
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number: issue.number, body: triageSummary});
+            }
+
+            core.notice('Triage complete.');
