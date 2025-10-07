@@ -1,0 +1,164 @@
+name: "🐞 Bug Report"
+description: "Report a defect to help us improve BrikByteOS."
+title: "bug: <scope> — <summary>"
+labels: ["bug", "needs triage"]
+# assignees: ["<optional-default>"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🐞 BrikByteOS Bug Report
+        Thanks for taking the time to help us improve!  
+        **Tip:** redact secrets, tokens, and customer data before submitting.
+
+  - type: input
+    id: scope
+    attributes:
+      label: "🔭 Affected Scope / Component"
+      description: "Where did this occur?"
+      placeholder: "ci | api | ui | docs | infra | security | other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: "🚨 Severity"
+      description: "Use our S-scale: S1 (critical) → S4 (minor)."
+      options:
+        - "S1 — Critical (outage / data loss / security)"
+        - "S2 — High (major impact, no workaround)"
+        - "S3 — Medium (degraded, workaround exists)"
+        - "S4 — Low (minor / cosmetic)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: "⏱️ Frequency"
+      options:
+        - "Always"
+        - "Often (≥50%)"
+        - "Intermittent"
+        - "Rare"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: areas
+    attributes:
+      label: "🧩 Impacted Area(s)"
+      options:
+        - label: "UI / Frontend"
+        - label: "API / Backend"
+        - label: "Data / Storage"
+        - label: "Build / CI"
+        - label: "Release / CD"
+        - label: "Observability / Monitoring"
+        - label: "Security"
+        - label: "Documentation"
+        - label: "Infrastructure / IaC"
+
+  - type: input
+    id: version
+    attributes:
+      label: "🏷️ Version / Commit"
+      placeholder: "v1.2.3 or 9f1e2d3"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: "🌍 Environment"
+      placeholder: "prod / staging / local — region, OS, browser, runtime (Node 20), cluster, etc."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "🧪 Steps to Reproduce"
+      description: "Numbered steps. Include minimal repro if possible."
+      placeholder: |
+        1) …
+        2) …
+        3) …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "✅ Expected Result"
+      placeholder: "What you expected to happen…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "❌ Actual Result"
+      placeholder: "What actually happened… (include full error text)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: "🔁 Reproducibility"
+      description: "How reliable is the repro?"
+      options:
+        - "100% (always)"
+        - "75%"
+        - "50%"
+        - "25%"
+        - "10% or less"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: regression
+    attributes:
+      label: "📉 Regression?"
+      options:
+        - label: "Yes — worked before (please add the last known good version)"
+        - label: "No"
+        - label: "Unknown"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "📜 Logs / Stacktrace"
+      description: "Redact secrets/tokens; include relevant lines only."
+      render: bash
+      placeholder: |
+        [snippet showing the error / stacktrace]
+        # link to CI run / Allure / ReportPortal, if applicable
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "📸 Screenshots / Video (optional)"
+      description: "Drag & drop images or paste links to screen recordings."
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: "🛟 Known Workarounds"
+      description: "Any temporary steps to mitigate impact?"
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "✅ Pre-Submission Checklist"
+      options:
+        - label: "I searched existing issues and discussions"
+          required: true
+        - label: "I included a minimal reproduction or clear steps"
+          required: true
+        - label: "I removed/obfuscated secrets and sensitive data"
+          required: true
+        - label: "I linked related CI runs, dashboards, or error IDs (if applicable)"
