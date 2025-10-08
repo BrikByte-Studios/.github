@@ -61,7 +61,7 @@ Evidence is exported to `.audit/YYYY-MM-DD/branch_protection_<branch>.json` and 
 
 ---
 
-### 4) How Compliance Is Enforced
+## 4) How Compliance Is Enforced
 
 - **Preventive**: templates + `pr-body-guard.yml` block low-signal PRs; CODEOWNERS require the right reviewers.
 - **Detective**: nightly `compliance-branch-protection.yml` fails if live settings drift from policy.
@@ -69,7 +69,7 @@ Evidence is exported to `.audit/YYYY-MM-DD/branch_protection_<branch>.json` and 
 - **Audit**: automated **evidence exports** under `.audit/` (+ PRs) for traceable changes.
 
 ---
-### 5) Requesting Changes
+## 5) Requesting Changes
 
 1. **Open a PR to this repo** with:
     - Policy edits in `/.governance/policy.yml` (e.g., add a branch, change required checks).
@@ -83,7 +83,7 @@ gh workflow run branch-protection-toggle --ref main
 ```
 ---
 
-### 6) Quick Verification Commands
+## 6) Quick Verification Commands
 - **Current protection JSON:**
 ```bash
 gh api repos/${OWNER}/${REPO}/branches/main/protection | jq .
@@ -100,7 +100,7 @@ ls -la .audit/$(date +%F)/branch_protection_main.json
 ```
 ---
 
-### 7) Labeling & Status Conventions
+## 7) Labeling & Status Conventions
 - **Priority (features):** `priority/P0..P3`
 - **Severity (bugs):** `severity/S1..S4`
 - **Status (features):** `status/proposed → status/discovery → status/planned → status/in progress → status/done`
@@ -110,7 +110,7 @@ ls -la .audit/$(date +%F)/branch_protection_main.json
 
 ---
 
-### 8) FAQ
+## 8) FAQ
 
 - **Why do my pushes fail to `main`?**
     STRICT mode is on. Open a PR with required approvals/checks, or switch to SOLO (if appropriate) via the toggle workflow.
@@ -123,14 +123,14 @@ ls -la .audit/$(date +%F)/branch_protection_main.json
 
 ---
 
-### 9) Glossary
+## 9) Glossary
 - **Drift:** Live settings diverge from policy. Nightly job flags it.
 - **Evidence:** JSON exports under `.audit/` proving the effective configuration.
 - **Guardrail:** Automation that blocks or warns on non-compliant changes.
 
 ---
 
-### 10)  Contact
+## 10)  Contact
 - DevOps (governance owners): `@BrikByte-Studios/devops`
 - Security (policy & exceptions): `@BrikByte-Studios/security`
 - Docs: `@BrikByte-Studios/docs-platform`
