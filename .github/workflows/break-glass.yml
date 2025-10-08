@@ -26,13 +26,14 @@ permissions:
   pull-requests: write
   issues: write
 
-# Require approval from environment reviewers before any steps execute
-environment: break-glass
+
+
 
 jobs:
   break_glass:
     name: Execute Break-Glass Override
     runs-on: ubuntu-latest
+    environment: break-glass # Require approval from environment reviewers before any steps execute
 
     env:
       GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
@@ -65,58 +66,63 @@ jobs:
           gh api "repos/${REPO}/branches/main/protection" > ".audit/$day/pre_breakglass_main.json"
           echo "Pre-state captured."
 
-      - name: 🚨 Apply Break-Glass Mode
-        if: ${{ steps.validate.outputs.mode == 'solo' }}
+      - name: 🚨 Apply requested mode
         run: |
-          echo "Switching to SOLO (emergency bypass)..."
-          gh workflow run branch-protection-toggle.yml --ref main -f mode=solo
+          set -euo pipefail
+          MODE="${{ steps.validate.outputs.mode }}"
+          echo "Applying mode: $MODE"
+          gh workflow run branch-protection-toggle.yml --ref main -f mode="$MODE"
 
-      - name: 🔒 Restore Strict Mode (immediate test)
-        if: ${{ steps.validate.outputs.mode == 'strict' }}
-        run: |
-          echo "Restoring STRICT manually..."
-          gh workflow run branch-protection-toggle.yml --ref main -f mode=strict
-
-      - name: 📜 Record break-glass metadata
+      - name: 🕒 Record TTL (used by compliance/restore job)
         run: |
           set -euo pipefail
           day=$(date +%F)
-          file=".audit/$day/breakglass_record_$(date +%s).md"
-          cat <<EOF > $file
-          # Break Glass Record — $day
-          **Invoker:** ${{ github.actor }}
-          **Mode:** ${{ github.event.inputs.mode }}
-          **TTL:** ${{ github.event.inputs.ttl_minutes }} minutes
-          **Reason:** ${{ github.event.inputs.reason }}
-          **Run ID:** ${{ github.run_id }}
-          **Repo:** $REPO
-          **Start Time:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          EOF
-          git config user.name "brikbyte-bot"
-          git config user.email "bot@brikbyte.dev"
-          git add -f ".audit/$day"
-          git commit -m "audit: break-glass start ($day)"
-          git push -u origin "audit/breakglass-$day-${{ github.run_id }}"
-
-      - name: 🕒 Schedule TTL Auto-Restore
-        run: |
-          echo "Scheduling STRICT re-apply in ${{ steps.validate.outputs.ttl }} minutes"
-          echo "sleep $(( ${{ steps.validate.outputs.ttl }} * 60 )) && gh workflow run branch-protection-toggle.yml --ref main -f mode=strict" > ttl.sh
-          nohup bash ttl.sh > ttl.log 2>&1 &
-          echo "TTL background job launched."
+          mkdir -p .governance
+          now_epoch=$(date -u +%s)
+          ttl="${{ steps.validate.outputs.ttl }}"
+          exp_epoch=$((now_epoch + (ttl*60)))
+          exp_iso=$(date -u -d "@$exp_epoch" +"%Y-%m-%dT%H:%M:%SZ")
+          cat > .governance/breakglass_ttl.json <<JSON
+          {
+            "invoker": "${{ github.actor }}",
+            "mode": "${{ steps.validate.outputs.mode }}",
+            "ttl_minutes": ${ttl},
+            "reason": "${{ github.event.inputs.reason }}",
+            "started_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "expires_at": "${exp_iso}",
+            "run_id": "${{ github.run_id }}"
+          }
+          JSON
 
       - name: 📦 Capture post-state evidence
         run: |
           set -euo pipefail
           day=$(date +%F)
-          sleep 15  # allow propagation
+          # small grace for protection write
+          sleep 10
           gh api "repos/${REPO}/branches/main/protection" > ".audit/$day/post_breakglass_main.json"
-          git add -f ".audit/$day"
-          git commit -m "audit: break-glass post-state ($day)"
-          git push
 
-      - name: 🧾 Comment PR summary (if applicable)
-        if: ${{ github.event.pull_request.head.ref != '' }}
+      - name: 🧾 Commit evidence + TTL (PR)
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "✅ Break-glass executed by **${{ github.actor }}** — TTL ${{ steps.validate.outputs.ttl }}m, evidence stored in \`.audit/$(date +%F)/\`."
+          set -euo pipefail
+          day=$(date +%F)
+          br="audit/breakglass-${day}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
+          git config user.name  "brikbyte-bot"
+          git config user.email "bot@brikbyte.dev"
+
+          git switch -c "$br"
+          # .audit and .governance are tracked; force add in case .audit is gitignored
+          git add -f ".audit/$day" ".governance/breakglass_ttl.json"
+          git commit -m "audit: break-glass (${day}) evidence + TTL marker"
+          git push -u origin "$br"
+
+          gh pr create \
+            --title "audit: break-glass evidence (${day})" \
+            --body  "Break-glass executed by **${{ github.actor }}**\n\n- Mode: `${{ steps.validate.outputs.mode }}`\n- TTL: `${{ steps.validate.outputs.ttl }}` minutes\n- Reason: `${{ github.event.inputs.reason }}`\n- Evidence: \`.audit/${day}/pre_breakglass_main.json\`, \`.audit/${day}/post_breakglass_main.json\`\n- TTL marker: \`.governance/breakglass_ttl.json\` (used by restore job)" \
+            --base  main \
+            --head  "$br"
+
+      - name: ✅ Summary
+        run: |
+          echo "Break-glass completed. TTL restoration will be handled by the compliance/restore job."
