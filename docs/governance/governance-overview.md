@@ -134,6 +134,11 @@ ls -la .audit/$(date +%F)/branch_protection_main.json
 - DevOps (governance owners): `@BrikByte-Studios/devops`
 - Security (policy & exceptions): `@BrikByte-Studios/security`
 - Docs: `@BrikByte-Studios/docs-platform`
+
+### v1.4 — Break-Glass Automation
+- Added TTL auto-restore guardrail
+- Enforced dual-approval via environment
+- Integrated evidence & PIR template
   
 ---
 SPDX-License-Identifier: MIT

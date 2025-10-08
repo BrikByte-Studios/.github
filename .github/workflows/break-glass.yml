@@ -1,0 +1,122 @@
+# =====================================================================
+# Workflow: break-glass.yml
+# Purpose: Controlled emergency override (dual approval, TTL, evidence)
+# =====================================================================
+
+name: break-glass
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Policy mode (solo|strict)"
+        required: true
+        default: "solo"
+      ttl_minutes:
+        description: "Time to auto-restore STRICT mode (≤180 min)"
+        required: true
+        default: "30"
+      reason:
+        description: "Short justification for emergency override"
+        required: true
+        default: "hotfix / CI outage"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+# Require approval from environment reviewers before any steps execute
+environment: break-glass
+
+jobs:
+  break_glass:
+    name: Execute Break-Glass Override
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      REPO: ${{ github.repository }}
+
+    steps:
+      - name: 🧩 Validate Inputs
+        id: validate
+        run: |
+          set -euo pipefail
+          MODE="${{ github.event.inputs.mode }}"
+          TTL="${{ github.event.inputs.ttl_minutes }}"
+          if ! [[ "$MODE" =~ ^(solo|strict)$ ]]; then
+            echo "❌ Invalid mode: $MODE"; exit 1
+          fi
+          if (( TTL > 180 )); then
+            echo "❌ TTL exceeds maximum (180 min)"; exit 1
+          fi
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "ttl=$TTL" >> $GITHUB_OUTPUT
+
+      - name: 🗃️ Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 📦 Capture pre-state evidence
+        run: |
+          set -euo pipefail
+          day=$(date +%F)
+          mkdir -p ".audit/$day"
+          gh api "repos/${REPO}/branches/main/protection" > ".audit/$day/pre_breakglass_main.json"
+          echo "Pre-state captured."
+
+      - name: 🚨 Apply Break-Glass Mode
+        if: ${{ steps.validate.outputs.mode == 'solo' }}
+        run: |
+          echo "Switching to SOLO (emergency bypass)..."
+          gh workflow run branch-protection-toggle.yml --ref main -f mode=solo
+
+      - name: 🔒 Restore Strict Mode (immediate test)
+        if: ${{ steps.validate.outputs.mode == 'strict' }}
+        run: |
+          echo "Restoring STRICT manually..."
+          gh workflow run branch-protection-toggle.yml --ref main -f mode=strict
+
+      - name: 📜 Record break-glass metadata
+        run: |
+          set -euo pipefail
+          day=$(date +%F)
+          file=".audit/$day/breakglass_record_$(date +%s).md"
+          cat <<EOF > $file
+          # Break Glass Record — $day
+          **Invoker:** ${{ github.actor }}
+          **Mode:** ${{ github.event.inputs.mode }}
+          **TTL:** ${{ github.event.inputs.ttl_minutes }} minutes
+          **Reason:** ${{ github.event.inputs.reason }}
+          **Run ID:** ${{ github.run_id }}
+          **Repo:** $REPO
+          **Start Time:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          EOF
+          git config user.name "brikbyte-bot"
+          git config user.email "bot@brikbyte.dev"
+          git add -f ".audit/$day"
+          git commit -m "audit: break-glass start ($day)"
+          git push -u origin "audit/breakglass-$day-${{ github.run_id }}"
+
+      - name: 🕒 Schedule TTL Auto-Restore
+        run: |
+          echo "Scheduling STRICT re-apply in ${{ steps.validate.outputs.ttl }} minutes"
+          echo "sleep $(( ${{ steps.validate.outputs.ttl }} * 60 )) && gh workflow run branch-protection-toggle.yml --ref main -f mode=strict" > ttl.sh
+          nohup bash ttl.sh > ttl.log 2>&1 &
+          echo "TTL background job launched."
+
+      - name: 📦 Capture post-state evidence
+        run: |
+          set -euo pipefail
+          day=$(date +%F)
+          sleep 15  # allow propagation
+          gh api "repos/${REPO}/branches/main/protection" > ".audit/$day/post_breakglass_main.json"
+          git add -f ".audit/$day"
+          git commit -m "audit: break-glass post-state ($day)"
+          git push
+
+      - name: 🧾 Comment PR summary (if applicable)
+        if: ${{ github.event.pull_request.head.ref != '' }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "✅ Break-glass executed by **${{ github.actor }}** — TTL ${{ steps.validate.outputs.ttl }}m, evidence stored in \`.audit/$(date +%F)/\`."
+
