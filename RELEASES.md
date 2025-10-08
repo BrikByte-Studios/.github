@@ -1,0 +1,1 @@
+- Note: Actions auth uses GH_TOKEN; ADMIN_TOKEN only for admin endpoints.
