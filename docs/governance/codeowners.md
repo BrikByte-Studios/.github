@@ -145,4 +145,5 @@ Keep the **central baseline** in the org `.github` repo; add repo-specific overr
 - Security (governance-sensitive review): `@BrikByte-Studios/security`
 - Docs (documentation quality): `@BrikByte-Studios/docs-platform`
 
+---
 SPDX-License-Identifier: MIT
