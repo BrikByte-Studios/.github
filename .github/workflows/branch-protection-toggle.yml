@@ -126,34 +126,45 @@ jobs:
           done
 
       - name: Commit evidence (PR)
+        concurrency:
+          group: bpt-audit-${{ github.workflow }}-${{ github.ref_name }}
+          cancel-in-progress: false
+
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}   # keeps your earlier pattern
         run: |
           set -euo pipefail
 
+          # helpers
+          exists() { git ls-remote --exit-code --heads origin "$1" >/dev/null 2>&1; }
+
           day=$(date +%F)
           base="audit/$day"
-          # Make a unique branch per run to avoid collisions:
-          br="${base}-${GITHUB_RUN_ID:-local}"
+          br="${base}-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+
+          # If somehow taken (reruns, concurrent jobs), add a time suffix
+          if exists "$br"; then
+            br="${br}-$(date +%s)"
+          fi
 
           git config user.name  "brikbyte-bot"
           git config user.email "bot@brikbyte.dev"
 
-          # (Optional) ensure pushes use PAT, not checkout's token
-          # git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
-
-          # Create the unique audit branch off the current HEAD
           git switch -c "$br"
 
-          # Force-add because .audit/ is gitignored
+          # .audit is gitignored; force add
           git add -f ".audit/$day"
           git commit -m "audit: branch protection export ($day)"
           git push -u origin "$br"
 
-          # Create PR from the unique branch
-          gh pr create \
-            --title "audit: branch protection export ($day)" \
-            --body  "Automated evidence export for branch-protection toggle ($day)." \
-            --base  main \
-            --head  "$br"
+          # Create/ensure PR
+          if ! gh pr list --head "$br" --state open --json number | jq -e 'length>0' >/dev/null; then
+            gh pr create \
+              --title "audit: branch protection export ($day)" \
+              --body  "Automated evidence export for branch-protection toggle ($day)." \
+              --base  main \
+              --head  "$br"
+          fi
 
           echo "Opened PR from $br → main"
