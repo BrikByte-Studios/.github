@@ -36,7 +36,7 @@ jobs:
     environment: break-glass # Require approval from environment reviewers before any steps execute
 
     env:
-      GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
 
     steps:
