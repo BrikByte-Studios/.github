@@ -18,6 +18,9 @@ jobs:
   apply:
     name: Apply branch-protection profile
     runs-on: ubuntu-latest
+    concurrency:
+      group: bpt-audit-${{ github.workflow }}-${{ github.ref_name }}
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
 
@@ -127,10 +130,6 @@ jobs:
           done
 
       - name: Commit evidence (PR)
-        concurrency:
-          group: bpt-audit-${{ github.workflow }}-${{ github.ref_name }}
-          cancel-in-progress: false
-
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}   # keeps your earlier pattern
