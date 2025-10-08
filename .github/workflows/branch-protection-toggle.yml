@@ -1,3 +1,4 @@
+# NOTE: managed by DEVOPS-REP-GOV-002 (toggle STRICT/SOLO)
 name: branch-protection-toggle
 
 on:
@@ -143,7 +144,7 @@ jobs:
           base="audit/$day"
           br="${base}-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 
-          # If somehow taken (reruns, concurrent jobs), add a time suffix
+          # If somehow taken (reruns, concurrent jobs), add a time suffix.
           if exists "$br"; then
             br="${br}-$(date +%s)"
           fi
