@@ -9,6 +9,15 @@ on:
         required: false
         default: ""
 
+  workflow_call:
+    inputs:
+      mode:
+        description: "Policy mode to apply (solo|strict). If empty, read from policy.yml"
+        required: false
+        type: string
+        default: ""
+
+
 permissions:
   contents: write          # needed to push audit branch
   pull-requests: write     # needed to open the audit PR
