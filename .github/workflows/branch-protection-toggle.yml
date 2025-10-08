@@ -61,7 +61,7 @@ jobs:
           print(json.dumps(out))
           PY
           )
-          MODE_OVERRIDE="${{ github.event.inputs.mode }}"
+          MODE_OVERRIDE="${{ github.event.inputs.mode || inputs.mode }}"
           export MODE_OVERRIDE
           POL=$(python3 - <<PY
           $PY
