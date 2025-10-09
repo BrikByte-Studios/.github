@@ -1,0 +1,29 @@
+name: rep-gov-002 / dependabot-automerge (reusable)
+on:
+  workflow_call:
+    secrets:
+      ADMIN_TOKEN:
+        required: true
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    env: { GH_TOKEN: ${{ secrets.ADMIN_TOKEN }} }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Auto-merge guard (dev deps or patch only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          NUM=${{ github.event.pull_request.number }}
+          LABELS=$(gh pr view "$NUM" --json labels -q '.labels[].name' || true)
+          if grep -qE '(^| )dev-deps( |$)|(^| )semver:patch( |$)' <<<"$LABELS"; then
+            gh pr merge "$NUM" --auto --squash
+          else
+            echo "Auto-merge guard: not labeled dev-deps or semver:patch"
+          fi

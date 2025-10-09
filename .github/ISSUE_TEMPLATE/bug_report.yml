@@ -1,7 +1,7 @@
 name: "🐞 Bug Report"
 description: "Report a defect to help us improve BrikByteOS."
 title: "bug: <scope> — <summary>"
-labels: ["bug", "needs triage"]
+labels: ["bug", "needs-triage"]
 # assignees: ["<optional-default>"]
 
 body:

@@ -1,0 +1,11 @@
+name: compliance-templates-labels
+on:
+  schedule: [{ cron: "11 3 * * *" }]  # nightly ~03:11 UTC
+  workflow_dispatch: {}
+jobs:
+  call:
+    uses: BrikByte-Studios/.github/.github/workflows/rep-gov-002-compliance.yml@main
+    with:
+      labels_path: ".github/labels.yml"
+    secrets:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}

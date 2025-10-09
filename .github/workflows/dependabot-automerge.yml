@@ -1,0 +1,10 @@
+name: dependabot-automerge
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize, reopened]
+jobs:
+  call:
+    if: github.actor == 'dependabot[bot]'
+    uses: BrikByte-Studios/.github/.github/workflows/rep-gov-002-dependabot-automerge.yml@main
+    secrets:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}

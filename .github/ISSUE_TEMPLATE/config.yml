@@ -1,0 +1,6 @@
+# Disallow blank issues; route security to policy page
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Security – Report a vulnerability
+    url: https://github.com/BrikByte-Studios/.github/security/policy
+    about: Please report security issues responsibly via our Security Policy.

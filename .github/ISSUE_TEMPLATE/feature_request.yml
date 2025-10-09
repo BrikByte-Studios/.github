@@ -1,7 +1,7 @@
 name: "🌟 Feature Request"
 description: "Propose a new feature or improvement for BrikByteOS."
 title: "feat: <scope> — <summary>"
-labels: ["enhancement", "needs triage", "feature"]
+labels: ["enhancement", "needs-triage", "feature"]
 # assignees: ["<optional-default>"]
 
 body:

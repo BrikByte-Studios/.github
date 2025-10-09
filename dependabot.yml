@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # NodeJS packages
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule: { interval: "weekly", day: "monday", time: "04:00" }
+    open-pull-requests-limit: 10
+    target-branch: "main"
+    commit-message: { prefix: "deps(npm)" }
+    groups:
+      dev-deps:               # group dev deps to reduce noise
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Container bases
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule: { interval: "weekly", day: "monday", time: "04:15" }
+    commit-message: { prefix: "deps(docker)" }
+
+  # Actions pin bumps
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly", day: "monday", time: "04:30" }
+    commit-message: { prefix: "deps(actions)" }
