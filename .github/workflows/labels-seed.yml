@@ -1,9 +1,16 @@
 name: labels-seed
-on: { workflow_dispatch: {} }
+on:
+  workflow_dispatch:
+
+# Grant the permissions requested by the reusable workflow
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   call:
     uses: BrikByte-Studios/.github/.github/workflows/rep-gov-002-labels-seed.yml@main
     with:
-      labels_path: ".github/labels.yml"
+      labels_path: .github/labels.yml
     secrets:
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}

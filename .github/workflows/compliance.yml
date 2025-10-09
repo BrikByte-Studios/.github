@@ -1,7 +1,13 @@
 name: compliance-templates-labels
 on:
   schedule: [{ cron: "11 3 * * *" }]  # nightly ~03:11 UTC
-  workflow_dispatch: {}
+  workflow_dispatch:
+
+
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   call:
     uses: BrikByte-Studios/.github/.github/workflows/rep-gov-002-compliance.yml@main
