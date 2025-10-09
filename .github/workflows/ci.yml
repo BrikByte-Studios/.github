@@ -14,3 +14,15 @@ jobs:
     uses: BrikByte-Studios/.github/.github/workflows/rep-gov-001-ci-bootstrap.yml@v1
     with:
       node-version: '20'  # overrideable per repo if needed
+  
+  node-ci:
+    uses: BrikByte-Studios/.github/.github/workflows/reusable/node-ci.yml@reusable-node-ci-v1
+    with:
+      node-version: '20'
+      package-manager: 'npm'   # or 'yarn' | 'pnpm'
+      workdir: '.'
+      junit-path: 'junit.xml'
+      coverage-path: 'coverage/**'
+      # install-cmd: 'npm ci --prefer-offline --no-audit --no-fund'
+      # build-cmd:   'npm run -s build'
+      # test-cmd:    'npm test --silent'
