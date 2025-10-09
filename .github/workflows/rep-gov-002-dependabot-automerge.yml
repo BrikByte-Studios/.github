@@ -1,29 +1,56 @@
-name: rep-gov-002 / dependabot-automerge (reusable)
+name: "rep-gov-002 - dependabot-automerge (reusable)"
+
 on:
   workflow_call:
+    inputs:
+      pr_number:
+        description: "Explicit PR number (optional; defaults to event PR)"
+        required: false
+        type: string
     secrets:
       ADMIN_TOKEN:
         required: true
 
 permissions:
-  pull-requests: write
   contents: write
+  pull-requests: write
 
 jobs:
   automerge:
-    if: github.actor == 'dependabot[bot]'
+    # Guard: only act on Dependabot PRs
+    if: ${{ github.actor == 'dependabot[bot]' }}
     runs-on: ubuntu-latest
-    env: { GH_TOKEN: ${{ secrets.ADMIN_TOKEN }} }
+    env:
+      GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Auto-merge guard (dev deps or patch only)
+
+      - name: Determine PR number
+        id: pr
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.pr_number }}" ]; then
+            echo "num=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+          else
+            # Works when caller is triggered by pull_request*
+            echo "num=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-merge guard (dev-deps or semver:patch only)
         shell: bash
         run: |
           set -euo pipefail
-          NUM=${{ github.event.pull_request.number }}
-          LABELS=$(gh pr view "$NUM" --json labels -q '.labels[].name' || true)
-          if grep -qE '(^| )dev-deps( |$)|(^| )semver:patch( |$)' <<<"$LABELS"; then
+          NUM="${{ steps.pr.outputs.num }}"
+          if [ -z "$NUM" ] ; then
+            echo "No PR number available; skipping." ; exit 0
+          fi
+
+          LABELS="$(gh pr view "$NUM" --json labels -q '.labels[].name' || true)"
+          echo "Labels on PR #$NUM: $LABELS"
+
+          if echo "$LABELS" | grep -qE '(^| )dev-deps( |$)|(^| )semver:patch( |$)'; then
             gh pr merge "$NUM" --auto --squash
+            echo "Auto-merge enabled for PR #$NUM"
           else
-            echo "Auto-merge guard: not labeled dev-deps or semver:patch"
+            echo "Auto-merge guard: PR lacks required label (dev-deps or semver:patch)."
           fi
