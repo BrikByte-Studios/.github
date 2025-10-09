@@ -1,0 +1,16 @@
+# Thin wrapper calling the org reusable workflow at a stable tag.
+# Exposes two checks: "lint" and "test". Empty-repo safe.
+
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+permissions:
+  contents: read
+
+jobs:
+  call-bootstrap:
+    uses: BrikByte-Studios/.github/.github/workflows/rep-gov-001-ci-bootstrap.yml@v1
+    with:
+      node-version: '20'  # overrideable per repo if needed
