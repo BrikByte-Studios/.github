@@ -1,0 +1,138 @@
+# DEVOPS-CI-PIPE-003 — reusable/docker-build-push.yml
+# Reusable Docker build & push with SBOM + evidence
+# - Uses buildx (multi-arch ready), GHCR by default, or custom registry via secrets
+# - Tags computed via docker/metadata-action; default includes a SHA tag
+# - SBOM (CycloneDX) uploaded as artifact; digest + tags recorded to evidence.json
+
+name: reusable-docker-build-push
+
+on:
+  workflow_call:
+    inputs:
+      image:           { type: string, required: true }        # e.g., ghcr.io/brikbyte/myapp
+      context:         { type: string, default: '.' }
+      dockerfile:      { type: string, default: 'Dockerfile' }
+      platforms:       { type: string, default: 'linux/amd64' } # e.g., linux/amd64,linux/arm64
+      # Tags syntax compatible with docker/metadata-action @v5.
+      # Default ensures a long SHA tag; callers can add 'latest' or semver rules.
+      tags:            { type: string, default: 'type=sha,format=long' }
+      build-args:      { type: string, default: '' }           # multi-line "KEY=VAL\nKEY2=${{ github.sha }}"
+      secrets:         { type: string, default: '' }           # multi-line "GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}"
+      push:            { type: boolean, default: true }        # set false for PRs/forks to avoid publishing
+    secrets:
+      REGISTRY_USERNAME: { required: false }                    # For non-GHCR registries
+      REGISTRY_PASSWORD: { required: false }
+
+permissions:
+  contents: read
+  packages: write    # needed to push to GHCR
+
+jobs:
+  docker:
+    name: docker-build-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tags:   ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # --- Auth: default GHCR via GITHUB_TOKEN; custom registry when creds are supplied ---
+      - name: Login GHCR (default)
+        if: ${{ !secrets.REGISTRY_USERNAME && !secrets.REGISTRY_PASSWORD }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login custom registry
+        if: ${{ secrets.REGISTRY_USERNAME && secrets.REGISTRY_PASSWORD }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      # --- Compute tags & labels (supports SHA, latest, semver, refs, etc.) ---
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.image }}
+          tags: |
+            ${{ inputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.run_id }}
+            org.opencontainers.image.ref.name=${{ github.ref_name }}
+
+      # --- Build & (optionally) Push ---
+      - name: Build & (optionally) Push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context:     ${{ inputs.context }}
+          file:        ${{ inputs.dockerfile }}
+          push:        ${{ inputs.push }}
+          platforms:   ${{ inputs.platforms }}
+          provenance:  true                 # build provenance
+          sbom:        false                # SBOM generated separately via Syft
+          tags:        ${{ steps.meta.outputs.tags }}
+          labels:      ${{ steps.meta.outputs.labels }}
+          build-args:  ${{ inputs.build-args }}
+          secrets:     ${{ inputs.secrets }}
+          cache-from:  type=gha
+          cache-to:    type=gha,mode=max
+
+      # --- Multi-arch manifest (informational) ---
+      - name: Inspect pushed image (manifest)
+        if: ${{ inputs.push }}
+        run: |
+          echo "Digest: ${{ steps.build.outputs.digest }}"
+          docker buildx imagetools inspect "${{ inputs.image }}@${{ steps.build.outputs.digest }}" || true
+
+      # --- SBOM (CycloneDX JSON) for the built image digest ---
+      - name: Generate SBOM (CycloneDX JSON)
+        if: ${{ inputs.push }}  # needs a digest/addressable image
+        uses: anchore/sbom-action@v0
+        with:
+          image: "${{ inputs.image }}@${{ steps.build.outputs.digest }}"
+          format: cyclonedx-json
+          artifact-name: sbom   # uploads 'sbom' artifact containing bom.json
+
+      # --- Evidence capture (JSON + Summary) ---
+      - name: Evidence (JSON + step summary)
+        run: |
+          set -euo pipefail
+          DIGEST='${{ steps.build.outputs.digest }}'
+          echo "### Docker Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`${{ inputs.image }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Digest: \`${DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Platforms: \`${{ inputs.platforms }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tags (metadata-action):" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          mkdir -p evidence
+          jq -n --arg image "${{ inputs.image }}" \
+                --arg digest "$DIGEST" \
+                --arg platforms "${{ inputs.platforms }}" \
+                --arg tags "${{ steps.meta.outputs.tags }}" \
+                --arg sha "${{ github.sha }}" \
+                --arg ref "${{ github.ref }}" \
+                --arg repo "${{ github.repository }}" \
+                '{image:$image,digest:$digest,platforms:$platforms,tags:($tags|split("\n")|map(select(length>0))),sha:$sha,ref:$ref,repo:$repo,timestamp:now|todate}' \
+                > evidence/evidence.json
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence
+          path: evidence/evidence.json
+          if-no-files-found: error
