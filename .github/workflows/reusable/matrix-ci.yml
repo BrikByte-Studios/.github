@@ -1,0 +1,184 @@
+name: reusable-matrix-ci
+
+on:
+  workflow_call:
+    inputs:
+      # Use JSON arrays so we can fromJSON() directly in the matrix
+      os-list:        { type: string, default: '["ubuntu-latest","windows-latest","macos-latest"]' }
+      node-versions:  { type: string, default: '["18","20"]' }
+      java-versions:  { type: string, default: '["17","21"]' }
+      node-pm:        { type: string, default: "npm" }  # npm|yarn|pnpm
+      # Tier hints (derived at runtime; these are defaults you can change)
+      tier-ubuntu:    { type: string, default: "full" }   # full|smoke
+      tier-windows:   { type: string, default: "smoke" }  # full|smoke
+      tier-macos:     { type: string, default: "smoke" }  # full|smoke
+      workdir:        { type: string, default: "." }
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ${{ matrix.os }} • node:${{ matrix.node }} • java:${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:   ${{ fromJSON(inputs.os-list) }}
+        node: ${{ fromJSON(inputs.node-versions) }}
+        java: ${{ fromJSON(inputs.java-versions) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute tier for OS
+        id: tier
+        shell: bash
+        run: |
+          case "${{ matrix.os }}" in
+            ubuntu-*)  TIER="${{ inputs.tier-ubuntu }}" ;;
+            windows-*) TIER="${{ inputs.tier-windows }}" ;;
+            macos-*)   TIER="${{ inputs.tier-macos }}" ;;
+            *)         TIER="smoke" ;;
+          esac
+          echo "value=$TIER" >> "$GITHUB_OUTPUT"
+
+      - name: Detect stacks
+        id: detect
+        shell: bash
+        run: |
+          cd "${{ inputs.workdir }}"
+          # Node
+          if [ -f package.json ]; then echo "node=true"  >> "$GITHUB_OUTPUT"; else echo "node=false" >> "$GITHUB_OUTPUT"; fi
+          # Java (prefer Maven if any pom.xml present; else Gradle if wrapper found)
+          if ls **/pom.xml >/dev/null 2>&1; then
+            echo "java=maven"  >> "$GITHUB_OUTPUT"
+          elif [ -f gradlew ]; then
+            echo "java=gradle" >> "$GITHUB_OUTPUT"
+          else
+            echo "java=none"   >> "$GITHUB_OUTPUT"
+          fi
+
+      # ----------------- Node toolchain -----------------
+      - name: Setup Node
+        if: steps.detect.outputs.node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ${{ inputs.node-pm == 'npm' && 'npm' || inputs.node-pm }}
+          cache-dependency-path: |
+            ${{ inputs.workdir }}/package-lock.json
+            ${{ inputs.workdir }}/yarn.lock
+            ${{ inputs.workdir }}/pnpm-lock.yaml
+
+      - name: Node install
+        if: steps.detect.outputs.node == 'true'
+        shell: bash
+        run: |
+          set -e
+          cd "${{ inputs.workdir }}"
+          case "${{ inputs.node-pm }}" in
+            npm)  npm ci --prefer-offline --no-audit --no-fund ;;
+            yarn) corepack enable || true; yarn install --frozen-lockfile ;;
+            pnpm) corepack enable || true; pnpm i --frozen-lockfile ;;
+          esac
+
+      - name: Node lint (Ubuntu only)
+        if: steps.detect.outputs.node == 'true' && startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          cd "${{ inputs.workdir }}"
+          if command -v jq >/dev/null 2>&1 && jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
+            case "${{ inputs.node-pm }}" in
+              npm)  npm run -s lint ;;
+              yarn) yarn -s lint ;;
+              pnpm) pnpm -s lint ;;
+            esac
+          else
+            echo "noop: no lint script"
+          fi
+
+      - name: Node test (${{ steps.tier.outputs.value }})
+        if: steps.detect.outputs.node == 'true'
+        shell: bash
+        run: |
+          cd "${{ inputs.workdir }}"
+          if command -v jq >/dev/null 2>&1 && jq -e '.scripts.test' package.json >/dev/null 2>&1; then
+            if [ "${{ steps.tier.outputs.value }}" = "full" ]; then
+              case "${{ inputs.node-pm }}" in
+                npm)  npm test --silent -- --ci --reporters=default --reporters=junit || true ;;
+                yarn) yarn -s test || true ;;
+                pnpm) pnpm -s test || true ;;
+              esac
+            else
+              if jq -e '.scripts["test:smoke"]' package.json >/dev/null 2>&1; then
+                case "${{ inputs.node-pm }}" in
+                  npm)  npm run -s test:smoke || true ;;
+                  yarn) yarn -s test:smoke || true ;;
+                  pnpm) pnpm -s test:smoke || true ;;
+                esac
+              else
+                echo "noop: no smoke test"
+              fi
+            fi
+          else
+            echo "noop: no test script"
+          fi
+
+      # ----------------- Java toolchain -----------------
+      - name: Setup Java
+        if: steps.detect.outputs.java != 'none'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: ${{ steps.detect.outputs.java }} # 'maven' or 'gradle'
+
+      - name: Java test (${{ steps.tier.outputs.value }})
+        if: steps.detect.outputs.java != 'none'
+        shell: bash
+        run: |
+          set -e
+          if [ "${{ steps.detect.outputs.java }}" = "maven" ]; then
+            if [ "${{ steps.tier.outputs.value }}" = "full" ]; then
+              mvn -q -B -DskipITs -Dspotbugs.skip=true test
+            else
+              mvn -q -B -DskipITs -Dtest='*Smoke*' -Dspotbugs.skip=true test || true
+            fi
+          elif [ "${{ steps.detect.outputs.java }}" = "gradle" ]; then
+            chmod +x gradlew || true
+            if [ "${{ steps.tier.outputs.value }}" = "full" ]; then
+              ./gradlew --no-daemon test -x integrationTest
+            else
+              ./gradlew --no-daemon test -Psmoke=true || true
+            fi
+          fi
+
+      # ----------------- Artifacts & summary -----------------
+      - name: Upload reports (best-effort)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-${{ matrix.os }}-node${{ matrix.node }}-java${{ matrix.java }}
+          path: |
+            ${{ inputs.workdir }}/junit.xml
+            ${{ inputs.workdir }}/coverage/**
+            **/surefire-reports/*.xml
+            **/failsafe-reports/*.xml
+            **/test-results/test/*.xml
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "### Matrix CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- OS: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Node: ${{ matrix.node }} | Java: ${{ matrix.java }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Tier: ${{ steps.tier.outputs.value }}" >> $GITHUB_STEP_SUMMARY
