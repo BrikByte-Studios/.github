@@ -31,24 +31,19 @@ jobs:
           sudo apt-get install -y jq python3-pip
           pip3 install pyyaml
 
-      - name: Upsert labels from spec (idempotent; URL-encode names)
+      - name: Upsert labels (idempotent; URL-encode names)
         shell: bash
         run: |
           set -euo pipefail
           SPEC="${{ inputs.labels_path }}"
           LIVE="$(gh api "repos/${{ github.repository }}/labels" -q '.[] | {name, color, description}' | jq -s '.')"
 
-          # Convert YAML -> JSONL safely (one JSON object per line)
-          python3 - "$SPEC" > /tmp/labels.jsonl <<'PY'
-import sys, json, yaml
-path = sys.argv[1]
-data = yaml.safe_load(open(path)) or []
-for item in data:
-    name = str(item.get("name","")).strip()
-    color = str(item.get("color","")).strip()
-    desc  = "" if item.get("description") is None else str(item.get("description"))
-    print(json.dumps({"name": name, "color": color, "description": desc}, ensure_ascii=False))
-PY
+          # YAML -> JSONL (one object per line) without heredoc
+          python3 -c 'import sys,yaml,json; d=yaml.safe_load(open(sys.argv[1])) or []; \
+for it in d: print(json.dumps({"name":str(it.get("name","")).strip(), \
+"color":str(it.get("color","")).strip(), \
+"description":"" if it.get("description") is None else str(it.get("description"))}))' \
+          "$SPEC" > /tmp/labels.jsonl
 
           while IFS= read -r L; do
             NAME="$(jq -r '.name' <<<"$L")"
@@ -75,7 +70,7 @@ PY
           mkdir -p ".audit/$day"
           gh api "repos/${{ github.repository }}/labels" > ".audit/$day/labels.json"
           sha="$(sha256sum "${{ inputs.labels_path }}" | awk '{print $1}')"
-          echo "$sha  ${{ inputs.labels_path }}" > ".audit/$day/labels.spec.sha256"
+          printf "%s  %s\n" "$sha" "${{ inputs.labels_path }}" > ".audit/$day/labels.spec.sha256"
 
           BR="audit/labels-$day"
           git switch -c "$BR"
