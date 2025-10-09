@@ -54,16 +54,18 @@ jobs:
       - name: Upsert labels (idempotent; URL-encode names)
         run: |
           set -euo pipefail
-          # Write outputs to a file and parse from there
-          printf '%s' '${{ steps.live.outputs.json }}' > /tmp/live.json
-          jq -c '.[]' /tmp/labels.json | while read -r L; do
-            NAME="$(jq -r '.name' <<<"$L")"
-            COLOR="$(jq -r '.color' <<<"$L")"
-            DESC="$(jq -r '.description // ""' <<<"$L")"
+
+          # /tmp/labels.json must be an array (from the yq conversion step)
+          # /tmp/live.json was saved in the previous step
+          jq -cr '.[] | @base64' /tmp/labels.json | while read -r row; do
+            _jq() { echo "$row" | base64 -d | jq -r "$1"; }
+
+            NAME="$(_jq '.name')"
+            COLOR="$(_jq '.color')"
+            DESC="$(_jq '.description // ""')"
             ENC_NAME="$(jq -rn --arg s "$NAME" '$s|@uri')"
 
-            MATCH="$(jq -c --arg n "$NAME" '.[] | select(.name==$n)' /tmp/live.json)"
-            if [ -n "$MATCH" ]; then
+            if jq -e --arg n "$NAME" '.[] | select(.name==$n)' /tmp/live.json >/dev/null; then
               gh api -X PATCH "repos/${{ github.repository }}/labels/$ENC_NAME" \
                 -f color="$COLOR" -f description="$DESC"
             else
@@ -73,6 +75,7 @@ jobs:
                 -f color="$COLOR" -f description="$DESC"
             fi
           done
+
 
       - name: Export evidence and open PR
         run: |
