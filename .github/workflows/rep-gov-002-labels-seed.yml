@@ -1,0 +1,62 @@
+name: rep-gov-002 / labels-seed (reusable)
+on:
+  workflow_call:
+    inputs:
+      labels_path:
+        description: "Path to labels.yml in caller repo"
+        required: false
+        type: string
+        default: ".github/labels.yml"
+    secrets:
+      ADMIN_TOKEN:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tooling (jq + yq)
+        run: |
+          set -e
+          sudo apt-get update -y
+          sudo apt-get install -y jq python3-pip
+          pip3 install yq   # provides 'yq' using jq under the hood
+      - name: Upsert labels from spec (idempotent)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SPEC="${{ inputs.labels_path }}"
+          EXISTING=$(gh api "repos/${{ github.repository }}/labels" -q '.[] | {name, color, description}' | jq -s '.')
+          # normalize YAML → JSON array
+          yq -o=json '.[]' "$SPEC" | jq -c '.[]' | while read -r L; do
+            NAME=$(jq -r '.name' <<<"$L")
+            COLOR=$(jq -r '.color' <<<"$L")
+            DESC=$(jq -r '.description' <<<"$L")
+            if jq -e --arg n "$NAME" '.[] | select(.name==$n)' <<<"$EXISTING" >/dev/null; then
+              gh api -X PATCH "repos/${{ github.repository }}/labels/$NAME" -f color="$COLOR" -f description="$DESC"
+            else
+              gh api -X POST  "repos/${{ github.repository }}/labels"       -f name="$NAME" -f color="$COLOR" -f description="$DESC"
+            fi
+          done
+      - name: Export evidence and open PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          day=$(date +%F)
+          mkdir -p .audit/$day
+          gh api "repos/${{ github.repository }}/labels" > .audit/$day/labels.json
+          sha=$(sha256sum "${{ inputs.labels_path }}" | awk '{print $1}')
+          echo "$sha  ${{ inputs.labels_path }}" > .audit/$day/labels.spec.sha256
+          BR="audit/labels-$day"
+          git switch -c "$BR"
+          git add ".audit/$day/labels.json" ".audit/$day/labels.spec.sha256"
+          git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: labels export ($day)"
+          git push -u origin HEAD
+          gh pr create --base main --head "$BR" --title "audit: labels export ($day)" --body "Automated evidence pack for labels."

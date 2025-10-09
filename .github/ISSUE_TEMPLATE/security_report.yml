@@ -1,0 +1,8 @@
+name: "🔐 Security report"
+description: Report a security vulnerability (triaged confidentially)
+labels: ["security", "needs-triage"]
+body:
+  - type: textarea
+    id: details
+    attributes: { label: Details, description: "Impact, vectors, affected versions" }
+    validations: { required: true }

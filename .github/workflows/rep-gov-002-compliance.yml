@@ -1,0 +1,63 @@
+name: rep-gov-002 / compliance (reusable)
+on:
+  workflow_call:
+    inputs:
+      labels_path:
+        required: false
+        type: string
+        default: ".github/labels.yml"
+    secrets:
+      ADMIN_TOKEN:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env: { GH_TOKEN: ${{ secrets.ADMIN_TOKEN }} }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tooling (jq + yq)
+        run: |
+          set -e
+          sudo apt-get update -y
+          sudo apt-get install -y jq python3-pip
+          pip3 install yq
+      - name: Assertions (templates, labels, dependabot)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 1) Templates present
+          test -f .github/pull_request_template.md || { echo "::error::Missing PR template"; exit 1; }
+          for f in bug_report.yml feature_request.yml security_report.yml config.yml; do
+            test -f .github/ISSUE_TEMPLATE/$f || { echo "::error::Missing issue form: $f"; exit 1; }
+          done
+          # 2) Labels match spec (name + color)
+          LIVE=$(gh api "repos/${{ github.repository }}/labels" -q '.[] | {name, color, description}' | jq -s '.')
+          yq -o=json '.[]' "${{ inputs.labels_path }}" | jq -c '.[]' | while read -r L; do
+            NAME=$(jq -r '.name' <<<"$L")
+            COLOR=$(jq -r '.color' <<<"$L")
+            MATCH=$(jq -c --arg n "$NAME" '.[] | select(.name==$n)' <<<"$LIVE")
+            test -n "$MATCH" || { echo "::error::Missing label: $NAME"; exit 1; }
+            test "$(jq -r '.color' <<<"$MATCH")" = "$COLOR" || { echo "::error::Color mismatch: $NAME"; exit 1; }
+          done
+          # 3) Dependabot file present
+          test -f .github/dependabot.yml || { echo "::error::Missing dependabot.yml"; exit 1; }
+      - name: Export evidence & open PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          day=$(date +%F)
+          mkdir -p .audit/$day
+          gh api "repos/${{ github.repository }}/labels" > .audit/$day/labels.json
+          ls .github/ISSUE_TEMPLATE > .audit/$day/issue_templates.txt
+          sha256sum .github/dependabot.yml | awk '{print $1"  .github/dependabot.yml"}' > .audit/$day/dependabot.yml.sha256
+          BR="audit/compliance-$day"
+          git switch -c "$BR"
+          git add .audit/$day/*
+          git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: compliance snapshot ($day)"
+          git push -u origin HEAD
+          gh pr create --base main --head "$BR" --title "audit: compliance ($day)" --body "Automated compliance evidence pack."

@@ -1,0 +1,58 @@
+# name, color (hex w/o #), description
+# === Core workflow labels ======================================================
+- { name: "needs-triage",     color: "fbca04", description: "Awaiting initial triage" }
+- { name: "bug",              color: "d73a4a", description: "Something isn't working" }
+- { name: "enhancement",      color: "a2eeef", description: "New feature or improvement" }
+- { name: "feature",          color: "34d058", description: "Net-new capability (product/infra)" }
+- { name: "documentation",    color: "0075ca", description: "Docs improvements or gaps" }
+- { name: "security",         color: "b60205", description: "Security-related change or report" }
+- { name: "good first issue", color: "7057ff", description: "Good for newcomers" }
+
+# === Priority (product/eng) ===================================================
+- { name: "priority:P1",      color: "e11d21", description: "Highest priority" }
+- { name: "priority:P2",      color: "eb6420", description: "Medium priority" }
+- { name: "priority:P3",      color: "fef2c0", description: "Lower priority" }
+
+# === Severity (bug intake; maps to form dropdown) =============================
+- { name: "severity:S1",      color: "b60205", description: "Critical: outage/data-loss/security" }
+- { name: "severity:S2",      color: "d93f0b", description: "High: major impact, no workaround" }
+- { name: "severity:S3",      color: "fbca04", description: "Medium: degraded, workaround exists" }
+- { name: "severity:S4",      color: "c2e0c6", description: "Low: minor/cosmetic" }
+
+# === Frequency (bug intake; maps to form dropdown) ============================
+- { name: "frequency:always",        color: "0bda51", description: "Occurs 100% of the time" }
+- { name: "frequency:often",         color: "1d76db", description: "Occurs ≥50% of the time" }
+- { name: "frequency:intermittent",  color: "fbca04", description: "Occurs occasionally" }
+- { name: "frequency:rare",          color: "cfd3d7", description: "Occurs rarely" }
+
+# === Areas (align with forms) =================================================
+- { name: "area:ui",          color: "0e8a16", description: "UI / Frontend" }
+- { name: "area:api",         color: "1d76db", description: "API / Backend" }
+- { name: "area:build-ci",    color: "6f42c1", description: "Build / CI" }
+- { name: "area:release-cd",  color: "0366d6", description: "Release / CD" }
+- { name: "area:observability", color: "5319e7", description: "Monitoring / Alerts / Tracing" }
+- { name: "area:security",    color: "b60205", description: "Security / AuthZ / Scanning" }
+- { name: "area:infra",       color: "c2e0c6", description: "Infrastructure / IaC" }
+- { name: "area:docs",        color: "0075ca", description: "Documentation & content" }
+- { name: "area:data",        color: "0052cc", description: "Data / Storage / DB" }
+
+# === Status (triage workflow friendly) ========================================
+- { name: "status:triaged",   color: "bfd4f2", description: "Reviewed; next step assigned" }
+- { name: "status:in-progress", color: "0bda51", description: "Actively being implemented" }
+- { name: "status:blocked",   color: "5319e7", description: "Blocked; external/internal dependency" }
+- { name: "status:needs-info", color: "fef2c0", description: "Waiting on reporter or details" }
+- { name: "status:duplicate", color: "cfd3d7", description: "Duplicate of another issue" }
+- { name: "status:invalid",   color: "e4e669", description: "Not a bug / out of scope" }
+
+# === Change type (Conventional-Commit adjacent) ===============================
+- { name: "type:chore",       color: "c5def5", description: "Maintenance, refactors, chores" }
+- { name: "type:refactor",    color: "0366d6", description: "Refactor; no behavior change" }
+- { name: "type:perf",        color: "1a7f37", description: "Performance improvements" }
+- { name: "type:test",        color: "5319e7", description: "Tests and test infra" }
+- { name: "type:docs",        color: "0e8a16", description: "Documentation-only change" }
+- { name: "type:ci",          color: "6f42c1", description: "CI pipelines & automation" }
+
+# === SemVer impact (release notes hygiene) ====================================
+- { name: "semver:major",     color: "b31d28", description: "Breaking change" }
+- { name: "semver:minor",     color: "0b75d1", description: "Backward-compatible feature" }
+- { name: "semver:patch",     color: "0bda51", description: "Bugfix" }
