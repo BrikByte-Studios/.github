@@ -1,0 +1,53 @@
+name: node-cache-compliance
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 3 * * *"   # nightly
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gather last 15 workflow runs (this repo)
+        id: runs
+        run: |
+          set -euo pipefail
+          gh api repos/${{ github.repository }}/actions/runs \
+            -q '.workflow_runs[] | {id, status, conclusion} | select(.status=="completed")' \
+            | jq -s '.[0:20]' > /tmp/runs.json
+          echo "count=$(jq 'length' /tmp/runs.json)" >> "$GITHUB_OUTPUT"
+        env: { GH_TOKEN: ${{ github.token }} }
+
+      - name: Collect cache metrics artifacts
+        run: |
+          set -euo pipefail
+          hits=0; total=0
+          for run_id in $(jq -r '.[].id' /tmp/runs.json); do
+            # list artifacts for the run
+            arts=$(gh api repos/${{ github.repository }}/actions/runs/$run_id/artifacts \
+              -q '.artifacts[] | select(.name=="cache-metrics") | {id: .id}')
+            if [ -z "$arts" ]; then continue; fi
+            art_id=$(echo "$arts" | jq -r '.id')
+            # download and inspect
+            mkdir -p /tmp/art && rm -rf /tmp/art/*
+            gh api repos/${{ github.repository }}/actions/artifacts/$art_id/zip > /tmp/art.zip
+            unzip -o /tmp/art.zip -d /tmp/art >/dev/null
+            if [ -f /tmp/art/cache-metrics.json ]; then
+              val=$(jq -r '.cache_hit' /tmp/art/cache-metrics.json)
+              total=$((total+1))
+              [ "$val" = "true" ] && hits=$((hits+1))
+            fi
+          done
+          echo "hits=$hits total=$total" | tee /tmp/score.txt
+          if [ $total -gt 0 ]; then rate=$(awk -v h=$hits -v t=$total 'BEGIN{printf "%.0f", (h/t)*100}'); else rate=0; fi
+          echo "Cache hit rate over last $total runs: ${rate}% (threshold: 80%)" >> "$GITHUB_STEP_SUMMARY"
+          if [ $total -ge 10 ] && [ $hits -lt $(( (80 * total + 99) / 100 )) ]; then
+            echo "Cache hit rate below threshold"; exit 1
+          else
+            echo "Cache hit rate OK"
+          fi
+        env: { GH_TOKEN: ${{ github.token }} }

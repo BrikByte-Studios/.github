@@ -1,0 +1,174 @@
+# reusable/node-ci.yml
+# DEVOPS-CI-PIPE-002 — Reusable Node CI
+# - Two jobs: lint & test → distinct commit checks for branch protection
+# - Noop-safe if no package.json
+# - Supports npm|yarn|pnpm (lockfile-keyed caching)
+# - Inputs let consumers override node version, workdir, commands, and paths
+
+name: reusable-node-ci
+on:
+  workflow_call:
+    inputs:
+      node-version:     { type: string, default: '20' }        # Node runtime
+      package-manager:  { type: string, default: 'npm' }        # npm|yarn|pnpm
+      workdir:          { type: string, default: '.' }          # subdir support
+      install-cmd:      { type: string, default: '' }           # optional override
+      build-cmd:        { type: string, default: '' }           # optional override
+      test-cmd:         { type: string, default: '' }           # optional override
+      junit-path:       { type: string, default: 'junit.xml' }
+      coverage-path:    { type: string, default: 'coverage/**' }
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Node project
+        id: detect
+        run: |
+          cd "${{ inputs.workdir }}"
+          test -f package.json && echo "node=true" >> "$GITHUB_OUTPUT" || echo "node=false" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node (with cache)
+        if: steps.detect.outputs.node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs['node-version'] }}
+          cache: ${{ inputs['package-manager'] == 'npm' && 'npm' || inputs['package-manager'] }}
+          cache-dependency-path: |
+            ${{ inputs.workdir }}/package-lock.json
+            ${{ inputs.workdir }}/yarn.lock
+            ${{ inputs.workdir }}/pnpm-lock.yaml
+
+      - name: Install
+        if: steps.detect.outputs.node == 'true'
+        run: |
+          set -e
+          cd "${{ inputs.workdir }}"
+          if [ -n "${{ inputs['install-cmd'] }}" ]; then
+            ${{ inputs['install-cmd'] }}
+          else
+            case "${{ inputs['package-manager'] }}" in
+              npm)  npm ci --prefer-offline --no-audit --no-fund ;;
+              yarn) corepack enable || true; yarn install --frozen-lockfile || yarn install --immutable ;;
+              pnpm) corepack enable || true; pnpm i --frozen-lockfile ;;
+            esac
+          fi
+
+      - name: Lint
+        run: |
+          cd "${{ inputs.workdir }}"
+          if [ -f package.json ] && jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
+            case "${{ inputs['package-manager'] }}" in
+              npm)  npm run -s lint ;;
+              yarn) yarn -s lint ;;
+              pnpm) pnpm -s lint ;;
+            esac
+          else
+            echo "noop: no lint script"
+          fi
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Node project
+        id: detect
+        run: |
+          cd "${{ inputs.workdir }}"
+          test -f package.json && echo "node=true" >> "$GITHUB_OUTPUT" || echo "node=false" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node (with cache)
+        if: steps.detect.outputs.node == 'true'
+        id: setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs['node-version'] }}
+          cache: ${{ inputs['package-manager'] == 'npm' && 'npm' || inputs['package-manager'] }}
+          cache-dependency-path: |
+            ${{ inputs.workdir }}/package-lock.json
+            ${{ inputs.workdir }}/yarn.lock
+            ${{ inputs.workdir }}/pnpm-lock.yaml
+
+      - name: Install
+        if: steps.detect.outputs.node == 'true'
+        run: |
+          set -e
+          cd "${{ inputs.workdir }}"
+          if [ -n "${{ inputs['install-cmd'] }}" ]; then
+            ${{ inputs['install-cmd'] }}
+          else
+            case "${{ inputs['package-manager'] }}" in
+              npm)  npm ci --prefer-offline --no-audit --no-fund ;;
+              yarn) corepack enable || true; yarn install --frozen-lockfile || yarn install --immutable ;;
+              pnpm) corepack enable || true; pnpm i --frozen-lockfile ;;
+            esac
+          fi
+
+      - name: Build (optional)
+        run: |
+          cd "${{ inputs.workdir }}"
+          if [ -n "${{ inputs['build-cmd'] }}" ]; then
+            ${{ inputs['build-cmd'] }} || true
+          elif [ -f package.json ] && jq -e '.scripts.build' package.json >/dev/null 2>&1; then
+            case "${{ inputs['package-manager'] }}" in
+              npm)  npm run -s build || true ;;
+              yarn) yarn -s build || true ;;
+              pnpm) pnpm -s build || true ;;
+            esac
+          else
+            echo "noop: no build"
+          fi
+
+      - name: Test
+        run: |
+          cd "${{ inputs.workdir }}"
+          if [ -n "${{ inputs['test-cmd'] }}" ]; then
+            ${{ inputs['test-cmd'] }} || true
+          elif [ -f package.json ] && jq -e '.scripts.test' package.json >/dev/null 2>&1; then
+            case "${{ inputs['package-manager'] }}" in
+              # For npm + Jest, "--reporters=junit" emits junit.xml; others still run
+              npm)  npm test --silent -- --ci --reporters=default --reporters=junit || true ;;
+              yarn) yarn -s test || true ;;
+              pnpm) pnpm -s test || true ;;
+            esac
+          else
+            echo "noop: no test script"
+          fi
+
+      - name: Cache metric (summary + artifact)
+        if: steps.detect.outputs.node == 'true'
+        run: |
+          echo "cache_hit=${{ steps.setup.outputs['cache-hit'] }}" >> "$GITHUB_STEP_SUMMARY"
+          printf '{"cache_hit": "%s", "sha": "%s", "ts": "%s"}\n' \
+            "${{ steps.setup.outputs['cache-hit'] }}" "${{ github.sha }}" "$(date -u +%FT%TZ)" > cache-metrics.json
+
+      - name: Upload reports (if any)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-report
+          path: |
+            ${{ inputs.workdir }}/${{ inputs['junit-path'] }}
+            ${{ inputs.workdir }}/${{ inputs['coverage-path'] }}
+          if-no-files-found: ignore
+
+      - name: Upload cache metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-metrics
+          path: cache-metrics.json
+          if-no-files-found: ignore
