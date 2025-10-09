@@ -50,14 +50,9 @@ jobs:
             "repos/${{ github.repository }}/labels?per_page=100" \
             -q '.[] | {name, color, description}' | jq -s '.')"
 
-          # Emit spec items as JSON lines via Python (robust YAML load)
-          while IFS= read -r L; do
-            NAME="$(jq -r '.name'  <<<"$L")"
-            COLOR="$(jq -r '.color' <<<"$L")"
-            MATCH="$(jq -c --arg n "$NAME" '.[] | select(.name==$n)' <<<"$LIVE")"
-            test -n "$MATCH" || { echo "::error::Missing label: $NAME"; exit 1; }
-            test "$(jq -r '.color' <<<"$MATCH")" = "$COLOR" || { echo "::error::Color mismatch: $NAME"; exit 1; }
-          done < <(python3 - "${{ inputs.labels_path }}" <<'PY'
+          # Write Python helper to a temp file (avoids heredoc/process-substitution pitfalls)
+          PY_HELPER="$(mktemp)"
+          cat > "$PY_HELPER" <<'PY'
 import sys, json, yaml
 path = sys.argv[1]
 with open(path, 'r', encoding='utf-8') as fh:
@@ -74,7 +69,17 @@ with open(path, 'r', encoding='utf-8') as fh:
             sys.exit(1)
         print(json.dumps({"name": name, "color": color, "description": desc}, ensure_ascii=False))
 PY
-)
+
+          # Emit spec items as JSON lines, then check against LIVE
+          python3 "$PY_HELPER" "${{ inputs.labels_path }}" > labels.spec.ndjson
+
+          while IFS= read -r L; do
+            NAME="$(jq -r '.name'  <<<"$L")"
+            COLOR="$(jq -r '.color' <<<"$L")"
+            MATCH="$(jq -c --arg n "$NAME" '.[] | select(.name==$n)' <<<"$LIVE")"
+            test -n "$MATCH" || { echo "::error::Missing label: $NAME"; exit 1; }
+            test "$(jq -r '.color' <<<"$MATCH")" = "$COLOR" || { echo "::error::Color mismatch: $NAME"; exit 1; }
+          done < labels.spec.ndjson
 
           # 3) Dependabot file present
           test -f .github/dependabot.yml || { echo "::error::Missing dependabot.yml"; exit 1; }
