@@ -21,5 +21,5 @@ updates:
   # Actions pin bumps
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule: { interval: "weekly", day: "monday", time: "04:30" }
+    schedule: { interval: "daily", time: "04:30" }
     commit-message: { prefix: "deps(actions)" }
