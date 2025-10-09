@@ -57,7 +57,7 @@ jobs:
           sha256sum .github/dependabot.yml | awk '{print $1"  .github/dependabot.yml"}' > .audit/$day/dependabot.yml.sha256
           BR="audit/compliance-$day"
           git switch -c "$BR"
-          git add .audit/$day/*
+          git add -f ".audit/$day"/*
           git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: compliance snapshot ($day)"
           git push -u origin HEAD
           gh pr create --base main --head "$BR" --title "audit: compliance ($day)" --body "Automated compliance evidence pack."

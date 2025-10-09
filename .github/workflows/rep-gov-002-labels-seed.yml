@@ -64,7 +64,7 @@ jobs:
           echo "$sha  ${{ inputs.labels_path }}" > .audit/$day/labels.spec.sha256
           BR="audit/labels-$day"
           git switch -c "$BR"
-          git add ".audit/$day/labels.json" ".audit/$day/labels.spec.sha256"
+          git add -f ".audit/$day/labels.json" ".audit/$day/labels.spec.sha256"
           git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: labels export ($day)"
           git push -u origin HEAD
           gh pr create --base main --head "$BR" --title "audit: labels export ($day)" --body "Automated evidence pack for labels."
