@@ -15,7 +15,7 @@ jobs:
     if: ${{ !github.event.issue.pull_request }} # skip PRs
     steps:
       - name: Read and route Feature Request
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
