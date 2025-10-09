@@ -1,4 +1,5 @@
-name: rep-gov-002 / labels-seed (reusable)
+name: "rep-gov-002 - labels-seed (reusable)"
+
 on:
   workflow_call:
     inputs:
@@ -22,46 +23,64 @@ jobs:
       GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Tooling (jq + yq)
+
+      - name: Install tools (jq + PyYAML)
         run: |
           set -e
           sudo apt-get update -y
           sudo apt-get install -y jq python3-pip
-          pip3 install yq   # provides 'yq' using jq under the hood
-      - name: Upsert labels from spec (idempotent)
+          pip3 install pyyaml
+
+      - name: Upsert labels from spec (idempotent; URL-encode names)
         shell: bash
         run: |
           set -euo pipefail
           SPEC="${{ inputs.labels_path }}"
-          # Read live labels once
-          EXISTING="$(gh api "repos/${{ github.repository }}/labels" -q '.[] | {name, color, description}' | jq -s '.')"
+          LIVE="$(gh api "repos/${{ github.repository }}/labels" -q '.[] | {name, color, description}' | jq -s '.')"
 
-          # Stream each YAML item as a JSON line using Python
           python3 - "$SPEC" <<'PY' | while read -r L; do
-          import sys, json, yaml
-          data = yaml.safe_load(open(sys.argv[1]))
-          for item in (data or []):
-              print(json.dumps(item, ensure_ascii=False))
-          PY
+import sys, json, yaml
+data = yaml.safe_load(open(sys.argv[1]))
+for item in (data or []):
+    # ensure required keys exist, coerce to strings
+    name = str(item.get("name","")).strip()
+    color = str(item.get("color","")).strip()
+    desc = "" if item.get("description") is None else str(item.get("description"))
+    print(json.dumps({"name": name, "color": color, "description": desc}, ensure_ascii=False))
+PY
             NAME="$(jq -r '.name' <<<"$L")"
             COLOR="$(jq -r '.color' <<<"$L")"
             DESC="$(jq -r '.description' <<<"$L")"
 
-            if jq -e --arg n "$NAME" '.[] | select(.name==$n)' <<<"$EXISTING" >/dev/null; then
-              gh api -X PATCH "repos/${{ github.repository }}/labels/$NAME" -f color="$COLOR" -f description="$DESC"
+            # URL-encode the label name for the path segment
+            ENC_NAME="$(jq -rn --arg s "$NAME" '$s|@uri')"
+
+            if jq -e --arg n "$NAME" '.[] | select(.name==$n)' <<<"$LIVE" >/dev/null; then
+              # PATCH existing (name is path, fields sent as form fields)
+              gh api -X PATCH "repos/${{ github.repository }}/labels/$ENC_NAME" \
+                -f color="$COLOR" -f description="$DESC"
             else
-              gh api -X POST  "repos/${{ github.repository }}/labels"       -f name="$NAME" -f color="$COLOR" -f description="$DESC"
+              # POST create
+              gh api -X POST "repos/${{ github.repository }}/labels" \
+                -f name="$NAME" -f color="$COLOR" -f description="$DESC" \
+              || {
+                # If concurrent create or name collision, try PATCH
+                gh api -X PATCH "repos/${{ github.repository }}/labels/$ENC_NAME" \
+                  -f color="$COLOR" -f description="$DESC"
+              }
             fi
           done
+
       - name: Export evidence and open PR
         shell: bash
         run: |
           set -euo pipefail
-          day=$(date +%F)
-          mkdir -p .audit/$day
-          gh api "repos/${{ github.repository }}/labels" > .audit/$day/labels.json
-          sha=$(sha256sum "${{ inputs.labels_path }}" | awk '{print $1}')
-          echo "$sha  ${{ inputs.labels_path }}" > .audit/$day/labels.spec.sha256
+          day="$(date +%F)"
+          mkdir -p ".audit/$day"
+          gh api "repos/${{ github.repository }}/labels" > ".audit/$day/labels.json"
+          sha="$(sha256sum "${{ inputs.labels_path }}" | awk '{print $1}')"
+          echo "$sha  ${{ inputs.labels_path }}" > ".audit/$day/labels.spec.sha256"
+
           BR="audit/labels-$day"
           git switch -c "$BR"
           git add -f ".audit/$day/labels.json" ".audit/$day/labels.spec.sha256"
