@@ -22,7 +22,7 @@ jobs:
       GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}   # <-- gh CLI reads this
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Tooling (jq, python yaml)
         run: |

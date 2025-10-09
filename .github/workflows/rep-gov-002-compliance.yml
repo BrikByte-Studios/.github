@@ -23,7 +23,7 @@ jobs:
       GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install tools (jq + PyYAML)
         shell: bash
