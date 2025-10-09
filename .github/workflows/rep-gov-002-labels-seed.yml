@@ -24,42 +24,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install jq + PyYAML
+      - name: Install jq (gh CLI is preinstalled on ubuntu-latest)
         run: |
           set -euo pipefail
           sudo apt-get update -y
-          sudo apt-get install -y jq python3-pip
-          pip3 install pyyaml
+          sudo apt-get install -y jq
 
-      # ① Build /tmp/labels.json from the spec (YAML → JSON array)
-      - name: Build labels.json
-        run: |
-          set -euo pipefail
-          SPEC="${{ inputs.labels_path }}"
-          # Convert YAML (list of label objects) → JSON array at /tmp/labels.json
-          python3 -c "import sys,yaml,json,pathlib; \
-p=sys.argv[1]; d=yaml.safe_load(open(p)) or []; \
-assert isinstance(d,list), 'labels spec must be a list'; \
-pathlib.Path('/tmp/labels.json').write_text(json.dumps(d, ensure_ascii=False))" "$SPEC"
-          echo "Built /tmp/labels.json:"
-          jq length /tmp/labels.json
+      # Convert YAML -> JSON using the official yq Action (no heredocs/inline Python)
+      - name: Convert labels spec to JSON
+        id: spec
+        uses: mikefarah/yq@v4
+        env:
+          SPEC: ${{ inputs.labels_path }}
+        with:
+          cmd: yq -o=json '.' "$SPEC" > /tmp/labels.json
 
-      # ② Snapshot live labels into /tmp/live.json
       - name: Read live labels
+        id: live
         run: |
           set -euo pipefail
           gh api "repos/${{ github.repository }}/labels" \
             -q '.[] | {name, color, description}' | jq -s '.' > /tmp/live.json
-          echo "Live labels count:"
-          jq length /tmp/live.json
+          {
+            echo 'json<<EOF'
+            cat /tmp/live.json
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
-      # Upsert labels (idempotent; URL-encode names). Base64-safe loop (no herestrings).
-      - name: Upsert labels
+      - name: Upsert labels (idempotent; URL-encode names)
         run: |
           set -euo pipefail
-          test -s /tmp/labels.json || { echo "labels.json missing"; exit 1; }
-          test -s /tmp/live.json   || { echo "live.json missing"; exit 1; }
 
+          # /tmp/labels.json must be an array (from the yq conversion step)
+          # /tmp/live.json was saved in the previous step
           jq -cr '.[] | @base64' /tmp/labels.json | while read -r row; do
             _jq() { echo "$row" | base64 -d | jq -r "$1"; }
 
@@ -79,7 +76,7 @@ pathlib.Path('/tmp/labels.json').write_text(json.dumps(d, ensure_ascii=False))" 
             fi
           done
 
-      # Evidence + PR (force-add in case .gitignore ignores .audit)
+
       - name: Export evidence and open PR
         run: |
           set -euo pipefail
