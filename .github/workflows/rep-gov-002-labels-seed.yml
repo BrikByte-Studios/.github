@@ -30,24 +30,29 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq
 
-      # Convert YAML -> JSON using the official yq Action (no heredocs/inline Python)
+      # Convert YAML -> JSON using yq action; write to the shared workspace
       - name: Convert labels spec to JSON
         id: spec
         uses: mikefarah/yq@v4
         env:
           SPEC: ${{ inputs.labels_path }}
         with:
-          cmd: yq -o=json '.' "$SPEC" > /tmp/labels.json
+          # IMPORTANT: write into /github/workspace (shared) not /tmp (container-local)
+          cmd: |
+            set -euo pipefail
+            test -f "$SPEC" || { echo "Spec not found: $SPEC" >&2; exit 1; }
+            yq -o=json '.' "$SPEC" > /github/workspace/labels.json
 
-      - name: Read live labels
+      - name: Read live labels (paginate)
         id: live
         run: |
           set -euo pipefail
-          gh api "repos/${{ github.repository }}/labels" \
-            -q '.[] | {name, color, description}' | jq -s '.' > /tmp/live.json
+          gh api --paginate -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/labels?per_page=100" \
+            -q '.[] | {name, color, description}' | jq -s '.' > labels.live.json
           {
             echo 'json<<EOF'
-            cat /tmp/live.json
+            cat labels.live.json
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -55,9 +60,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # /tmp/labels.json must be an array (from the yq conversion step)
-          # /tmp/live.json was saved in the previous step
-          jq -cr '.[] | @base64' /tmp/labels.json | while read -r row; do
+          # Use the files in the shared workspace
+          jq -cr '.[] | @base64' labels.json | while read -r row; do
             _jq() { echo "$row" | base64 -d | jq -r "$1"; }
 
             NAME="$(_jq '.name')"
@@ -65,7 +69,7 @@ jobs:
             DESC="$(_jq '.description // ""')"
             ENC_NAME="$(jq -rn --arg s "$NAME" '$s|@uri')"
 
-            if jq -e --arg n "$NAME" '.[] | select(.name==$n)' /tmp/live.json >/dev/null; then
+            if jq -e --arg n "$NAME" '.[] | select(.name==$n)' labels.live.json >/dev/null; then
               gh api -X PATCH "repos/${{ github.repository }}/labels/$ENC_NAME" \
                 -f color="$COLOR" -f description="$DESC"
             else
@@ -76,19 +80,20 @@ jobs:
             fi
           done
 
-
       - name: Export evidence and open PR
         run: |
           set -euo pipefail
           day="$(date +%F)"
           mkdir -p ".audit/$day"
-          gh api "repos/${{ github.repository }}/labels" > ".audit/$day/labels.json"
+          gh api --paginate -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/labels?per_page=100" > ".audit/$day/labels.json"
           sha="$(sha256sum "${{ inputs.labels_path }}" | awk '{print $1}')"
           printf "%s  %s\n" "$sha" "${{ inputs.labels_path }}" > ".audit/$day/labels.spec.sha256"
 
           BR="audit/labels-$day"
           git switch -c "$BR"
           git add -f ".audit/$day/labels.json" ".audit/$day/labels.spec.sha256"
-          git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: labels export ($day)"
-          git push -u origin HEAD
-          gh pr create --base main --head "$BR" --title "audit: labels export ($day)" --body "Automated evidence pack for labels."
+          git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: labels export ($day)" || echo "Nothing to commit."
+          git push -u origin HEAD || echo "Push failed (branch may already exist)."
+          gh pr create --base main --head "$BR" --title "audit: labels export ($day)" --body "Automated evidence pack for labels." || \
+          gh pr view "$BR" --web >/dev/null 2>&1 || echo "PR already exists or cannot be created."
