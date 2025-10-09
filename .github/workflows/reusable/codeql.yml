@@ -1,0 +1,121 @@
+name: reusable-codeql
+
+on:
+  workflow_call:
+    inputs:
+      languages:           { type: string,  default: 'javascript-typescript,java' }  # CodeQL keys (comma-separated)
+      code-paths:          { type: string,  default: '**/*.js,**/*.ts,**/*.jsx,**/*.tsx,**/*.java' }  # comma-separated globs
+      build-mode:          { type: string,  default: 'autobuild' }     # 'autobuild' | 'manual'
+      manual-build-script: { type: string,  default: '' }              # used if build-mode='manual'
+      run-on-pr:           { type: boolean, default: true }
+      run-on-push:         { type: boolean, default: true }
+
+permissions:
+  contents: read
+  security-events: write   # REQUIRED for SARIF upload
+
+jobs:
+  codeql:
+    name: codeql
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Gate the job at runtime by event type flags (push/pr)—
+    # schedule is controlled by the caller workflow, so we always allow it here.
+    if: >
+      (inputs.run-on-push && github.event_name == 'push') ||
+      (inputs.run-on-pr && github.event_name == 'pull_request') ||
+      (github.event_name == 'schedule')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # Decide whether to run or skip based on:
+      # 1) Does repo actually contain files matching code-paths?
+      # 2) On PRs, did files matching code-paths change?
+      - name: Gate (detect code & PR diffs)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Robust globbing on bash
+          shopt -s nullglob globstar dotglob
+
+          IFS=',' read -ra GLOBS <<< "${{ inputs.code-paths }}"
+
+          # 1) Presence: any file in repo matches?
+          PRESENT=0
+          for g in "${GLOBS[@]}"; do
+            MATCH=( $g )
+            if [ ${#MATCH[@]} -gt 0 ]; then PRESENT=1; break; fi
+          done
+
+          # 2) PR diffs: only if PR event
+          CHANGED=1
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.base_ref }}"
+            git fetch --no-tags --depth=50 origin "${BASE}" || true
+            DIFF_FILES="$(git diff --name-only "origin/${BASE}...HEAD" | tr -d '\r' || true)"
+            CHANGED=0
+            if [ -n "$DIFF_FILES" ]; then
+              while IFS= read -r f; do
+                for g in "${GLOBS[@]}"; do
+                  # glob → regex: escape dots, swap * → .*
+                  rgx=$(printf '%s\n' "$g" | sed -e 's/[.[\^$()+?{}|]/\\&/g' -e 's/\*/.*/g')
+                  if [[ "$f" =~ ^${rgx}$ ]]; then CHANGED=1; break 2; fi
+                done
+              done <<< "$DIFF_FILES"
+            fi
+          fi
+
+          SHOULD_RUN=0
+          if [ $PRESENT -eq 1 ] && [ $CHANGED -eq 1 ]; then SHOULD_RUN=1; fi
+          echo "present=$PRESENT"       >> "$GITHUB_OUTPUT"
+          echo "changed=$CHANGED"       >> "$GITHUB_OUTPUT"
+          echo "should_run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
+
+          if [ $SHOULD_RUN -eq 0 ]; then
+            echo "### CodeQL Summary"             >> $GITHUB_STEP_SUMMARY
+            echo "- Languages: \`${{ inputs.languages }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Build mode: \`${{ inputs.build-mode }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Code present: $PRESENT"       >> $GITHUB_STEP_SUMMARY
+            echo "- PR changed code: $CHANGED"    >> $GITHUB_STEP_SUMMARY
+            echo "- Result: **skipped (no relevant code)**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Initialize CodeQL
+        if: steps.gate.outputs.should_run == '1'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ inputs.languages }}
+
+      - name: Autobuild
+        if: steps.gate.outputs.should_run == '1' && inputs.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Manual build
+        if: steps.gate.outputs.should_run == '1' && inputs.build-mode == 'manual'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${{ inputs.manual-build-script }}" ] || { echo "manual-build-script is empty"; exit 1; }
+          bash -eo pipefail -c "${{ inputs.manual-build-script }}"
+
+      - name: Analyze
+        if: steps.gate.outputs.should_run == '1'
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ inputs.languages }}'
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### CodeQL Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Languages: \`${{ inputs.languages }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Build mode: \`${{ inputs.build-mode }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Code present: ${{ steps.gate.outputs.present }}" >> $GITHUB_STEP_SUMMARY
+          echo "- PR changed code: ${{ steps.gate.outputs.changed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Ran analysis: ${{ steps.gate.outputs.should_run }}" >> $GITHUB_STEP_SUMMARY
