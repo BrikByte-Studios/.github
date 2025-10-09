@@ -24,34 +24,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tools (jq + PyYAML)
+      - name: Install jq (gh CLI is preinstalled on ubuntu-latest)
         run: |
           set -euo pipefail
           sudo apt-get update -y
-          sudo apt-get install -y jq python3-pip
-          pip3 install pyyaml
+          sudo apt-get install -y jq
 
-      - name: Upsert labels (idempotent; URL-encode names)
-        shell: bash
+      # Convert YAML -> JSON using the official yq Action (no heredocs/inline Python)
+      - name: Convert labels spec to JSON
+        id: spec
+        uses: mikefarah/yq@v4
+        env:
+          SPEC: ${{ inputs.labels_path }}
+        with:
+          cmd: yq -o=json '.' "$SPEC" > /tmp/labels.json
+
+      - name: Read live labels
+        id: live
         run: |
           set -euo pipefail
-          SPEC="${{ inputs.labels_path }}"
-          LIVE="$(gh api "repos/${{ github.repository }}/labels" -q '.[] | {name, color, description}' | jq -s '.')"
+          LIVE_JSON=$(gh api "repos/${{ github.repository }}/labels" \
+            -q '.[] | {name, color, description}' | jq -s '.')
+          echo "json=$LIVE_JSON" >> "$GITHUB_OUTPUT"
 
-          # YAML -> JSONL (one object per line) without heredoc
-          python3 -c 'import sys,yaml,json; d=yaml.safe_load(open(sys.argv[1])) or []; \
-for it in d: print(json.dumps({"name":str(it.get("name","")).strip(), \
-"color":str(it.get("color","")).strip(), \
-"description":"" if it.get("description") is None else str(it.get("description"))}))' \
-          "$SPEC" > /tmp/labels.jsonl
+      - name: Upsert labels (idempotent; URL-encode names)
+        run: |
+          set -euo pipefail
 
-          while IFS= read -r L; do
+          # Expect /tmp/labels.json to be an array of label objects
+          jq -c '.[]' /tmp/labels.json | while read -r L; do
             NAME="$(jq -r '.name' <<<"$L")"
             COLOR="$(jq -r '.color' <<<"$L")"
-            DESC="$(jq -r '.description' <<<"$L")"
+            DESC="$(jq -r '.description // ""' <<<"$L")"
             ENC_NAME="$(jq -rn --arg s "$NAME" '$s|@uri')"
 
-            if jq -e --arg n "$NAME" '.[] | select(.name==$n)' <<<"$LIVE" >/dev/null; then
+            # Look up if it already exists by name
+            MATCH="$(jq -c --arg n "$NAME" '.json | fromjson | .[] | select(.name==$n)' \
+                     <<<"$(jq -n --argjson json '${{ steps.live.outputs.json }}' '$json')")"
+
+            if [ -n "$MATCH" ]; then
               gh api -X PATCH "repos/${{ github.repository }}/labels/$ENC_NAME" \
                 -f color="$COLOR" -f description="$DESC"
             else
@@ -60,10 +71,9 @@ for it in d: print(json.dumps({"name":str(it.get("name","")).strip(), \
               gh api -X PATCH "repos/${{ github.repository }}/labels/$ENC_NAME" \
                 -f color="$COLOR" -f description="$DESC"
             fi
-          done < /tmp/labels.jsonl
+          done
 
       - name: Export evidence and open PR
-        shell: bash
         run: |
           set -euo pipefail
           day="$(date +%F)"
