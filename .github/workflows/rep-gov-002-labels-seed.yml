@@ -22,7 +22,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install jq (gh CLI is preinstalled on ubuntu-latest)
         run: |
