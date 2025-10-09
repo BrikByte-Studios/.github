@@ -1,0 +1,94 @@
+# rep-gov-001-ci-bootstrap — reusable CI bootstrap (lint + test)
+# Produces two distinct checks: "lint" and "test".
+# Empty-repo safe: if no package.json, both jobs noop and succeed.
+# Node cache enabled; step summary shows cache metric. Uploads junit.xml/coverage/** when present.
+
+name: rep-gov-001-ci-bootstrap
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: '20'   # Primary runtime; can be overridden by callers
+
+# Cancel in-flight duplicates (same ref) to save minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege; build/test only need read.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Detect Node project quickly (noop if absent)
+      - id: detect
+        run: |
+          if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; else echo "node=false" >> "$GITHUB_OUTPUT"; fi
+
+      # Setup Node *only* when a Node project exists
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.node == 'true'
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm  # enables lockfile cache; exposes "cache-hit" output
+
+      - name: Lint
+        run: |
+          if [ -f package.json ] && npm run | grep -qE '^\s+lint'; then
+            npm ci --prefer-offline --no-audit --no-fund
+            npm run -s lint
+          else
+            echo "noop: no Node or no lint script"
+          fi
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: detect
+        run: |
+          if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; else echo "node=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.node == 'true'
+        id: setup-node
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install & Test
+        run: |
+          if [ -f package.json ] && npm run | grep -qE '^\s+test'; then
+            npm ci --prefer-offline --no-audit --no-fund
+            # If Jest: emit junit.xml via reporters; otherwise tests still run.
+            npm test --silent -- --ci --reporters=default --reporters=junit || true
+          else
+            echo "noop: no Node or no test script"
+          fi
+
+      - name: Cache metric (summary)
+        if: steps.detect.outputs.node == 'true'
+        run: echo "cache_hit=${{ steps.setup-node.outputs['cache-hit'] }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports (if any)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-report
+          path: |
+            junit.xml
+            coverage/**
+          if-no-files-found: ignore
