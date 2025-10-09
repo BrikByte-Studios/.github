@@ -4,6 +4,7 @@ on:
   workflow_call:
     inputs:
       labels_path:
+        description: "Path to labels.yml in caller repo"
         required: false
         type: string
         default: ".github/labels.yml"
@@ -21,43 +22,59 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install tools (jq + PyYAML)
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           sudo apt-get update -y
           sudo apt-get install -y jq python3-pip
-          pip3 install pyyaml
+          pip3 install --user pyyaml
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Assertions (templates, labels, dependabot)
         shell: bash
         run: |
           set -euo pipefail
+
           # 1) Templates present
           test -f .github/pull_request_template.md || { echo "::error::Missing PR template"; exit 1; }
           for f in bug_report.yml feature_request.yml security_report.yml config.yml; do
             test -f ".github/ISSUE_TEMPLATE/$f" || { echo "::error::Missing issue form: $f"; exit 1; }
           done
 
-          # 2) Labels present with matching colors
-          LIVE="$(gh api "repos/${{ github.repository }}/labels" -q '.[] | {name, color, description}' | jq -s '.')"
+          # 2) Labels present with matching colors (paginate to avoid truncation)
+          LIVE="$(gh api --paginate -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/labels?per_page=100" \
+            -q '.[] | {name, color, description}' | jq -s '.')"
 
-          python3 - "${{ inputs.labels_path }}" <<'PY' | while read -r L; do
-import sys, json, yaml
-data = yaml.safe_load(open(sys.argv[1]))
-for item in (data or []):
-    name = str(item.get("name","")).strip()
-    color = str(item.get("color","")).strip()
-    desc = "" if item.get("description") is None else str(item.get("description"))
-    print(json.dumps({"name": name, "color": color, "description": desc}, ensure_ascii=False))
-PY
+          # Emit spec items as JSON lines via Python (robust YAML load)
+          while IFS= read -r L; do
             NAME="$(jq -r '.name'  <<<"$L")"
             COLOR="$(jq -r '.color' <<<"$L")"
             MATCH="$(jq -c --arg n "$NAME" '.[] | select(.name==$n)' <<<"$LIVE")"
             test -n "$MATCH" || { echo "::error::Missing label: $NAME"; exit 1; }
             test "$(jq -r '.color' <<<"$MATCH")" = "$COLOR" || { echo "::error::Color mismatch: $NAME"; exit 1; }
-          done
+          done < <(python3 - "${{ inputs.labels_path }}" <<'PY'
+import sys, json, yaml
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as fh:
+    data = yaml.safe_load(fh) or []
+    if not isinstance(data, list):
+        print("::error::labels spec must be a list", file=sys.stderr)
+        sys.exit(1)
+    for item in data:
+        name = str((item or {}).get("name","")).strip()
+        color = str((item or {}).get("color","")).strip()
+        desc = "" if (item or {}).get("description") is None else str((item or {}).get("description"))
+        if not name or not color:
+            print("::error::label item missing name or color", file=sys.stderr)
+            sys.exit(1)
+        print(json.dumps({"name": name, "color": color, "description": desc}, ensure_ascii=False))
+PY
+)
 
           # 3) Dependabot file present
           test -f .github/dependabot.yml || { echo "::error::Missing dependabot.yml"; exit 1; }
@@ -68,13 +85,16 @@ PY
           set -euo pipefail
           day="$(date +%F)"
           mkdir -p ".audit/$day"
-          gh api "repos/${{ github.repository }}/labels" > ".audit/$day/labels.json"
+
+          gh api --paginate -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/labels?per_page=100" > ".audit/$day/labels.json"
           ls .github/ISSUE_TEMPLATE > ".audit/$day/issue_templates.txt"
           sha256sum .github/dependabot.yml | awk '{print $1"  .github/dependabot.yml"}' > ".audit/$day/dependabot.yml.sha256"
 
           BR="audit/compliance-$day"
-          git switch -c "$BR"
+          git switch -c "$BR" || git switch "$BR"
           git add -f ".audit/$day"/*
-          git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: compliance snapshot ($day)"
-          git push -u origin HEAD
-          gh pr create --base main --head "$BR" --title "audit: compliance ($day)" --body "Automated compliance evidence pack."
+          git -c user.name="brikbyte-bot" -c user.email="bot@brikbyte.dev" commit -m "audit: compliance snapshot ($day)" || echo "Nothing to commit."
+          git push -u origin HEAD || echo "Push may have failed (branch may already exist)."
+          gh pr create --base main --head "$BR" --title "audit: compliance ($day)" --body "Automated compliance evidence pack." || \
+          gh pr view "$BR" --web >/dev/null 2>&1 || echo "PR already exists or cannot be created."
