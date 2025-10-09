@@ -43,25 +43,26 @@ jobs:
         id: live
         run: |
           set -euo pipefail
-          LIVE_JSON=$(gh api "repos/${{ github.repository }}/labels" \
-            -q '.[] | {name, color, description}' | jq -s '.')
-          echo "json=$LIVE_JSON" >> "$GITHUB_OUTPUT"
+          gh api "repos/${{ github.repository }}/labels" \
+            -q '.[] | {name, color, description}' | jq -s '.' > /tmp/live.json
+          {
+            echo 'json<<EOF'
+            cat /tmp/live.json
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Upsert labels (idempotent; URL-encode names)
         run: |
           set -euo pipefail
-
-          # Expect /tmp/labels.json to be an array of label objects
+          # Write outputs to a file and parse from there
+          printf '%s' '${{ steps.live.outputs.json }}' > /tmp/live.json
           jq -c '.[]' /tmp/labels.json | while read -r L; do
             NAME="$(jq -r '.name' <<<"$L")"
             COLOR="$(jq -r '.color' <<<"$L")"
             DESC="$(jq -r '.description // ""' <<<"$L")"
             ENC_NAME="$(jq -rn --arg s "$NAME" '$s|@uri')"
 
-            # Look up if it already exists by name
-            MATCH="$(jq -c --arg n "$NAME" '.json | fromjson | .[] | select(.name==$n)' \
-                     <<<"$(jq -n --argjson json '${{ steps.live.outputs.json }}' '$json')")"
-
+            MATCH="$(jq -c --arg n "$NAME" '.[] | select(.name==$n)' /tmp/live.json)"
             if [ -n "$MATCH" ]; then
               gh api -X PATCH "repos/${{ github.repository }}/labels/$ENC_NAME" \
                 -f color="$COLOR" -f description="$DESC"
