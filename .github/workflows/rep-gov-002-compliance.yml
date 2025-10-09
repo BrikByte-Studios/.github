@@ -53,22 +53,22 @@ jobs:
           # Write Python helper to a temp file (avoids heredoc/process-substitution pitfalls)
           PY_HELPER="$(mktemp)"
           cat > "$PY_HELPER" <<'PY'
-import sys, json, yaml
-path = sys.argv[1]
-with open(path, 'r', encoding='utf-8') as fh:
-    data = yaml.safe_load(fh) or []
-    if not isinstance(data, list):
-        print("::error::labels spec must be a list", file=sys.stderr)
-        sys.exit(1)
-    for item in data:
-        name = str((item or {}).get("name","")).strip()
-        color = str((item or {}).get("color","")).strip()
-        desc = "" if (item or {}).get("description") is None else str((item or {}).get("description"))
-        if not name or not color:
-            print("::error::label item missing name or color", file=sys.stderr)
-            sys.exit(1)
-        print(json.dumps({"name": name, "color": color, "description": desc}, ensure_ascii=False))
-PY
+          import sys, json, yaml
+          path = sys.argv[1]
+          with open(path, 'r', encoding='utf-8') as fh:
+              data = yaml.safe_load(fh) or []
+              if not isinstance(data, list):
+                  print("::error::labels spec must be a list", file=sys.stderr)
+                  sys.exit(1)
+              for item in data:
+                  name = str((item or {}).get("name","")).strip()
+                  color = str((item or {}).get("color","")).strip()
+                  desc = "" if (item or {}).get("description") is None else str((item or {}).get("description"))
+                  if not name or not color:
+                      print("::error::label item missing name or color", file=sys.stderr)
+                      sys.exit(1)
+                  print(json.dumps({"name": name, "color": color, "description": desc}, ensure_ascii=False))
+          PY
 
           # Emit spec items as JSON lines, then check against LIVE
           python3 "$PY_HELPER" "${{ inputs.labels_path }}" > labels.spec.ndjson
