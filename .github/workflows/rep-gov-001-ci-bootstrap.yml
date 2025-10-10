@@ -36,7 +36,7 @@ jobs:
           if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; else echo "node=false" >> "$GITHUB_OUTPUT"; fi
 
       # Setup Node *only* when a Node project exists
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.detect.outputs.node == 'true'
         with:
           node-version: ${{ inputs.node-version }}
@@ -62,7 +62,7 @@ jobs:
         run: |
           if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; else echo "node=false" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.detect.outputs.node == 'true'
         id: setup-node
         with:
