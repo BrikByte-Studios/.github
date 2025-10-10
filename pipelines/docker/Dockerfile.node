@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.7
+ARG NODE_VERSION=20.16.0
+
+# --- Builder ---
+FROM node:${NODE_VERSION}-bookworm-slim AS builder
+WORKDIR /app
+
+# Copy the whole context; we’ll branch on file presence at runtime.
+COPY . .
+
+# Install deps only if package.json exists (prefer lockfile -> npm ci)
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    if [ -f package.json ]; then \
+      if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then \
+        npm ci --prefer-offline --no-audit --no-fund; \
+      else \
+        npm install --prefer-offline --no-audit --no-fund; \
+      fi; \
+    else \
+      echo "noop: no package.json; skipping npm install"; \
+    fi
+
+# Build (no-op safe)
+RUN if [ -f package.json ]; then npm run -s build || true; else echo "noop: no build"; fi
+
+# Prune dev deps for lean runtime (only if we installed)
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    if [ -f package.json ]; then npm prune --omit=dev || true; fi
+
+# --- Runtime (distroless, non-root) ---
+FROM gcr.io/distroless/nodejs20:nonroot
+WORKDIR /app
+USER nonroot
+ENV NODE_ENV=production
+COPY --from=builder /app /app
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD ["node","-e","fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+# Set this to your app’s entry file:
+CMD ["server.js"]   # or ["dist/main.js"]
