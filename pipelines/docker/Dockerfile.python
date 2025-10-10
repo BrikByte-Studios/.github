@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.7
+ARG PY_VERSION=3.11
+
+# --- Builder ---
+FROM python:${PY_VERSION}-slim AS builder
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+WORKDIR /app
+
+# Build essentials only for compiling wheels; not copied to runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Choose installer based on lockfiles (requirements.txt OR poetry)
+COPY pyproject.toml poetry.lock* requirements.txt* ./
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    if [ -f requirements.txt ]; then \
+      python -m venv /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt; \
+    elif [ -f poetry.lock ]; then \
+      pip install poetry && python -m venv /opt/venv && . /opt/venv/bin/activate && poetry install --only main --no-interaction --no-ansi; \
+    else \
+      python -m venv /opt/venv; \
+    fi
+
+COPY . .
+# Optional: precompile py files
+RUN . /opt/venv/bin/activate && python -m compileall -q .
+
+# --- Runtime ---
+FROM python:${PY_VERSION}-slim
+WORKDIR /app
+# Non-root user
+RUN useradd -m app
+USER app
+
+# Activate venv by PATH only
+ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /opt/venv /opt/venv
+# Copy only runtime files; if you need only built artifacts, refine this pattern
+COPY --chown=app:app . .
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD \
+  python -c "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else sys.exit(1)"
+
+# Default app server (adjust module/app)
+CMD ["gunicorn", "-b", "0.0.0.0:8000", "app:app", "--workers=2", "--threads=4", "--timeout=60"]
