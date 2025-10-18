@@ -1,0 +1,35 @@
+name: Reuse • Security • Supply Chain
+on:
+  workflow_call:
+    inputs:
+      sbom: { type: string, default: "cyclonedx" }   # cyclonedx|spdx
+      scan: { type: string, default: "trivy" }       # trivy|grype
+jobs:
+  supplychain:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM (CycloneDX Node example)
+        if: ${{ inputs.sbom == 'cyclonedx' }}
+        run: |
+          npm i -g @cyclonedx/cyclonedx-npm
+          cyclonedx-npm --omit dev --output-file sbom.json --output-format json
+
+      - name: Scan with Trivy
+        if: ${{ inputs.scan == 'trivy' }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          format: sarif
+          output: trivy.sarif
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: trivy.sarif }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: sbom, path: sbom.json, if-no-files-found: ignore }

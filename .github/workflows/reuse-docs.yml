@@ -1,0 +1,35 @@
+name: Reuse • Docs Build
+on:
+  workflow_call:
+    inputs:
+      docs-tool: { type: string, default: "mkdocs" } # mkdocs|docusaurus
+      publish:   { type: boolean, default: false }
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build MkDocs
+        if: ${{ inputs.docs-tool == 'mkdocs' }}
+        run: |
+          pip install mkdocs mkdocs-material
+          mkdocs build -d site
+
+      - name: Build Docusaurus
+        if: ${{ inputs.docs-tool == 'docusaurus' }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload pages artifact
+        if: ${{ inputs.publish }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        if: ${{ inputs.publish }}
+        uses: actions/deploy-pages@v4

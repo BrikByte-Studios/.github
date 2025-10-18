@@ -1,0 +1,4 @@
+# workflows require Security + Platform approval
+/.github/workflows/*  @BrikByte-Studios/security @BrikByte-Studios/devops
+/.github/ISSUE_TEMPLATE/* @BrikByte-Studios/devops @BrikByte-Studios/docs-platform
+/PULL_REQUEST_TEMPLATE.md @BrikByte-Studios/devops @BrikByte-Studios/docs-platform
