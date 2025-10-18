@@ -1,4 +1,7 @@
 # 🧱⚡ BrickBytes — Where strong foundations meet powerful code
+<p align="center">
+  <img src="./assets/banner/brikbyte_github_banner.png" alt="BrickBytes Banner" width="100%" />
+</p>
 
 > **Building scalable digital solutions, brick by brick.**  
 > Africa-born SaaS publishing studio crafting real-world software for logistics, healthcare, fintech, and community.
