@@ -1,0 +1,20 @@
+name: "🧠 RFC"
+description: Request for Comments (design/architecture)
+title: "[RFC]: <brief>"
+labels: ["rfc"]
+assignees: ["platform-leads","security"]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Problem Statement }
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes: { label: Proposed Solution }
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes: { label: Alternatives Considered }
+  - type: textarea
+    id: impact
+    attributes: { label: Impact & Rollout }

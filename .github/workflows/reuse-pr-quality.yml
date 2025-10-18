@@ -1,0 +1,25 @@
+name: Reuse • PR Quality
+on:
+  workflow_call:
+    inputs:
+      enforce-title: { type: boolean, default: true }
+      auto-label:    { type: boolean, default: true }
+jobs:
+  pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lint PR title (Conventional Commits)
+        if: ${{ inputs.enforce-title }}
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "PR: $TITLE"
+          echo "$TITLE" | grep -E '^(feat|fix|chore|docs|refactor|perf|test)(\(.+\))?: .+' || \
+            (echo "Invalid PR title format"; exit 1)
+      - name: Auto-label (simple heuristic)
+        if: ${{ inputs.auto-label }}
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          labels: |
+            ${{ contains(github.event.pull_request.title, 'feat') && 'enhancement' || '' }}
+            ${{ contains(github.event.pull_request.title, 'fix') && 'bug' || '' }}

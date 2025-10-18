@@ -1,0 +1,21 @@
+name: "✨ Feature Request"
+description: Propose new capability
+title: "[Feature]: <brief>"
+labels: ["enhancement"]
+assignees: ["platform-leads"]
+body:
+  - type: textarea
+    id: summary
+    attributes: { label: Summary }
+    validations: { required: true }
+  - type: textarea
+    id: value
+    attributes: { label: Value / Outcome }
+    validations: { required: true }
+  - type: textarea
+    id: ac
+    attributes: { label: Acceptance Criteria }
+    validations: { required: true }
+  - type: textarea
+    id: risks
+    attributes: { label: Risks / Tradeoffs }

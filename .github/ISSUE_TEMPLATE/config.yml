@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 BrikByteOS Docs
+    url: https://github.com/BrikByte-Studios/brikbyteos-docs
+    about: Platform and workflow documentation
+  - name: 💬 Support (Slack)
+    url: https://example.com/slack # replace with real
+    about: Ask the team for help

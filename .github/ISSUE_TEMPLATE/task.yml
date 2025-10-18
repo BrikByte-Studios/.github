@@ -1,0 +1,16 @@
+name: "🧰 Task"
+description: Executable work item
+title: "[Task]: <brief>"
+labels: ["task"]
+body:
+  - type: textarea
+    id: objective
+    attributes: { label: Objective }
+    validations: { required: true }
+  - type: textarea
+    id: dod
+    attributes: { label: Definition of Done }
+    validations: { required: true }
+  - type: input
+    id: estimate
+    attributes: { label: Estimate (days) }

@@ -1,0 +1,17 @@
+name: Reuse • Security • CodeQL
+on:
+  workflow_call:
+    inputs:
+      languages: { type: string, default: "javascript" } # csv: javascript,python,java
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: ${{ inputs.languages }} }
+      - uses: github/codeql-action/analyze@v3
