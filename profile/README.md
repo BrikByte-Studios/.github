@@ -117,6 +117,7 @@ If you believe you’ve found a vulnerability:
 - ❌ Do not open a public issue.
 - 📧 Email security@brikbytes.dev
   with details and reproduction steps.
+  
 -🕓 We’ll acknowledge within 72 hours and coordinate a fix.
 
 ---
