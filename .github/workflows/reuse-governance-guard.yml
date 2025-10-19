@@ -16,11 +16,10 @@ jobs:
   validate-and-export:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-      actions: read
-      security-events: read
-      administration: read
+      contents: write         # commit audit export to a branch
+      pull-requests: write    # open PR with audit evidence
+      actions: read           # read workflow runs if needed later
+      security-events: read   # read Code Scanning if you extend checks
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,12 +32,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "BRANCHES=${{ inputs.protected-branches }}"     >> "$GITHUB_OUTPUT"
-          echo "CHECKS=${{ inputs.required-checks }}"          >> "$GITHUB_OUTPUT"
-          echo "DATE=$(date +%F)"                              >> "$GITHUB_OUTPUT"
+          echo "BRANCHES=${{ inputs.protected-branches }}" >> "$GITHUB_OUTPUT"
+          echo "CHECKS=${{ inputs.required-checks }}" >> "$GITHUB_OUTPUT"
+          echo "DATE=$(date +%F)" >> "$GITHUB_OUTPUT"
 
       # Determine which concrete branches to validate:
-      # - Always the default branch + any branches matching wildcard patterns
+      # - Expand wildcards against existing branch names.
       - name: Resolve target branches
         id: resolve
         shell: bash
@@ -49,7 +48,7 @@ jobs:
           SELECTED=()
           for want in "${WANT[@]}"; do
             if [[ "$want" == *"*"* ]]; then
-              pat="${want/\*/.*}"
+              pat="${want//\*/.*}"   # convert glob to regex
               for b in "${EXISTING[@]}"; do
                 [[ "$b" =~ ^${pat}$ ]] && SELECTED+=("$b")
               done
@@ -70,6 +69,7 @@ jobs:
           FAIL=0
 
           while read -r BR; do
+            [[ -z "$BR" ]] && continue
             echo "→ Checking protection for branch: $BR"
             # Fetch protection JSON; fail if missing
             if ! gh api repos/${{ github.repository }}/branches/$BR/protection > /tmp/protect.$BR.json 2>/dev/null; then
@@ -77,7 +77,7 @@ jobs:
               FAIL=1; continue
             fi
 
-            # Check PR review requirements (1+ and CODEOWNERS)
+            # PR review requirements
             REQS_JSON=$(jq -r '.required_pull_request_reviews // {}' /tmp/protect.$BR.json)
             COUNT=$(jq -r '.required_approving_review_count // 0' <<<"$REQS_JSON")
             CO=$(jq -r '.require_code_owner_reviews // false' <<<"$REQS_JSON")
@@ -90,10 +90,11 @@ jobs:
               FAIL=1
             fi
 
-            # Check required status checks include all REQUIRED
-            gh api repos/${{ github.repository }}/branches/$BR/protection/required_status_checks \
-              > /tmp/status.$BR.json || { echo "::error title=Status checks::Cannot fetch status checks for $BR"; FAIL=1; continue; }
-
+            # Required status checks include all REQUIRED
+            if ! gh api repos/${{ github.repository }}/branches/$BR/protection/required_status_checks > /tmp/status.$BR.json 2>/dev/null; then
+              echo "::error title=Status checks::Cannot fetch status checks for $BR"
+              FAIL=1; continue
+            fi
             mapfile -t CONTEXTS < <(jq -r '.contexts // [] | .[]' /tmp/status.$BR.json)
             for need in "${REQUIRED[@]}"; do
               if ! printf "%s\n" "${CONTEXTS[@]}" | grep -qx "$need"; then
@@ -102,12 +103,11 @@ jobs:
               fi
             done
 
-            # Check admins enforced and conversations resolved & dismiss stale (best-effort)
+            # Soft checks (warn only)
             ENF=$(jq -r '.enforce_admins.enabled // false' /tmp/protect.$BR.json)
-            [ "$ENF" = "true" ] || { echo "::warning title=Admins::$BR should enforce admins"; }
+            [ "$ENF" = "true" ] || echo "::warning title=Admins::$BR should enforce admins"
             DS=$(jq -r '.required_pull_request_reviews.dismiss_stale_reviews // false' /tmp/protect.$BR.json)
-            [ "$DS" = "true" ] || { echo "::warning title=Dismiss stale::$BR should dismiss stale reviews"; }
-
+            [ "$DS" = "true" ] || echo "::warning title=Dismiss stale::$BR should dismiss stale reviews"
           done < "${{ steps.resolve.outputs.branches_file }}"
 
           echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
@@ -120,10 +120,20 @@ jobs:
           D=".audit/${{ steps.vars.outputs.DATE }}"
           mkdir -p "$D"
           while read -r BR; do
-            cp "/tmp/protect.$BR.json" "$D/branch-protection-$BR.json" || true
-            cp "/tmp/status.$BR.json"  "$D/required-status-checks-$BR.json" || true
+            [[ -z "$BR" ]] && continue
+            SAFE="${BR//\//__}"  # sanitize file name
+            cp "/tmp/protect.$BR.json" "$D/branch-protection-$SAFE.json" 2>/dev/null || true
+            cp "/tmp/status.$BR.json"  "$D/required-status-checks-$SAFE.json" 2>/dev/null || true
           done < "${{ steps.resolve.outputs.branches_file }}"
           ls -la "$D" || true
+
+      - name: Determine default branch
+        id: def
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEF=$(gh repo view ${{ github.repository }} --json defaultBranchRef -q .defaultBranchRef.name)
+          echo "default=$DEF" >> "$GITHUB_OUTPUT"
 
       - name: Open PR with audit evidence (create or update)
         env:
@@ -132,6 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="chore/audit-branch-protection-${{ steps.vars.outputs.DATE }}"
+          BASE="${{ steps.def.outputs.default }}"
           git config user.name  "brikbyte-bot"
           git config user.email "bot@users.noreply.github.com"
           git checkout -b "$BRANCH" || git checkout "$BRANCH"
@@ -141,5 +152,6 @@ jobs:
           else
             git commit -m "chore(audit): update branch protection export"
             git push -u origin "$BRANCH" || true
-            gh pr create --base ${{ github.ref_name || 'main' }} --title "chore(audit): branch protection export" --body "Automated export of branch protection and required status checks." || true
+            # If PR exists already, this will no-op gracefully
+            gh pr create --base "$BASE" --title "chore(audit): branch protection export" --body "Automated export of branch protection and required status checks." || true
           fi
