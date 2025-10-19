@@ -1,0 +1,139 @@
+name: Reuse - QA Matrix
+
+on:
+  workflow_call:
+    inputs:
+      run_playwright:
+        type: boolean
+        default: true
+        description: "Run UI smoke via Playwright"
+      run_karate:
+        type: boolean
+        default: true
+        description: "Run API tests via Karate (Maven project)"
+      run_k6:
+        type: boolean
+        default: true
+        description: "Run perf smoke via k6"
+      ui_dir:
+        type: string
+        default: "tests/ui"
+        description: "Directory for Playwright tests"
+      api_dir:
+        type: string
+        default: "tests/api"
+        description: "Directory with Karate Maven project (pom.xml)"
+      perf_dir:
+        type: string
+        default: "tests/perf"
+        description: "Directory for k6 scripts (*.js)"
+    # no secrets required
+
+jobs:
+  playwright:
+    if: ${{ inputs.run_playwright }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install deps (lock-aware)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "No package-lock.json -> generating once"
+            npm i --package-lock-only --no-audit --no-fund
+            npm ci --no-audit --no-fund
+          fi
+      - name: Install Playwright & browsers
+        run: npx playwright install --with-deps
+      - name: Run Playwright (skip if no tests)
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIR="${{ inputs.ui_dir }}"
+          if [ -d "$DIR" ] && compgen -G "$DIR/**/*.spec.*" > /dev/null; then
+            npx playwright test "$DIR" --reporter=line
+          else
+            echo "No Playwright tests found under $DIR — skipping."
+          fi
+      - name: Upload Playwright report (if exists)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-playwright-report
+          path: |
+            playwright-report/**
+            **/playwright-report/**
+          if-no-files-found: ignore
+
+  karate:
+    if: ${{ inputs.run_karate }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Java & Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Run Karate (Maven project) if present
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_DIR="${{ inputs.api_dir }}"
+          if [ -f "$API_DIR/pom.xml" ]; then
+            mvn -q -f "$API_DIR/pom.xml" -DskipITs=false test
+          else
+            echo "No Karate Maven project at $API_DIR — skipping."
+          fi
+      - name: Upload Karate reports (if exists)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-karate-reports
+          path: |
+            ${{ inputs.api_dir }}/target/surefire-reports/**
+            ${{ inputs.api_dir }}/target/karate-reports/**
+          if-no-files-found: ignore
+
+  k6:
+    if: ${{ inputs.run_k6 }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+      - name: Run k6 smoke (if scripts exist)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PERF_DIR="${{ inputs.perf_dir }}"
+          if compgen -G "$PERF_DIR/*.js" > /dev/null; then
+            # run all scripts found; cap to 30s each as smoke
+            for f in "$PERF_DIR"/*.js; do
+              echo "Running k6: $$f"
+              k6 run --vus 1 --duration 30s "$$f" || exit 1
+            done
+          else
+            echo "No k6 scripts in $PERF_DIR — skipping."
+          fi
+      - name: Upload k6 output (if exists)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-k6-output
+          path: |
+            ${{ inputs.perf_dir }}/**/*.json
+            ${{ inputs.perf_dir }}/**/*.csv
+          if-no-files-found: ignore
