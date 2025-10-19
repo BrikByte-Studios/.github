@@ -1,37 +1,78 @@
-name: Reuse • Container Build&Push
+name: Reuse - Container Build & Push
+
 on:
   workflow_call:
     inputs:
-      image-name:   { type: string,  required: true }
-      registry:     { type: string,  default: "ghcr.io" }
-      build-context:{ type: string,  default: "." }
-      dockerfile:   { type: string,  default: "Dockerfile" }
-      tags:         { type: string,  default: "latest" }  # comma-separated
+      image-name:
+        type: string
+        required: true
+        description: "Image/repo name (e.g. sample-service)"
+      registry:
+        type: string
+        default: "ghcr.io"
+        description: "Registry hostname (ghcr.io|…)"
+      build-context:
+        type: string
+        default: "."
+      dockerfile:
+        type: string
+        default: "Dockerfile"
+      tags:
+        type: string
+        default: "latest" # comma-separated list supported by buildx
     secrets:
-      registry-username: { required: false }
-      registry-password: { required: false }
+      registry-username:
+        required: false
+      registry-password:
+        required: false
+
 jobs:
   container:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write   # needed for ghcr.io push with GITHUB_TOKEN
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Login
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login for GHCR using GITHUB_TOKEN
+      - name: Login (GHCR)
         if: ${{ inputs.registry == 'ghcr.io' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Login for custom registry when creds provided.
+      # NOTE: we avoid using secrets in the 'if:' expression to keep the parser happy.
+      - name: Login (custom registry)
+        if: ${{ inputs.registry != 'ghcr.io' }}
+        env:
+          REGISTRY: ${{ inputs.registry }}
+          REG_USER: ${{ secrets['registry-username'] }}
+          REG_PASS: ${{ secrets['registry-password'] }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${REG_USER:-}" ] && [ -n "${REG_PASS:-}" ]; then
+            echo "Logging into ${REGISTRY}"
+            echo "${REG_PASS}" | docker login "${REGISTRY}" -u "${REG_USER}" --password-stdin
+          else
+            echo "No custom registry credentials provided; skipping login."
+          fi
+
       - name: Build & Push
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs['build-context'] }}
           file: ${{ inputs.dockerfile }}
           push: true
-          tags: ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.tags }}
-          cache-from: type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image-name }}:cache
-          cache-to:   type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image-name }}:cache,mode=max
+          # bracket syntax for hyphenated key: inputs['image-name']
+          tags: ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs['image-name'] }}:${{ inputs.tags }}
+          cache-from: type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs['image-name'] }}:cache
+          cache-to:   type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs['image-name'] }}:cache,mode=max

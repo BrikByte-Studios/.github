@@ -1,8 +1,13 @@
-name: Reuse • Security • CodeQL
+name: Reuse - Security - CodeQL
+
 on:
   workflow_call:
     inputs:
-      languages: { type: string, default: "javascript" } # csv: javascript,python,java
+      languages:
+        type: string
+        default: "javascript"   # CSV: javascript,python,java
+        description: "Comma-separated list of languages for CodeQL init"
+
 jobs:
   codeql:
     runs-on: ubuntu-latest
@@ -11,7 +16,17 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
-        with: { languages: ${{ inputs.languages }} }
-      - uses: github/codeql-action/analyze@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ inputs.languages }}
+
+      # Optional (helps for Java/C#/C/C++ monorepos). Safe to leave for JS/Python too.
+      - name: Autobuild (best effort)
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
