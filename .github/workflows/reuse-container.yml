@@ -21,9 +21,9 @@ on:
         type: string
         default: "latest" # comma-separated list supported by buildx
     secrets:
-      registry-username:
+      registry_username:   # <-- snake_case to avoid hyphen issues
         required: false
-      registry-password:
+      registry_password:
         required: false
 
 jobs:
@@ -48,14 +48,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Login for custom registry when creds provided.
-      # NOTE: we avoid using secrets in the 'if:' expression to keep the parser happy.
+      # Login for custom registry; do NOT put secrets in the 'if:' guard
       - name: Login (custom registry)
         if: ${{ inputs.registry != 'ghcr.io' }}
         env:
           REGISTRY: ${{ inputs.registry }}
-          REG_USER: ${{ secrets['registry-username'] }}
-          REG_PASS: ${{ secrets['registry-password'] }}
+          REG_USER: ${{ secrets.registry_username }}
+          REG_PASS: ${{ secrets.registry_password }}
         shell: bash
         run: |
           set -euo pipefail
@@ -72,7 +71,7 @@ jobs:
           context: ${{ inputs['build-context'] }}
           file: ${{ inputs.dockerfile }}
           push: true
-          # bracket syntax for hyphenated key: inputs['image-name']
+          # bracket syntax for hyphenated input key: inputs['image-name']
           tags: ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs['image-name'] }}:${{ inputs.tags }}
           cache-from: type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs['image-name'] }}:cache
           cache-to:   type=registry,ref=${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs['image-name'] }}:cache,mode=max
