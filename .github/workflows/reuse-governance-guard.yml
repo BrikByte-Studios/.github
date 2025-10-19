@@ -1,0 +1,145 @@
+name: Reuse - Governance Guard
+
+on:
+  workflow_call:
+    inputs:
+      protected-branches:
+        type: string
+        required: true
+        description: "CSV: e.g. main,release/*"
+      required-checks:
+        type: string
+        required: true
+        description: "CSV of required status check contexts"
+
+jobs:
+  validate-and-export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+      security-events: read
+      administration: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Expand inputs
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BRANCHES=${{ inputs.protected-branches }}"     >> "$GITHUB_OUTPUT"
+          echo "CHECKS=${{ inputs.required-checks }}"          >> "$GITHUB_OUTPUT"
+          echo "DATE=$(date +%F)"                              >> "$GITHUB_OUTPUT"
+
+      # Determine which concrete branches to validate:
+      # - Always the default branch + any branches matching wildcard patterns
+      - name: Resolve target branches
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra WANT <<< "${{ steps.vars.outputs.BRANCHES }}"
+          mapfile -t EXISTING < <(gh api repos/${{ github.repository }}/branches?per_page=100 | jq -r '.[].name')
+          SELECTED=()
+          for want in "${WANT[@]}"; do
+            if [[ "$want" == *"*"* ]]; then
+              pat="${want/\*/.*}"
+              for b in "${EXISTING[@]}"; do
+                [[ "$b" =~ ^${pat}$ ]] && SELECTED+=("$b")
+              done
+            else
+              SELECTED+=("$want")
+            fi
+          done
+          printf "%s\n" "${SELECTED[@]}" | sort -u > /tmp/branches.txt
+          echo "branches_file=/tmp/branches.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Validate branch protection & required checks
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQS="${{ steps.vars.outputs.CHECKS }}"
+          IFS=',' read -ra REQUIRED <<< "$REQS"
+          FAIL=0
+
+          while read -r BR; do
+            echo "→ Checking protection for branch: $BR"
+            # Fetch protection JSON; fail if missing
+            if ! gh api repos/${{ github.repository }}/branches/$BR/protection > /tmp/protect.$BR.json 2>/dev/null; then
+              echo "::error title=Missing protection::Branch '$BR' is not protected"
+              FAIL=1; continue
+            fi
+
+            # Check PR review requirements (1+ and CODEOWNERS)
+            REQS_JSON=$(jq -r '.required_pull_request_reviews // {}' /tmp/protect.$BR.json)
+            COUNT=$(jq -r '.required_approving_review_count // 0' <<<"$REQS_JSON")
+            CO=$(jq -r '.require_code_owner_reviews // false' <<<"$REQS_JSON")
+            if [ "$COUNT" -lt 1 ]; then
+              echo "::error title=Reviewers::$BR requires at least 1 approving review"
+              FAIL=1
+            fi
+            if [ "$CO" != "true" ]; then
+              echo "::error title=Code Owners::$BR must require Code Owner reviews"
+              FAIL=1
+            fi
+
+            # Check required status checks include all REQUIRED
+            gh api repos/${{ github.repository }}/branches/$BR/protection/required_status_checks \
+              > /tmp/status.$BR.json || { echo "::error title=Status checks::Cannot fetch status checks for $BR"; FAIL=1; continue; }
+
+            mapfile -t CONTEXTS < <(jq -r '.contexts // [] | .[]' /tmp/status.$BR.json)
+            for need in "${REQUIRED[@]}"; do
+              if ! printf "%s\n" "${CONTEXTS[@]}" | grep -qx "$need"; then
+                echo "::error title=Missing check::$BR is missing required status check '$need'"
+                FAIL=1
+              fi
+            done
+
+            # Check admins enforced and conversations resolved & dismiss stale (best-effort)
+            ENF=$(jq -r '.enforce_admins.enabled // false' /tmp/protect.$BR.json)
+            [ "$ENF" = "true" ] || { echo "::warning title=Admins::$BR should enforce admins"; }
+            DS=$(jq -r '.required_pull_request_reviews.dismiss_stale_reviews // false' /tmp/protect.$BR.json)
+            [ "$DS" = "true" ] || { echo "::warning title=Dismiss stale::$BR should dismiss stale reviews"; }
+
+          done < "${{ steps.resolve.outputs.branches_file }}"
+
+          echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
+          exit $FAIL
+
+      - name: Export protection JSON → .audit/
+        shell: bash
+        run: |
+          set -euo pipefail
+          D=".audit/${{ steps.vars.outputs.DATE }}"
+          mkdir -p "$D"
+          while read -r BR; do
+            cp "/tmp/protect.$BR.json" "$D/branch-protection-$BR.json" || true
+            cp "/tmp/status.$BR.json"  "$D/required-status-checks-$BR.json" || true
+          done < "${{ steps.resolve.outputs.branches_file }}"
+          ls -la "$D" || true
+
+      - name: Open PR with audit evidence (create or update)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="chore/audit-branch-protection-${{ steps.vars.outputs.DATE }}"
+          git config user.name  "brikbyte-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git checkout -b "$BRANCH" || git checkout "$BRANCH"
+          git add .audit
+          if git diff --staged --quiet; then
+            echo "No audit changes to commit."
+          else
+            git commit -m "chore(audit): update branch protection export"
+            git push -u origin "$BRANCH" || true
+            gh pr create --base ${{ github.ref_name || 'main' }} --title "chore(audit): branch protection export" --body "Automated export of branch protection and required status checks." || true
+          fi

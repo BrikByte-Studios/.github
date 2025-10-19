@@ -1,3 +1,16 @@
+# Global default
+*                                        @BrikByte-Studios/devops
+
+# Security-critical files
+/.github/workflows/**                     @BrikByte-Studios/devops @brikbytes/security
+/.gitattributes                           @BrikByte-Studios/devops
+/.gitignore                               @BrikByte-Studios/devops
+/LICENSE                                  @BrikByte-Studios/devops @brikbytes/docs-platform
+<!-- /.archlint.yml                            @BrikByte-Studios/devops -->
+/.governance/**                           @BrikByte-Studios/devops @brikbytes/security
+/.audit/**                                @BrikByte-Studios/devops
+
+
 # workflows require Security + Platform approval
 /.github/workflows/*  @BrikByte-Studios/security @BrikByte-Studios/devops
 /.github/ISSUE_TEMPLATE/* @BrikByte-Studios/devops @BrikByte-Studios/docs-platform
