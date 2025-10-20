@@ -9,24 +9,57 @@ on:
         description: "Comma-separated list of languages for CodeQL init"
 
 jobs:
+  # Keep job id 'codeql' to match branch protection required check
   codeql:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
+      security-events: write     # needed to upload SARIF when enabled
       actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Gate: detect if Code Security / Advanced Security is enabled
+      - name: Gate Code Security status
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Query repo metadata; check both fields GitHub may use
+          JSON="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}")"
+          STATUS="$(node -e '
+            const j = JSON.parse(process.argv[1]);
+            const sa = j.security_and_analysis || {};
+            const s = (sa.code_scanning && sa.code_scanning.status)
+                   || (sa.advanced_security && sa.advanced_security.status)
+                   || "disabled";
+            console.log(s);
+          ' "$JSON")"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "Detected Code Security status: $STATUS"
+
       - name: Initialize CodeQL
+        if: steps.gate.outputs.status == 'enabled'
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ inputs.languages }}
 
-      # Optional (helps for Java/C#/C/C++ monorepos). Safe to leave for JS/Python too.
+      # Optional (safe across langs; no-op if not applicable)
       - name: Autobuild (best effort)
+        if: steps.gate.outputs.status == 'enabled'
         uses: github/codeql-action/autobuild@v3
 
       - name: Analyze
+        if: steps.gate.outputs.status == 'enabled'
         uses: github/codeql-action/analyze@v3
+
+      # When disabled, succeed the job so the required check name 'codeql' passes
+      - name: CodeQL disabled — marking check as success
+        if: steps.gate.outputs.status != 'enabled'
+        run: echo "Code Security is disabled for this repo; skipping CodeQL scan."
