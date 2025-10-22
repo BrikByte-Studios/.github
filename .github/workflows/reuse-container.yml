@@ -34,14 +34,26 @@ jobs:
       packages: write
     env:
       REGISTRY: ${{ inputs.registry }}
-      OWNER_LC: ${{ toLower(github.repository_owner) }}
-      IMAGE_LC: ${{ toLower(inputs['image-name']) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
+
+      # Normalize owner & image to lowercase (via bash), expose as outputs
+      - name: Normalize names
+        id: normenv
+        shell: bash
+        env:
+          IMAGE_IN: ${{ inputs['image-name'] }}
+        run: |
+          set -euo pipefail
+          # OWNER from default env var provided by Actions
+          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          # Image name from input
+          img="${IMAGE_IN,,}"
+          echo "image_lc=${img}" >> "$GITHUB_OUTPUT"
 
       # Login for GHCR using GITHUB_TOKEN
       - name: Login (GHCR)
@@ -69,7 +81,7 @@ jobs:
             echo "No custom registry credentials provided; skipping login."
           fi
 
-      # Normalize tags (lowercase, trim, split commas -> newline)
+      # Normalize tags (lowercase, trim, split commas → newline)
       - name: Normalize tags
         id: norm
         shell: bash
@@ -78,7 +90,6 @@ jobs:
         run: |
           set -euo pipefail
           T="$(printf '%s' "${INPUT_TAGS}" | tr '[:upper:]' '[:lower:]')"
-          # split comma-separated into newline list & trim blanks
           T="$(printf '%s' "${T}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d')"
           echo "list<<EOF" >> "$GITHUB_OUTPUT"
           echo "${T}" >> "$GITHUB_OUTPUT"
@@ -91,9 +102,9 @@ jobs:
           file: ${{ inputs.dockerfile }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.IMAGE_LC }}:${{ steps.norm.outputs.list }}
+            ${{ env.REGISTRY }}/${{ steps.normenv.outputs.owner_lc }}/${{ steps.normenv.outputs.image_lc }}:${{ steps.norm.outputs.list }}
           cache-from: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.IMAGE_LC }}:cache
+            type=registry,ref=${{ env.REGISTRY }}/${{ steps.normenv.outputs.owner_lc }}/${{ steps.normenv.outputs.image_lc }}:cache
           cache-to: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.IMAGE_LC }}:cache,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ steps.normenv.outputs.owner_lc }}/${{ steps.normenv.outputs.image_lc }}:cache,mode=max
           provenance: true
