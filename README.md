@@ -12,28 +12,34 @@ Use feature branches + PRs with required approvals (Security + Platform).
 
 ## 📦 Repository Layout
 ```text
-.github/
-    workflows/ # Reusable workflows (workflow_call)
-        reuse-build-test.yml
-        reuse-metadata-lint.yml
-        reuse-security-codeql.yml
-        reuse-security-supplychain.yml
-        reuse-archlint.yml
-        reuse-container.yml
-        reuse-docs.yml
-        reuse-release.yml
-        reuse-pr-quality.yml
-    ISSUE_TEMPLATE/ # Issue forms + config
-        bug.yml
-        feature.yml
-        rfc.yml
-        task.yml
-        config.yml
-PULL_REQUEST_TEMPLATE.md
-CODEOWNERS
-SECURITY.md
-CONTRIBUTING.md
-README.md (this file)
+├─.github/
+|   ├─workflows/ # Reusable workflows (workflow_call)
+|   |     ├─reuse-build-test.yml
+|   |     ├─reuse-metadata-lint.yml
+|   |     ├─reuse-security-codeql.yml
+|   |     ├─reuse-security-supplychain.yml
+|   |     ├─reuse-archlint.yml
+|   |     ├─reuse-container.yml
+|   |     ├─reuse-docs.yml
+|   |     ├─reuse-release.yml
+|   |     └─reuse-pr-quality.yml
+|   |
+|   └─ISSUE_TEMPLATE/ # Issue forms + config
+|        ├─bug.yml
+|        ├─feature.yml
+|        ├─rfc.yml
+|        ├─task.yml
+|        └─config.yml
+|
+├─ rulepacks/
+│  ├─ eslint.base.json
+│  ├─ prettier.base.json
+│  └─ commitlint.base.js
+├─PULL_REQUEST_TEMPLATE.md
+├─CODEOWNERS
+├─SECURITY.md
+├─CONTRIBUTING.md
+└─README.md (this file)
 ```
 
 
