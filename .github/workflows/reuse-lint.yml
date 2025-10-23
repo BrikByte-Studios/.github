@@ -58,13 +58,16 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f "commitlint.config.js" ] || compgen -G ".commitlintrc.*" > /dev/null; then
-            npx --yes @commitlint/cli@19 --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || \
-            npx --yes @commitlint/cli@19 --last --verbose
+            # repo provides its own config -> just ensure CLI is available
+            npx --yes -p @commitlint/cli@19 commitlint --from="$BASE_SHA" --to="$HEAD_SHA" --verbose \
+            || npx --yes -p @commitlint/cli@19 commitlint --last --verbose
           else
             echo "No commitlint config found → using org baseline"
-            npx --yes -p @commitlint/config-conventional@19 @commitlint/cli@19 \
-              -x @commitlint/config-conventional --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || \
-            npx --yes -p @commitlint/config-conventional@19 @commitlint/cli@19 \
-              -x @commitlint/config-conventional --last --verbose
+            # install both CLI and the conventional preset, then run the 'commitlint' binary
+            npx --yes -p @commitlint/cli@19 -p @commitlint/config-conventional@19 \
+              commitlint -x @commitlint/config-conventional --from="$BASE_SHA" --to="$HEAD_SHA" --verbose \
+            || npx --yes -p @commitlint/cli@19 -p @commitlint/config-conventional@19 \
+              commitlint -x @commitlint/config-conventional --last --verbose
           fi
+
 
