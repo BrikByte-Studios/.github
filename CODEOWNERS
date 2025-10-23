@@ -9,6 +9,9 @@
 <!-- /.archlint.yml                            @BrikByte-Studios/devops -->
 /.governance/**                           @BrikByte-Studios/devops @brikbytes/security
 /.audit/**                                @BrikByte-Studios/devops
+/rulepacks/**                             @BrikByte-Studios/devops @brikbytes/security
+/README.md                                  @BrikByte-Studios/docs-platform @BrikByte-Studios/devops
+
 
 
 # workflows require Security + Platform approval

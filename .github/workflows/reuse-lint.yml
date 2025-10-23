@@ -1,0 +1,65 @@
+name: Reuse • Lint
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '20'
+        description: 'Node.js version to use for linting'
+      run-commitlint:
+        type: boolean
+        default: true
+        description: 'Also run commitlint against PR commits'
+    secrets: {}
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs['node-version'] }}
+          cache: npm
+
+      - name: Install dependencies (ci if lock; else create lock then ci)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "No package-lock.json → generating lockfile once"
+            npm i --package-lock-only --no-audit --no-fund
+            npm ci --no-audit --no-fund
+          fi
+
+      - name: Prettier • format:check (if present)
+        run: npm run -s format:check --if-present
+
+      - name: ESLint • lint (if present)
+        run: npm run -s lint --if-present
+
+      - name: Commitlint (PR only, optional)
+        if: ${{ inputs.run-commitlint && github.event_name == 'pull_request' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          if [ -f "commitlint.config.js" ] || compgen -G ".commitlintrc.*" > /dev/null; then
+            npx --yes @commitlint/cli@19 --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || npx --yes @commitlint/cli@19 --last --verbose
+          else
+            echo "No commitlint config found → using org baseline"
+            npx --yes @commitlint/cli@19 -x @commitlint/config-conventional --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || npx --yes @commitlint/cli@19 -x @commitlint/config-conventional --last --verbose
+          fi

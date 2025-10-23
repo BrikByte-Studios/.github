@@ -1,0 +1,12 @@
+{
+  "//": "Canonical Prettier formatting profile for BrikByteOS repos.",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "semi": true,
+  "arrowParens": "always",
+  "bracketSpacing": true,
+  "proseWrap": "preserve",
+  "endOfLine": "lf"
+}

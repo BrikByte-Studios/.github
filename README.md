@@ -293,6 +293,59 @@ jobs:
 Checks must be green and artifacts present (coverage, metadata report, etc.).
 
 ---
+## BrikByteOS Quality Baselines
+
+This directory documents the **canonical rulepacks** and **reusable CI** for linting, formatting,
+and commit-message policy across the BrikByte organization.
+
+### Contents
+- `rulepacks/eslint.js.base.json` — ESLint baseline for JS/TS monorepos (React via overrides)
+- `rulepacks/prettier.base.json` — Prettier configuration (100 cols, LF, single quotes)
+- `rulepacks/commitlint.base.js` — Conventional Commits (type(scope): subject, 100 chars)
+- `.github/workflows/reuse-lint.yml` — reusable lint + format + optional commitlint
+- `.github/workflows/reuse-pr-quality.yml` — PR title lint + optional auto-label
+
+### How to Consume (service repo)
+1. **Configs**
+   - Copy the rulepacks into your repo, or reference them via templates.
+   - Create:
+     - `.eslintrc.json` extending the ESLint base (or inline copy)
+     - `.prettierrc.json` using the Prettier base
+     - `commitlint.config.js` requiring the org baseline
+2. **Scripts** (in `package.json`)
+   ```json
+   {
+     "scripts": {
+       "lint": "eslint .",
+       "lint:fix": "eslint . --fix",
+       "format:check": "prettier . --check",
+       "format:write": "prettier . --write",
+       "commitlint:ci": "commitlint --from=origin/main --to=HEAD || commitlint --last"
+     }
+   }
+   ```
+3. **CI (recommended)**
+  
+    ```yaml
+    jobs:
+    lint:
+      uses: BrikByte-Studios/.github/.github/workflows/reuse-lint.yml@v1
+      with:
+        node-version: '20'
+        run-commitlint: true
+
+    pr-quality:
+      if: github.event_name == 'pull_request'
+      uses: BrikByte-Studios/.github/.github/workflows/reuse-pr-quality.yml@v1
+      with:
+        enforce-title: true
+        auto-label: true
+    ```
+4. **Branch Protection**
+- Add required check: `lint` (job name from the caller workflow)
+- Optionally require `pr-quality` on PRs.
+
+---
 ## 🧯 Troubleshooting
 
 - **“Invalid workflow file (inline maps)”** → avoid `{ … }` around expressions. Use block style:
@@ -304,6 +357,21 @@ with:
 - **Secrets in** `if:` → don’t. Move to `env:` and check in shell.
 - **Artifacts from dot-dirs** → set `include-hidden-files: true`.
 - `npm ci` **without lockfile** → generate once: `npm i --package-lock-only` then `npm ci`.
+
+### Commitlint fails but there’s no config in the repo
+The reusable workflow falls back to `@commitlint/config-conventional`. Prefer adding
+`commitlint.config.js` that re-exports the org baseline.
+
+### PR title lint complains about scope
+
+We require `type(scope): subject`. Example:
+```scss
+feat(api): add healthcheck endpoint
+```
+
+### ESLint complains about parserOptions.project
+
+If you don’t have a `tsconfig.json`, either add one, or remove `parserOptions.project` in your local .eslintrc.json.
 
 ---
 ## 🧭 Versioning & Deprecation
