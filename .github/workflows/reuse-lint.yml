@@ -50,16 +50,21 @@ jobs:
       - name: ESLint • lint (if present)
         run: npm run -s lint --if-present
 
-      - name: Commitlint (PR only, optional)
-        if: ${{ inputs.run-commitlint && github.event_name == 'pull_request' }}
+      - name: Commitlint (range or last)
         shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           if [ -f "commitlint.config.js" ] || compgen -G ".commitlintrc.*" > /dev/null; then
-            npx --yes @commitlint/cli@19 --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || npx --yes @commitlint/cli@19 --last --verbose
+            npx --yes @commitlint/cli@19 --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || \
+            npx --yes @commitlint/cli@19 --last --verbose
           else
             echo "No commitlint config found → using org baseline"
-            npx --yes @commitlint/cli@19 -x @commitlint/config-conventional --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || npx --yes @commitlint/cli@19 -x @commitlint/config-conventional --last --verbose
+            npx --yes -p @commitlint/config-conventional@19 @commitlint/cli@19 \
+              -x @commitlint/config-conventional --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || \
+            npx --yes -p @commitlint/config-conventional@19 @commitlint/cli@19 \
+              -x @commitlint/config-conventional --last --verbose
           fi
+
