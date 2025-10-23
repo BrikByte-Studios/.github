@@ -1,25 +1,81 @@
 name: Reuse • PR Quality
+
 on:
   workflow_call:
     inputs:
-      enforce-title: { type: boolean, default: true }
-      auto-label:    { type: boolean, default: true }
+      enforce-title:
+        type: boolean
+        default: true
+        description: "Enforce Conventional Commits title: type(scope?): subject"
+      auto-label:
+        type: boolean
+        default: true
+        description: "Auto-apply labels based on PR title keywords"
+    # no secrets required
+
 jobs:
   pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # needed to add labels/comments
     steps:
       - name: Lint PR title (Conventional Commits)
         if: ${{ inputs.enforce-title }}
         env:
           TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
         run: |
-          echo "PR: $TITLE"
-          echo "$TITLE" | grep -E '^(feat|fix|chore|docs|refactor|perf|test)(\(.+\))?: .+' || \
-            (echo "Invalid PR title format"; exit 1)
-      - name: Auto-label (simple heuristic)
+          set -euo pipefail
+          echo "PR title: '${TITLE}'"
+          # Conventional Commits: type[(scope)][!]: subject
+          # Allowed types align with commitlint conventional config
+          re='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-zA-Z0-9._/-]+\))?(!)?: .+'
+          if [[ ! "${TITLE}" =~ ${re} ]]; then
+            echo "::error title=Invalid PR title::Expected 'type(scope?): subject'."
+            echo "Examples:"
+            echo "  feat(api): add hello endpoint"
+            echo "  fix(web)!: break out auth flow"
+            exit 1
+          fi
+          echo "✓ Title OK"
+
+      # Compute labels from title (no JS-style ternaries in YAML)
+      - name: Derive labels from title
+        id: labels
         if: ${{ inputs.auto-label }}
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          labels=()
+
+          shopt -s nocasematch
+          [[ "$TITLE" =~ ^feat(\(|:|\!) ]] && labels+=("enhancement")
+          [[ "$TITLE" =~ ^fix(\(|:|\!) ]] && labels+=("bug")
+          [[ "$TITLE" =~ ^docs(\(|:|\!) ]] && labels+=("documentation")
+          [[ "$TITLE" =~ ^perf(\(|:|\!) ]] && labels+=("performance")
+          [[ "$TITLE" =~ ^refactor(\(|:|\!) ]] && labels+=("refactor")
+          [[ "$TITLE" =~ ^test(\(|:|\!) ]] && labels+=("tests")
+          [[ "$TITLE" =~ ^chore(\(|:|\!) ]] && labels+=("chore")
+          [[ "$TITLE" =~ ^ci(\(|:|\!) ]] && labels+=("ci")
+          [[ "$TITLE" =~ ^build(\(|:|\!) ]] && labels+=("build")
+          shopt -u nocasematch
+
+          # de-dup
+          uniq_labels=$(printf "%s\n" "${labels[@]}" | awk 'NF' | sort -u)
+
+          echo "labels<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${uniq_labels}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          echo "Computed labels:"
+          printf " - %s\n" ${uniq_labels:-none} || true
+
+      - name: Add labels
+        if: ${{ inputs.auto-label && steps.labels.outputs.labels != '' }}
         uses: actions-ecosystem/action-add-labels@v1
         with:
-          labels: |
-            ${{ contains(github.event.pull_request.title, 'feat') && 'enhancement' || '' }}
-            ${{ contains(github.event.pull_request.title, 'fix') && 'bug' || '' }}
+          # Multiline list is accepted; one label per line
+          labels: ${{ steps.labels.outputs.labels }}
