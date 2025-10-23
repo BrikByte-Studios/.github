@@ -57,17 +57,17 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          if [ -f "commitlint.config.js" ] || compgen -G ".commitlintrc.*" > /dev/null; then
-            # repo provides its own config -> just ensure CLI is available
+          if [ -f "commitlint.config.js" ] || [ -f "commitlint.config.cjs" ] || compgen -G ".commitlintrc.*" > /dev/null; then
+            # repo provides config
             npx --yes -p @commitlint/cli@19 commitlint --from="$BASE_SHA" --to="$HEAD_SHA" --verbose \
             || npx --yes -p @commitlint/cli@19 commitlint --last --verbose
           else
             echo "No commitlint config found → using org baseline"
-            # install both CLI and the conventional preset, then run the 'commitlint' binary
             npx --yes -p @commitlint/cli@19 -p @commitlint/config-conventional@19 \
               commitlint -x @commitlint/config-conventional --from="$BASE_SHA" --to="$HEAD_SHA" --verbose \
             || npx --yes -p @commitlint/cli@19 -p @commitlint/config-conventional@19 \
               commitlint -x @commitlint/config-conventional --last --verbose
           fi
+
 
 
