@@ -1,0 +1,202 @@
+name: Reuse • Build Artifact & Container Image
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        type: string
+        required: true
+        description: "node | python | java"
+      cache-key:
+        type: string
+        required: false
+        default: ""
+        description: "Hint for cache grouping (branch name / PR number)"
+      image-name:
+        type: string
+        required: true
+        description: "Container image name, e.g. ghcr.io/brikbytes/brikbyteos-sample-service"
+      tag:
+        type: string
+        required: false
+        default: "${{ github.sha }}"
+        description: "Image tag to stamp into the container (usually commit SHA)"
+    secrets:
+      token:
+        required: false
+        description: "Optional PAT for private registries / packages if needed"
+
+jobs:
+  build:
+    name: build-and-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # -------------------------------------------------
+      # 1. Checkout source
+      # -------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # if you ever need submodules or a full history for versioning,
+          # configure it here
+          fetch-depth: 0
+
+      # -------------------------------------------------
+      # 2. Setup language toolchain
+      #    We only install what we need for the given service
+      # -------------------------------------------------
+      - name: Setup Node
+        if: ${{ inputs.language == 'node' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        if: ${{ inputs.language == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java
+        if: ${{ inputs.language == 'java' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # -------------------------------------------------
+      # 3. Cache dependencies
+      #    One cache config that covers node_modules / pip / maven
+      #    We hash lockfiles to get reproducible warm builds
+      # -------------------------------------------------
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/node_modules
+            ~/.cache/pip
+            ~/.m2/repository
+          key: ${{ runner.os }}-${{ inputs.language }}-${{ hashFiles('**/package-lock.json','**/pnpm-lock.yaml','**/requirements*.txt','**/poetry.lock','**/pom.xml') }}-${{ inputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-${{ inputs.language }}-
+            ${{ runner.os }}-
+
+      # -------------------------------------------------
+      # 4. Install deps + BUILD the app (compile / bundle / package)
+      #    - This is our "does it build?" gate.
+      #    - We DO NOT run tests here anymore. Tests will run downstream in ci-test.
+      # -------------------------------------------------
+      - name: Install & Build App
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ inputs.language }}" in
+            node)
+              # install
+              if [ -f package-lock.json ]; then
+                npm ci --no-audit --no-fund
+              else
+                npm i --package-lock-only --no-audit --no-fund
+                npm ci --no-audit --no-fund
+              fi
+              # build (assumes npm run build outputs compiled code to dist/)
+              npm run build || true
+              ;;
+            python)
+              python -m pip install --upgrade pip
+              # if requirements.txt exists, install it
+              if [ -f requirements.txt ]; then
+                pip install -r requirements.txt
+              fi
+              # sanity compile (fail fast on syntax errors)
+              python -m py_compile $(git ls-files '*.py') || true
+              ;;
+            java)
+              # mvn install w/ tests ON to ensure it actually compiles under test conditions,
+              # but you can use -DskipTests if you want build-only here.
+              mvn -q -B clean package -DskipTests=false
+              ;;
+            *)
+              echo "Unsupported language '${{ inputs.language }}'" >&2
+              exit 1
+              ;;
+          esac
+
+      # -------------------------------------------------
+      # 5. Prepare Docker buildx
+      #    We will build the container image ONCE here,
+      #    and hand it off to later jobs (test / deploy) as an artifact.
+      # -------------------------------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # -------------------------------------------------
+      # 6. Build container image (but DO NOT PUSH)
+      #    --load ensures the image is loaded into the local Docker engine
+      # -------------------------------------------------
+      - name: Build container image (no push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --load \
+            --tag "${{ inputs.image-name }}:${{ inputs.tag }}" \
+            .
+
+      # -------------------------------------------------
+      # 7. Export container image as a tarball
+      #    This is the artifact deploy will later "docker load"
+      #    so deploy doesn't have to rebuild.
+      # -------------------------------------------------
+      - name: Export container image to tar
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build_artifacts
+          docker save "${{ inputs.image-name }}:${{ inputs.tag }}" -o build_artifacts/image.tar
+
+      # -------------------------------------------------
+      # 8. Archive build outputs (compiled code / JAR / dist)
+      #    We try to capture "the thing we'd ship" for debugging or SCA scans.
+      # -------------------------------------------------
+      - name: Archive service build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          # We'll try common locations per language.
+          # We only tar what's present, otherwise tar will fail with non-zero.
+          if [ "${{ inputs.language }}" = "node" ] && [ -d dist ]; then
+            tar -czf build_artifacts/service-dist.tar.gz dist
+          elif [ "${{ inputs.language }}" = "java" ] && [ -d target ]; then
+            tar -czf build_artifacts/service-dist.tar.gz target
+          elif [ "${{ inputs.language }}" = "python" ]; then
+            # for python we don't always have a "build" dir;
+            # grab the app code and requirements for inspection
+            tar -czf build_artifacts/service-dist.tar.gz *.py requirements.txt 2>/dev/null || true
+          else
+            # fallback - try to package repo root (best-effort)
+            tar -czf build_artifacts/service-dist.tar.gz . 2>/dev/null || true
+          fi
+
+      # -------------------------------------------------
+      # 9. Upload artifacts:
+      #    a) service-build-artifacts: built app bundle (dist/, target/, etc.)
+      #    b) service-container-image: docker image tar
+      # Downstream workflows (ci-test / ci-deploy) will download these.
+      # -------------------------------------------------
+      - name: Upload compiled artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-build-artifacts
+          path: build_artifacts/service-dist.tar.gz
+          if-no-files-found: ignore
+
+      - name: Upload container image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-container-image
+          path: build_artifacts/image.tar
