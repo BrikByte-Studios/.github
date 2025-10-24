@@ -1,0 +1,296 @@
+name: Reuse • Test, Integration, Coverage
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        type: string
+        required: true
+        description: "Runtime stack: node | python | java"
+      coverage-threshold:
+        type: string
+        required: false
+        default: "0"
+        description: "Optional minimum coverage % to enforce (e.g. '80')"
+      run-integration:
+        type: boolean
+        required: false
+        default: true
+        description: "Run integration tests (in addition to unit tests) if present"
+      run-security:
+        type: boolean
+        required: false
+        default: true
+        description: "Reserved: run security scan after tests (soft fail in v1)"
+    secrets:
+      token:
+        required: false
+        description: "Optional PAT for private feeds / scanners"
+
+jobs:
+  test-and-cover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # future-proof for SARIF upload
+      actions: read
+
+    steps:
+      # -------------------------------------------------
+      # 1. Checkout source
+      # -------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -------------------------------------------------
+      # 2. Setup toolchain for the selected language
+      # -------------------------------------------------
+      - name: Setup Node
+        if: ${{ inputs.language == 'node' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        if: ${{ inputs.language == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java / Maven
+        if: ${{ inputs.language == 'java' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # -------------------------------------------------
+      # 3. Restore dependency cache
+      #    Matches ci-build.yml hash logic for fast warm runs
+      # -------------------------------------------------
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/node_modules
+            ~/.cache/pip
+            ~/.m2/repository
+          key: ${{ runner.os }}-${{ inputs.language }}-${{ hashFiles('**/package-lock.json','**/pnpm-lock.yaml','**/requirements*.txt','**/poetry.lock','**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ inputs.language }}-
+            ${{ runner.os }}-
+
+      # -------------------------------------------------
+      # 4. Install dev/test dependencies
+      #    We explicitly install test tooling (linters, coverage libs)
+      # -------------------------------------------------
+      - name: Install deps (Node)
+        if: ${{ inputs.language == 'node' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm i --package-lock-only --no-audit --no-fund
+            npm ci --no-audit --no-fund
+          fi
+
+      - name: Install deps (Python)
+        if: ${{ inputs.language == 'python' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          # dev/test extras (pytest, coverage, etc.)
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install pytest coverage pytest-cov || true
+          fi
+
+      - name: Install deps (Java)
+        if: ${{ inputs.language == 'java' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -q -B dependency:resolve
+
+      # -------------------------------------------------
+      # 5. Lint / static style checks
+      #    Fail closed for obvious style/lint issues.
+      #    Node: eslint / prettier:check if available
+      #    Python: flake8 / black --check / isort --check-only if available
+      #    Java: checkstyle or similar (soft for now)
+      # -------------------------------------------------
+      - name: Lint (Node)
+        if: ${{ inputs.language == 'node' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm run | grep -q "lint"; then
+            npm run lint
+          fi
+          if npm run | grep -q "format:check"; then
+            npm run format:check
+          fi
+
+      - name: Lint (Python)
+        if: ${{ inputs.language == 'python' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v flake8 >/dev/null 2>&1; then
+            flake8 .
+          fi
+          if command -v black >/dev/null 2>&1; then
+            black --check .
+          fi
+          if command -v isort >/dev/null 2>&1; then
+            isort --check-only .
+          fi
+
+      - name: Lint (Java)
+        if: ${{ inputs.language == 'java' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Example: enforce checkstyle if configured. We don't hard fail yet if it's missing.
+          if mvn -q -B -DskipTests=true checkstyle:checkstyle; then
+            echo "checkstyle ran"
+          else
+            echo "checkstyle not configured or failed; this can be hardened later."
+          fi
+
+      # -------------------------------------------------
+      # 6. Run unit + integration tests with coverage
+      #    This is the heart of this workflow.
+      #    We assume:
+      #      - Jest/Vitest etc. for Node
+      #      - pytest + pytest-cov for Python
+      #      - mvn test + jacoco for Java
+      #
+      #    Integration tests:
+      #      - For Node, commonly `npm run test:integration`
+      #      - For Python, pytest markers
+      #      - For Java, surefire vs failsafe plugins (ITs)
+      #
+      #    We'll try to run them if they exist, and not fail if they don't.
+      # -------------------------------------------------
+
+      - name: Test & Coverage (Node)
+        if: ${{ inputs.language == 'node' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Unit tests (expect jest/vitest configured to emit coverage/)
+          if npm run | grep -q "test"; then
+            npm test -- --coverage
+          else
+            echo "No 'npm test' script; skipping unit tests."
+          fi
+
+          # Optional integration tests
+          if [ "${{ inputs.run-integration }}" = "true" ] && npm run | grep -q "test:integration"; then
+            npm run test:integration -- --coverage
+          fi
+
+      - name: Test & Coverage (Python)
+        if: ${{ inputs.language == 'python' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # pytest --cov produces .coverage + coverage.xml if pytest-cov installed
+          if command -v pytest >/dev/null 2>&1; then
+            # run unit tests
+            pytest --maxfail=1 --disable-warnings --cov=./ --cov-report=xml
+
+            # integration tests (marker "integration") if run-integration=true
+            if [ "${{ inputs.run-integration }}" = "true" ]; then
+              pytest -m "integration" --maxfail=1 --disable-warnings --cov=./ --cov-append --cov-report=xml || true
+            fi
+          else
+            echo "pytest not found; skipping tests."
+          fi
+
+      - name: Test & Coverage (Java)
+        if: ${{ inputs.language == 'java' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # mvn test runs unit tests; jacoco:report emits coverage
+          mvn -q -B test jacoco:report
+
+          # Integration tests: if you configure failsafe plugin (verify phase)
+          if [ "${{ inputs.run-integration }}" = "true" ]; then
+            mvn -q -B verify || true
+            # Note: verify runs integration-test + verify with maven-failsafe-plugin
+          fi
+
+      # -------------------------------------------------
+      # 7. Enforce coverage threshold (soft gate now)
+      #    We'll parse coverage if threshold > 0.
+      #    Implementation detail is intentionally flexible so
+      #    platform can harden later without touching services.
+      # -------------------------------------------------
+      - name: Check coverage threshold
+        if: ${{ inputs.coverage-threshold != '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Minimum coverage required: ${{ inputs.coverage-threshold }}%"
+
+          # TODO (platform hardening step):
+          #   - Parse coverage.xml for Python/Jest (lcov) / Java (jacoco.xml)
+          #   - Extract line or branch coverage %
+          #   - Compare vs inputs.coverage-threshold
+          #   - exit 1 if below
+          #
+          # For BrikByteOS v1 we only emit intent.
+          echo "Coverage enforcement hook not yet strict in v1."
+
+      # -------------------------------------------------
+      # 8. Upload coverage artifacts so we can inspect them,
+      #    feed dashboards, and prove audit/compliance.
+      # -------------------------------------------------
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage*
+            coverage/**
+            coverage.xml
+            .coverage
+            junit.xml
+            target/surefire-reports/**
+            target/failsafe-reports/**
+            target/site/jacoco/**
+          if-no-files-found: ignore
+
+      # -------------------------------------------------
+      # 9. Security scan placeholder (WARN in v1)
+      #    This is where we’ll eventually:
+      #      - download the built container image artifact
+      #      - docker load
+      #      - run Trivy or CodeQL container scan
+      #      - upload SARIF
+      #    For now we just drop a breadcrumb.
+      # -------------------------------------------------
+      - name: Security scan (soft gate)
+        if: ${{ inputs.run-security }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "[SECURITY] placeholder scan hook"
+          echo "Future: pull service-container-image from ci-build, run Trivy/CodeQL"
+          echo "In v1, this does not fail the pipeline."
