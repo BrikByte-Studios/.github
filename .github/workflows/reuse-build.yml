@@ -21,6 +21,16 @@ on:
         required: false
         default: "${{ github.sha }}"
         description: "Image tag to stamp into the container (usually commit SHA)"
+      build-context:
+        type: string
+        required: false
+        default: "."
+        description: "Docker build context (usually repo root)."
+      dockerfile:
+        type: string
+        required: false
+        default: "Dockerfile"
+        description: "Path to Dockerfile relative to repo root"
     secrets:
       token:
         required: false
@@ -144,8 +154,9 @@ jobs:
           set -euo pipefail
           docker buildx build \
             --load \
-            --tag "${{ inputs.image-name }}:${{ inputs.tag }}" \
-            .
+            --file "${{ inputs.dockerfile }}" \
+            --tag "${{ inputs['image-name'] }}:${{ inputs.tag }}" \
+            "${{ inputs['build-context'] }}"
 
       # -------------------------------------------------
       # 7. Export container image as a tarball
