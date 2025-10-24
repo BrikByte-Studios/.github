@@ -25,7 +25,7 @@ on:
         type: string
         required: false
         default: "."
-        description: "Docker build context (usually repo root)"
+        description: "Docker build context (usually repo root)."
       dockerfile:
         type: string
         required: false
@@ -157,7 +157,7 @@ jobs:
             --file "${{ inputs.dockerfile }}" \
             --tag "${{ inputs['image-name'] }}:${{ inputs.tag }}" \
             "${{ inputs['build-context'] }}"
-            
+
       # -------------------------------------------------
       # 7. Export container image as a tarball
       #    This is the artifact deploy will later "docker load"
