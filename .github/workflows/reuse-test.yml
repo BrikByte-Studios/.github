@@ -190,16 +190,36 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Unit tests (expect jest/vitest configured to emit coverage/)
-          if npm run | grep -q "test"; then
-            npm test -- --coverage
-          else
-            echo "No 'npm test' script; skipping unit tests."
-          fi
+          has_script() {
+            npm run | grep -q "^[[:space:]]*$1[[:space:]]"
+          }
 
-          # Optional integration tests
-          if [ "${{ inputs.run-integration }}" = "true" ] && npm run | grep -q "test:integration"; then
-            npm run test:integration -- --coverage
+          run_with_cov_if_possible() {
+            script_name="$1"
+            if has_script "$script_name"; then
+              # Peek at the script body so we know what runner it calls
+              body=$(npm pkg get scripts."$script_name" | sed 's/^"//;s/"$//')
+
+              if echo "$body" | grep -qiE 'jest|vitest'; then
+                echo "→ running $script_name with coverage"
+                npm run "$script_name" -- --coverage
+              else
+                echo "→ running $script_name without coverage (runner not jest/vitest)"
+                npm run "$script_name"
+              fi
+            else
+              echo "→ no $script_name script; skipping"
+            fi
+          }
+
+          echo "=== unit tests ==="
+          run_with_cov_if_possible test
+
+          echo "=== integration tests ==="
+          if [ "${{ inputs.run-integration }}" = "true" ]; then
+            run_with_cov_if_possible test:integration
+          else
+            echo "integration disabled (run-integration=false)"
           fi
 
       - name: Test & Coverage (Python)
