@@ -1,110 +1,200 @@
-name: Reuse - Container Build & Push
+name: Reuse • Deploy From Built Image
 
 on:
   workflow_call:
     inputs:
+      environment:
+        type: string
+        required: true
+        description: "Target env: staging | prod"
       image-name:
         type: string
         required: true
-        description: "Image/repo name (e.g. sample-service)"
-      registry:
+        description: "Full image ref incl. registry, e.g. ghcr.io/brikbytes/brikbyteos-sample-service"
+      tag:
         type: string
-        default: "ghcr.io"
-        description: "Registry hostname (ghcr.io|…)"
-      build-context:
-        type: string
-        default: "."
-      dockerfile:
-        type: string
-        default: "Dockerfile"
-      tags:
-        type: string
-        default: "latest" # comma-separated list supported by buildx
-    secrets:
-      registry_username:
+        required: true
+        description: "Tag to deploy (typically commit SHA from build job)"
+      dry-run:
+        type: boolean
         required: false
-      registry_password:
+        default: false
+        description: "If true, don't push image / don't apply Helm"
+    secrets:
+      REGISTRY_USERNAME:
+        required: false
+      REGISTRY_PASSWORD:
+        required: false
+      KUBE_CONFIG:
         required: false
 
 jobs:
-  container:
+  deploy:
     runs-on: ubuntu-latest
+
+    # Bind this job to the target Environment in the caller repo.
+    # For prod, that Environment should require manual approval.
+    environment: ${{ inputs.environment }}
+
     permissions:
       contents: read
-      packages: write
-    env:
-      REGISTRY: ${{ inputs.registry }}
+      packages: write   # needed to push to ghcr.io
+      deployments: write
+
     steps:
-      - name: Checkout
+      # -------------------------------------------------
+      # 1. Checkout code of the calling repo
+      #    We need infra/helm/ to run the Helm upgrade.
+      # -------------------------------------------------
+      - name: Checkout service repo
         uses: actions/checkout@v4
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Normalize owner & image to lowercase (via bash), expose as outputs
-      - name: Normalize names
-        id: normenv
-        shell: bash
-        env:
-          IMAGE_IN: ${{ inputs['image-name'] }}
-        run: |
-          set -euo pipefail
-          # OWNER from default env var provided by Actions
-          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-          # Image name from input
-          img="${IMAGE_IN,,}"
-          echo "image_lc=${img}" >> "$GITHUB_OUTPUT"
-
-      # Login for GHCR using GITHUB_TOKEN
-      - name: Login (GHCR)
-        if: ${{ env.REGISTRY == 'ghcr.io' }}
-        uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
-      # Login for custom registry
-      - name: Login (custom registry)
-        if: ${{ env.REGISTRY != 'ghcr.io' }}
-        env:
-          REGISTRY: ${{ env.REGISTRY }}
-          REG_USER: ${{ secrets.registry_username }}
-          REG_PASS: ${{ secrets.registry_password }}
+      # -------------------------------------------------
+      # 2. Download the exact container image artifact
+      #    produced by ci-build.yml ("service-container-image")
+      # -------------------------------------------------
+      - name: Download built image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: service-container-image
+          path: ./ci_image
+
+      - name: Load container image tar
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${REG_USER:-}" ] && [ -n "${REG_PASS:-}" ]; then
-            echo "Logging into ${REGISTRY}"
-            echo "${REG_PASS}" | docker login "${REGISTRY}" -u "${REG_USER}" --password-stdin
-          else
-            echo "No custom registry credentials provided; skipping login."
+          docker load -i ./ci_image/image.tar
+          echo "Loaded image tar from build stage."
+
+      # -------------------------------------------------
+      # 3. Log in to registry
+      #    - For ghcr.io we can usually use GITHUB_TOKEN, but
+      #      we allow explicit username/password secrets for consistency.
+      # -------------------------------------------------
+      - name: Registry login
+        if: ${{ inputs.dry-run == false }}
+        shell: bash
+        env:
+          USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          PASSWORD: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ inputs.image-name }}
+        run: |
+          set -euo pipefail
+          REGISTRY_HOST=$(echo "$IMAGE" | cut -d/ -f1)
+          echo "$PASSWORD" | docker login "$REGISTRY_HOST" -u "$USERNAME" --password-stdin
+          echo "Logged in to $REGISTRY_HOST"
+
+      # -------------------------------------------------
+      # 4. Push the tagged image
+      #    We assume the loaded tar already contains `${image-name}:${tag}`
+      # -------------------------------------------------
+      - name: Push image
+        if: ${{ inputs.dry-run == false }}
+        shell: bash
+        env:
+          IMAGE: ${{ inputs.image-name }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE:$TAG"
+          echo "Pushed $IMAGE:$TAG"
+
+      # -------------------------------------------------
+      # 5. Prepare kubeconfig for Helm and roll out
+      #    We expect KUBE_CONFIG to be a kubeconfig string stored as a secret
+      #    on the caller repo's Environment (staging/prod).
+      # -------------------------------------------------
+      - name: Configure kube access
+        if: ${{ inputs.dry-run == false }}
+        shell: bash
+        env:
+          KCFG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          set -euo pipefail
+          mkdir -p $HOME/.kube
+          echo "$KCFG" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+          echo "Wrote kubeconfig."
+
+      # -------------------------------------------------
+      # 6. Helm upgrade the environment
+      #    We assume:
+      #      - helm chart lives in ./infra/helm
+      #      - env-specific values file lives in ./infra/helm/values/<env>.yaml
+      #    We override image repo/tag with --set.
+      # -------------------------------------------------
+      - name: Helm upgrade/apply
+        if: ${{ inputs.dry-run == false }}
+        shell: bash
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          IMAGE: ${{ inputs.image-name }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          # we tie release name + namespace to environment for clarity
+          RELEASE_NAME="${ENVIRONMENT}-release"
+          NAMESPACE="${ENVIRONMENT}"
+          VALUES_FILE="./infra/helm/values/${ENVIRONMENT}.yaml"
+
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "WARNING: values file $VALUES_FILE does not exist."
           fi
 
-      # Normalize tags (lowercase, trim, split commas → newline)
-      - name: Normalize tags
-        id: norm
+          helm upgrade --install "$RELEASE_NAME" ./infra/helm \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            ${VALUES_FILE:+-f "$VALUES_FILE"} \
+            --set image.repository="$IMAGE" \
+            --set image.tag="$TAG"
+
+          echo "Helm upgrade complete for $ENVIRONMENT."
+
+      # -------------------------------------------------
+      # 7. Generate audit record
+      #    We write a JSON summary of WHAT we deployed, WHERE, and WHEN.
+      #    This feeds BrikByteOS governance & traceability.
+      # -------------------------------------------------
+      - name: Generate deployment audit record
+        id: audit
         shell: bash
         env:
-          INPUT_TAGS: ${{ inputs.tags }}
+          IMAGE: ${{ inputs.image-name }}
+          TAG: ${{ inputs.tag }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          DRYRUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
-          T="$(printf '%s' "${INPUT_TAGS}" | tr '[:upper:]' '[:lower:]')"
-          T="$(printf '%s' "${T}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d')"
-          echo "list<<EOF" >> "$GITHUB_OUTPUT"
-          echo "${T}" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          DATE_DIR=$(date -u +"%Y-%m-%d")
 
-      - name: Build & Push
-        uses: docker/build-push-action@v6
+          mkdir -p .audit/"${ENVIRONMENT}"/"${DATE_DIR}"
+
+          cat > .audit/"${ENVIRONMENT}"/"${DATE_DIR}"/deploy.json <<EOF
+          {
+            "service": "${IMAGE}",
+            "tag": "${TAG}",
+            "environment": "${ENVIRONMENT}",
+            "dry_run": ${DRYRUN},
+            "timestamp_utc": "${TS}",
+            "commit_sha": "${GITHUB_SHA}",
+            "actor": "${GITHUB_ACTOR}",
+            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+
+          echo "Wrote audit file:"
+          cat .audit/"${ENVIRONMENT}"/"${DATE_DIR}"/deploy.json
+
+      # -------------------------------------------------
+      # 8. Upload audit JSON as an artifact so leadership /
+      #    compliance can download without having to clone.
+      # -------------------------------------------------
+      - name: Upload audit artifact
+        uses: actions/upload-artifact@v4
         with:
-          context: ${{ inputs['build-context'] }}
-          file: ${{ inputs.dockerfile }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.normenv.outputs.owner_lc }}/${{ steps.normenv.outputs.image_lc }}:${{ steps.norm.outputs.list }}
-          cache-from: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ steps.normenv.outputs.owner_lc }}/${{ steps.normenv.outputs.image_lc }}:cache
-          cache-to: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ steps.normenv.outputs.owner_lc }}/${{ steps.normenv.outputs.image_lc }}:cache,mode=max
-          provenance: true
+          name: deploy-audit-${{ inputs.environment }}
+          path: .audit/${{ inputs.environment }}/**
+          if-no-files-found: error
