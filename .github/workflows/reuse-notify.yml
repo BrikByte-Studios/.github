@@ -1,0 +1,60 @@
+name: reusable-ci-notify
+on:
+  workflow_call:
+    inputs:
+      status:
+        required: true
+        type: string
+        description: "success | failure | cancelled | degraded"
+      stage:
+        required: true
+        type: string
+        description: "build | test | deploy"
+      environment:
+        required: false
+        type: string
+        default: ""
+        description: "staging | prod (optional for build/test)"
+      service-name:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+      run-url:
+        required: false
+        type: string
+        default: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets:
+      ALERT_WEBHOOK_URL:
+        required: true
+
+jobs:
+  send-alert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Build message payload
+        id: payload
+        run: |
+          MSG_ENV="${{ inputs.environment }}"
+          if [ -z "$MSG_ENV" ]; then MSG_ENV="n/a"; fi
+
+          cat > body.json <<EOF
+          {
+            "service": "${{ inputs.service-name }}",
+            "stage":   "${{ inputs.stage }}",
+            "status":  "${{ inputs.status }}",
+            "env":     "${MSG_ENV}",
+            "tag":     "${{ inputs.tag }}",
+            "run_url": "${{ inputs.run-url }}"
+          }
+          EOF
+          cat body.json
+
+      - name: Send webhook
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d @body.json \
+            "${{ secrets.ALERT_WEBHOOK_URL }}"
