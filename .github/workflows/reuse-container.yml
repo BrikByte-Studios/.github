@@ -113,6 +113,13 @@ jobs:
           KCFG: ${{ secrets.KUBE_CONFIG }}
         run: |
           set -euo pipefail
+
+          if [ -z "${KCFG:-}" ]; then
+            echo "::error::KUBE_CONFIG is empty or missing for environment '${{ inputs.environment }}'."
+            echo "Add a secret named 'KUBE_CONFIG' to the '${{ inputs.environment }}' Environment in this repo (Settings → Environments)."
+            exit 1
+          fi
+
           mkdir -p $HOME/.kube
           echo "$KCFG" > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
