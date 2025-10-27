@@ -27,7 +27,7 @@ on:
         default: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
     secrets:
       ALERT_WEBHOOK_URL:
-        required: true
+        required: false    # <-- changed from true to false, don't have ALBERT_WEBHOOK yet
 
 jobs:
   send-alert:
@@ -52,7 +52,8 @@ jobs:
           EOF
           cat body.json
 
-      - name: Send webhook
+      - name: Send webhook (if configured)
+        if: ${{ secrets.ALERT_WEBHOOK_URL != '' }}
         run: |
           curl -X POST \
             -H "Content-Type: application/json" \
