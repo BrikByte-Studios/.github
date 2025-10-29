@@ -6,31 +6,34 @@ on:
       allow-major:
         type: boolean
         default: false
+        description: "Permit major bump (breaking changes). Default false."
       release-branch:
         type: string
         default: "main"
+        description: "Branch we consider authoritative for releases."
       version-file:
         type: string
         default: "VERSION"
+        description: "File in the caller repo that stores the current version (X.Y.Z)."
     secrets:
-      BOT_TOKEN:
-        required: true
-        description: "Fine-grained PAT with Contents RW + PRs RW"
+      GIT_PUSH_TOKEN:
+        required: false
+        description: "Optional PAT with perms to push tags/commits. Falls back to GITHUB_TOKEN."
 
 jobs:
   semver:
     name: calc-next-version-and-tag
     runs-on: ubuntu-latest
 
+    # Prevent racing two merges at once (scoped per repo)
     concurrency:
       group: ${{ github.repository }}-release-main
       cancel-in-progress: false
 
-    # These affect the ephemeral GITHUB_TOKEN; PAT still used explicitly below.
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: write         # push release/* branch with VERSION/CHANGELOG
+      pull-requests: write    # open/edit PRs
+      issues: write           # create/apply 'release' label
 
     outputs:
       version: ${{ steps.bump.outputs.version }}
@@ -38,26 +41,24 @@ jobs:
       changelog_fragment: ${{ steps.bump.outputs.changelog_fragment }}
 
     steps:
-      - name: Checkout full history (use PAT)
+      # -----------------------------------------
+      # 1) Checkout full history (need tags + logs)
+      # -----------------------------------------
+      - name: Checkout full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ inputs.release-branch }}
-          token: ${{ secrets.BOT_TOKEN }}
+          token: ${{ secrets.GIT_PUSH_TOKEN || github.token }}
 
-      - name: Configure git & gh with PAT
-        env:
-          BOT: ${{ secrets.BOT_TOKEN }}
-          REPO: ${{ github.repository }}
+      - name: Configure git identity
         run: |
-          set -euo pipefail
-          git config user.name  "brikbyte-bot"
+          git config user.name "brikbyte-bot"
           git config user.email "platform+bot@brikbyte.local"
-          # Ensure pushes (branches/tags) use PAT
-          git remote set-url origin "https://x-access-token:${BOT}@github.com/${REPO}.git"
-          # Auth for gh CLI
-          echo "${BOT}" | gh auth login --with-token
 
+      # -----------------------------------------
+      # 2) Detect last version tag (fallback v0.1.0)
+      # -----------------------------------------
       - name: Detect last tag
         id: lasttag
         shell: bash
@@ -69,7 +70,11 @@ jobs:
             LAST_TAG="v0.1.0"
           fi
           echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Last tag: $LAST_TAG"
 
+      # -----------------------------------------
+      # 3) Read current VERSION (fallback 0.1.0)
+      # -----------------------------------------
       - name: Read current VERSION
         id: curver
         shell: bash
@@ -81,7 +86,11 @@ jobs:
             CUR_VER="0.1.0"
           fi
           echo "cur_ver=$CUR_VER" >> "$GITHUB_OUTPUT"
+          echo "Current version file says: $CUR_VER"
 
+      # -----------------------------------------
+      # 4) Classify commits since last tag
+      # -----------------------------------------
       - name: Analyze commit messages
         id: classify
         shell: bash
@@ -89,6 +98,9 @@ jobs:
           set -euo pipefail
           LAST_TAG="${{ steps.lasttag.outputs.last_tag }}"
           COMMITS=$(git log --pretty=format:'%H%x09%s%x09%b' ${LAST_TAG}..HEAD || true)
+
+          echo "Commits since $LAST_TAG:"
+          echo "$COMMITS"
 
           HAS_BREAKING="false"; HAS_FEAT="false"; HAS_PATCH="false"
           ADDED=""; FIXED=""; BREAKING_NOTES=""
@@ -98,14 +110,20 @@ jobs:
             SUBJECT_LC=$(echo "$SUBJECT" | tr '[:upper:]' '[:lower:]')
             BODY_LC=$(echo "$BODY" | tr '[:upper:]' '[:lower:]')
 
+            # breaking: type! or BREAKING CHANGE footer
             if echo "$SUBJECT_LC" | grep -qE '!:|!$'; then HAS_BREAKING="true"; fi
             if echo "$BODY_LC"    | grep -q 'breaking change'; then HAS_BREAKING="true"; fi
+
+            # minor: feat
             if echo "$SUBJECT_LC" | grep -qE '^feat(\(|:)\s?'; then
               HAS_FEAT="true"; ADDED="${ADDED}- ${SUBJECT}\n"
             fi
+
+            # patch: fix/perf/refactor/chore/bugfix
             if echo "$SUBJECT_LC" | grep -qE '^(fix|perf|refactor|chore|bugfix)(\(|:)\s?'; then
               HAS_PATCH="true"; FIXED="${FIXED}- ${SUBJECT}\n"
             fi
+
             if echo "$SUBJECT_LC$BODY_LC" | grep -q 'breaking change'; then
               BREAKING_NOTES="${BREAKING_NOTES}- ${SUBJECT}\n"
             fi
@@ -119,25 +137,39 @@ jobs:
           printf "%b" "$FIXED"          > .changelog_fixed.txt
           printf "%b" "$BREAKING_NOTES" > .changelog_breaking.txt
 
-      - name: Ensure 'release' label exists (via PAT)
+      # -----------------------------------------
+      # 5) Ensure 'release' label exists (idempotent)
+      # -----------------------------------------
+      - name: Ensure 'release' label exists
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if ! gh label list --limit 200 --json name -q '.[] | select(.name=="release")' | grep -q release; then
             gh label create "release" --color "0366d6" --description "Automated release PRs" || true
           fi
 
-      - name: Bump version, update changelog, open release PR (via PAT)
+      - name: Verify gh CLI
+        run: gh --version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # -----------------------------------------
+      # 6) Bump version, update changelog, open PR
+      #    (No tag push here; tag after PR merge)
+      # -----------------------------------------
+      - name: Bump version, update changelog, open release PR
         id: bump
         shell: bash
         env:
           ALLOW_MAJOR: ${{ inputs.allow-major }}
           VERSION_FILE: ${{ inputs.version-file }}
           REL_BRANCH: ${{ inputs.release-branch }}
-          GH_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+
           CUR_VER="${{ steps.curver.outputs.cur_ver }}"
           HAS_BREAKING="${{ steps.classify.outputs.has_breaking }}"
           HAS_FEAT="${{ steps.classify.outputs.has_feat }}"
@@ -169,17 +201,27 @@ jobs:
           NEXT_TAG="v${NEXT_VER}"
           DATE_UTC=$(date -u +"%Y-%m-%d")
 
+          echo "Decided bump: $BUMP_TYPE => ${NEXT_TAG}"
+
           ADDED=$(cat .changelog_added.txt || true)
           FIXED=$(cat .changelog_fixed.txt || true)
           BREAKING_NOTES=$(cat .changelog_breaking.txt || true)
 
           CHANGELOG_FRAGMENT="## ${NEXT_TAG} - ${DATE_UTC}\n"
-          [ -n "$ADDED" ] && CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Added\n${ADDED}\n"
-          [ -n "$FIXED" ] && CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Fixed\n${FIXED}\n"
-          [ -n "$BREAKING_NOTES" ] && CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Breaking\n${BREAKING_NOTES}\n"
+          if [ -n "$ADDED" ]; then
+            CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Added\n${ADDED}\n"
+          fi
+          if [ -n "$FIXED" ]; then
+            CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Fixed\n${FIXED}\n"
+          fi
+          if [ -n "$BREAKING_NOTES" ]; then
+            CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Breaking\n${BREAKING_NOTES}\n"
+          fi
 
+          # 1) update VERSION
           echo "${NEXT_VER}" > "$VERSION_FILE"
 
+          # 2) prepend changelog block
           if [ -f CHANGELOG.md ]; then
             (printf "%b\n\n" "$CHANGELOG_FRAGMENT"; cat CHANGELOG.md) > CHANGELOG.new
             mv CHANGELOG.new CHANGELOG.md
@@ -190,17 +232,21 @@ jobs:
           git add "$VERSION_FILE" CHANGELOG.md
           git commit -m "chore(release): ${NEXT_TAG}"
 
+          # 3) create/update release branch
           REL_BRANCH_CANDIDATE="release/${NEXT_TAG}"
           git branch -f "$REL_BRANCH_CANDIDATE" HEAD
           git push -fu origin "$REL_BRANCH_CANDIDATE"
 
+          # 4) create or update PR (then add label, best-effort)
           printf "%b" "$CHANGELOG_FRAGMENT" > .release-notes-fragment.md
 
           if gh pr view "$REL_BRANCH_CANDIDATE" >/dev/null 2>&1; then
+            echo "PR already exists for $REL_BRANCH_CANDIDATE → updating"
             gh pr edit "$REL_BRANCH_CANDIDATE" \
               --title "chore(release): ${NEXT_TAG}" \
               --body-file .release-notes-fragment.md
           else
+            echo "Creating PR $REL_BRANCH_CANDIDATE → $REL_BRANCH"
             gh pr create \
               --head "$REL_BRANCH_CANDIDATE" \
               --base "$REL_BRANCH" \
@@ -208,8 +254,10 @@ jobs:
               --body-file .release-notes-fragment.md
           fi
 
-          gh pr edit "$REL_BRANCH_CANDIDATE" --add-label "release" || true
+          # add label (non-fatal)
+          gh pr edit "$REL_BRANCH_CANDIDATE" --add-label "release" || echo "Warn: could not add 'release' label"
 
+          # outputs
           printf "%s" "$CHANGELOG_FRAGMENT" | sed ':a;N;$!ba;s/\n/\\n/g' > .frag.out
           echo "version=${NEXT_VER}"           >> "$GITHUB_OUTPUT"
           echo "tag=${NEXT_TAG}"               >> "$GITHUB_OUTPUT"
