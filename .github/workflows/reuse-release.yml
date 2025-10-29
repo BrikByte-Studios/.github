@@ -24,15 +24,14 @@ on:
         required: false
         default: ""
         description: "Escaped newline changelog text from semver.yml"
-    secrets:
-      GITHUB_TOKEN:
-        required: true
 
 jobs:
   publish-release:
     name: publish-github-release
     runs-on: ubuntu-latest
 
+    # This job needs to be able to create/edit a GitHub Release and upload assets.
+    # The CALLER must allow this by setting permissions.contents: write.
     permissions:
       contents: write   # needed to create/edit releases
 
