@@ -165,6 +165,14 @@ jobs:
           printf "%b" "$FIXED"          > .changelog_fixed.txt
           printf "%b" "$BREAKING_NOTES" > .changelog_breaking.txt
 
+      # new: prove gh is present before we rely on it
+      - name: Verify gh CLI
+        run: gh --version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GH_TOKEN here is enough for `gh --version` (it doesn't hit API),
+          # but we set it anyway out of habit.
+          
       # -----------------------------------------
       # 6. Decide bump type
       #    Priority: breaking > feat > patch > fallback patch
