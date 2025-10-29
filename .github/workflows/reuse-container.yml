@@ -52,8 +52,10 @@ jobs:
           fetch-depth: 0
 
       # -------------------------------------------------
-      # 2. Download the exact container image artifact
-      #    produced by ci-build.yml ("service-container-image")
+      # 2. Download artifacts from ci-build:
+      #    - service-container-image (image.tar from build job)
+      #    - build-metrics (build-metrics.json from build job)
+      #    We will embed build-metrics.json in the audit record.
       # -------------------------------------------------
       - name: Download built image artifact
         uses: actions/download-artifact@v4
@@ -61,12 +63,30 @@ jobs:
           name: service-container-image
           path: ./ci_image
 
+      - name: Download build metrics
+        uses: actions/download-artifact@v4
+        with:
+          name: build-metrics
+          path: ./ci_metrics
+
+      # -------------------------------------------------
+      # 3. Load the exact prebuilt image tar
+      #    We DO NOT rebuild. Deterministic promotion.
+      #    We ensure it has the correct final tag.
+      # -------------------------------------------------
       - name: Load container image tar
         shell: bash
+        env:
+          IMAGE: ${{ inputs.image-name }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           docker load -i ./ci_image/image.tar
-          echo "Loaded image tar from build stage."
+
+          # Re-tag explicitly in case the tar didn't embed exactly $IMAGE:$TAG
+          docker tag "$IMAGE:$TAG" "$IMAGE:$TAG" || true
+
+          echo "Loaded and tagged $IMAGE:$TAG from build artifact."
 
       # -------------------------------------------------
       # 3. Log in to registry
@@ -87,8 +107,8 @@ jobs:
           echo "Logged in to $REGISTRY_HOST"
 
       # -------------------------------------------------
-      # 4. Push the tagged image
-      #    We assume the loaded tar already contains `${image-name}:${tag}`
+      # 5. Push the prebuilt image to the registry
+      #    No rebuild here — this is the same image tested in CI.
       # -------------------------------------------------
       - name: Push image
         if: ${{ inputs.dry-run == false }}
@@ -102,9 +122,8 @@ jobs:
           echo "Pushed $IMAGE:$TAG"
 
       # -------------------------------------------------
-      # 5. Prepare kubeconfig for Helm and roll out
-      #    We expect KUBE_CONFIG to be a kubeconfig string stored as a secret
-      #    on the caller repo's Environment (staging/prod).
+      # 6. Prepare kubeconfig for Helm rollout
+      #    We expect KUBE_CONFIG as an env-scoped secret on the target environment.
       # -------------------------------------------------
       - name: Configure kube access
         if: ${{ inputs.dry-run == false }}
@@ -126,11 +145,13 @@ jobs:
           echo "Wrote kubeconfig."
 
       # -------------------------------------------------
-      # 6. Helm upgrade the environment
-      #    We assume:
-      #      - helm chart lives in ./infra/helm
-      #      - env-specific values file lives in ./infra/helm/values/<env>.yaml
-      #    We override image repo/tag with --set.
+      # 7. Helm upgrade the environment
+      #    Assumptions:
+      #      - Helm chart: ./infra/helm
+      #      - Env values: ./infra/helm/values/<env>.yaml
+      #      - Release name == "<env>-release"
+      #      - Namespace == "<env>"
+      #    We override the image repo/tag so this exact build goes live.
       # -------------------------------------------------
       - name: Helm upgrade/apply
         if: ${{ inputs.dry-run == false }}
@@ -160,9 +181,14 @@ jobs:
           echo "Helm upgrade complete for $ENVIRONMENT."
 
       # -------------------------------------------------
-      # 7. Generate audit record
-      #    We write a JSON summary of WHAT we deployed, WHERE, and WHEN.
-      #    This feeds BrikByteOS governance & traceability.
+      # 8. Generate deployment audit record
+      #    We embed:
+      #      - service, tag, environment
+      #      - timestamp, commit, actor, run URL
+      #      - build_metrics.json contents (duration, cache info)
+      #
+      #    This goes to .audit/<env>/<YYYY-MM-DD>/deploy.json
+      #    and will be uploaded as an artifact.
       # -------------------------------------------------
       - name: Generate deployment audit record
         id: audit
@@ -174,10 +200,19 @@ jobs:
           DRYRUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
+
           TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           DATE_DIR=$(date -u +"%Y-%m-%d")
 
           mkdir -p .audit/"${ENVIRONMENT}"/"${DATE_DIR}"
+
+          # read build metrics JSON from the artifact we downloaded above
+          BUILD_METRICS_PATH="./ci_metrics/build-metrics.json"
+          if [ -f "$BUILD_METRICS_PATH" ]; then
+            BUILD_JSON=$(cat "$BUILD_METRICS_PATH")
+          else
+            BUILD_JSON="{}"
+          fi
 
           cat > .audit/"${ENVIRONMENT}"/"${DATE_DIR}"/deploy.json <<EOF
           {
@@ -188,18 +223,20 @@ jobs:
             "timestamp_utc": "${TS}",
             "commit_sha": "${GITHUB_SHA}",
             "actor": "${GITHUB_ACTOR}",
-            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "build_metrics": ${BUILD_JSON}
           }
           EOF
 
-          echo "Wrote audit file:"
+          echo "Generated .audit/${ENVIRONMENT}/${DATE_DIR}/deploy.json:"
           cat .audit/"${ENVIRONMENT}"/"${DATE_DIR}"/deploy.json
 
       # -------------------------------------------------
-      # 8. Upload audit JSON as an artifact so leadership /
-      #    compliance can download without having to clone.
+      # 9. Upload audit JSON so platform / compliance
+      #    can grab it without cloning the repo.
+      #    The artifact name is env-scoped for clarity.
       # -------------------------------------------------
-      - name: Upload audit artifact
+      - name: Upload deployment audit artifact
         uses: actions/upload-artifact@v4
         with:
           name: deploy-audit-${{ inputs.environment }}
