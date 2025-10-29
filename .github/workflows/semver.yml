@@ -172,7 +172,7 @@ jobs:
       #      - if breaking && allow-major=false -> we DO NOT publish major.
       #        We'll stop and require manual override from platform.
       # -----------------------------------------
-      - name: Bump version, update changelog, push tag
+      - name: Bump version, update changelog, open release PR
         id: bump
         shell: bash
         env:
@@ -181,6 +181,7 @@ jobs:
           REL_BRANCH: ${{ inputs.release-branch }}
         run: |
           set -euo pipefail
+
           CUR_VER="${{ steps.curver.outputs.cur_ver }}"
           HAS_BREAKING="${{ steps.classify.outputs.has_breaking }}"
           HAS_FEAT="${{ steps.classify.outputs.has_feat }}"
@@ -190,7 +191,7 @@ jobs:
           MINOR=$(echo "$CUR_VER" | cut -d. -f2)
           PATCH=$(echo "$CUR_VER" | cut -d. -f3)
 
-          # Priority: breaking > feat > patch
+          # Decide bump type
           if [ "$HAS_BREAKING" = "true" ]; then
             if [ "$ALLOW_MAJOR" = "true" ]; then
               MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
@@ -231,10 +232,10 @@ jobs:
             CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Breaking\n${BREAKING_NOTES}\n"
           fi
 
-          # Update VERSION
+          # 1. Update VERSION
           echo "${NEXT_VER}" > "$VERSION_FILE"
 
-          # Prepend changelog block
+          # 2. Prepend changelog block locally
           if [ -f CHANGELOG.md ]; then
             (printf "%b\n\n" "$CHANGELOG_FRAGMENT"; cat CHANGELOG.md) > CHANGELOG.new
             mv CHANGELOG.new CHANGELOG.md
@@ -242,20 +243,44 @@ jobs:
             printf "%b\n" "$CHANGELOG_FRAGMENT" > CHANGELOG.md
           fi
 
-          # Commit VERSION + CHANGELOG
           git add "$VERSION_FILE" CHANGELOG.md
           git commit -m "chore(release): ${NEXT_TAG}"
 
-          # Push back to release branch (main)
-          git push origin HEAD:"$REL_BRANCH"
+          # 3. Prepare release branch (instead of pushing to protected main)
+          REL_BRANCH_CANDIDATE="release/${NEXT_TAG}"
 
-          # Tag + push tag
-          git tag -a "${NEXT_TAG}" -m "Release ${NEXT_TAG}"
-          git push origin "${NEXT_TAG}"
+          # Create (or reset) the release branch locally from current HEAD
+          git branch -f "$REL_BRANCH_CANDIDATE" HEAD
+          git push -fu origin "$REL_BRANCH_CANDIDATE"
 
-          # Expose outputs for downstream workflow_call
+          # 4. Open or update a PR back into main with gh CLI
+          #    NOTE: GITHUB_TOKEN needs `pull-requests: write` and `contents: write`
+          printf "%b" "$CHANGELOG_FRAGMENT" > .release-notes-fragment.md
+
+          # Try to view existing PR for this branch. If exists, update; else create.
+          if gh pr view "$REL_BRANCH_CANDIDATE" >/dev/null 2>&1; then
+            echo "PR already exists for $REL_BRANCH_CANDIDATE → updating body/title"
+            gh pr edit "$REL_BRANCH_CANDIDATE" \
+              --title "chore(release): ${NEXT_TAG}" \
+              --body-file .release-notes-fragment.md
+          else
+            echo "Creating PR $REL_BRANCH_CANDIDATE → $REL_BRANCH"
+            gh pr create \
+              --head "$REL_BRANCH_CANDIDATE" \
+              --base "$REL_BRANCH" \
+              --title "chore(release): ${NEXT_TAG}" \
+              --body-file .release-notes-fragment.md \
+              --label "release"
+          fi
+
+          #
+          # IMPORTANT: We DO NOT push the git tag yet.
+          # The tag should only exist after VERSION + CHANGELOG.md land in main.
+          # We'll emit NEXT_TAG so downstream knows what we're *planning* to tag.
+          #
+
+          # Emit outputs for downstream workflow_call
           printf "%s" "$CHANGELOG_FRAGMENT" | sed ':a;N;$!ba;s/\n/\\n/g' > .frag.out
           echo "version=${NEXT_VER}" >> $GITHUB_OUTPUT
-          
           echo "tag=${NEXT_TAG}" >> $GITHUB_OUTPUT
           echo "changelog_fragment=$(cat .frag.out)" >> $GITHUB_OUTPUT
