@@ -172,7 +172,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GH_TOKEN here is enough for `gh --version` (it doesn't hit API),
           # but we set it anyway out of habit.
-          
+
       # -----------------------------------------
       # 6. Decide bump type
       #    Priority: breaking > feat > patch > fallback patch
@@ -187,6 +187,9 @@ jobs:
           ALLOW_MAJOR: ${{ inputs.allow-major }}
           VERSION_FILE: ${{ inputs.version-file }}
           REL_BRANCH: ${{ inputs.release-branch }}
+
+          # give gh an auth token here
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -199,7 +202,7 @@ jobs:
           MINOR=$(echo "$CUR_VER" | cut -d. -f2)
           PATCH=$(echo "$CUR_VER" | cut -d. -f3)
 
-          # Decide bump type
+          # bump order: breaking > feat > patch > default patch
           if [ "$HAS_BREAKING" = "true" ]; then
             if [ "$ALLOW_MAJOR" = "true" ]; then
               MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
@@ -240,10 +243,10 @@ jobs:
             CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Breaking\n${BREAKING_NOTES}\n"
           fi
 
-          # 1. Update VERSION
+          # 1. update VERSION
           echo "${NEXT_VER}" > "$VERSION_FILE"
 
-          # 2. Prepend changelog block locally
+          # 2. prepend changelog block
           if [ -f CHANGELOG.md ]; then
             (printf "%b\n\n" "$CHANGELOG_FRAGMENT"; cat CHANGELOG.md) > CHANGELOG.new
             mv CHANGELOG.new CHANGELOG.md
@@ -254,20 +257,16 @@ jobs:
           git add "$VERSION_FILE" CHANGELOG.md
           git commit -m "chore(release): ${NEXT_TAG}"
 
-          # 3. Prepare release branch (instead of pushing to protected main)
+          # 3. create / update release branch
           REL_BRANCH_CANDIDATE="release/${NEXT_TAG}"
-
-          # Create (or reset) the release branch locally from current HEAD
           git branch -f "$REL_BRANCH_CANDIDATE" HEAD
           git push -fu origin "$REL_BRANCH_CANDIDATE"
 
-          # 4. Open or update a PR back into main with gh CLI
-          #    NOTE: GITHUB_TOKEN needs `pull-requests: write` and `contents: write`
+          # 4. create or update PR via gh (now authenticated via GH_TOKEN)
           printf "%b" "$CHANGELOG_FRAGMENT" > .release-notes-fragment.md
 
-          # Try to view existing PR for this branch. If exists, update; else create.
           if gh pr view "$REL_BRANCH_CANDIDATE" >/dev/null 2>&1; then
-            echo "PR already exists for $REL_BRANCH_CANDIDATE → updating body/title"
+            echo "PR already exists for $REL_BRANCH_CANDIDATE → updating"
             gh pr edit "$REL_BRANCH_CANDIDATE" \
               --title "chore(release): ${NEXT_TAG}" \
               --body-file .release-notes-fragment.md
@@ -281,13 +280,10 @@ jobs:
               --label "release"
           fi
 
-          #
-          # IMPORTANT: We DO NOT push the git tag yet.
-          # The tag should only exist after VERSION + CHANGELOG.md land in main.
-          # We'll emit NEXT_TAG so downstream knows what we're *planning* to tag.
-          #
+          # IMPORTANT:
+          # No tag push here. Tag & GitHub Release happens after this PR merges to main.
 
-          # Emit outputs for downstream workflow_call
+          # Emit reusable-workflow outputs
           printf "%s" "$CHANGELOG_FRAGMENT" | sed ':a;N;$!ba;s/\n/\\n/g' > .frag.out
           echo "version=${NEXT_VER}" >> $GITHUB_OUTPUT
           echo "tag=${NEXT_TAG}" >> $GITHUB_OUTPUT
