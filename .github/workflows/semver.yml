@@ -1,0 +1,261 @@
+name: Reuse • Semantic Version & Tag
+
+on:
+  workflow_call:
+    inputs:
+      allow-major:
+        type: boolean
+        default: false
+        description: "Permit major bump (breaking changes). Default false."
+      release-branch:
+        type: string
+        default: "main"
+        description: "Branch we consider authoritative for releases."
+      version-file:
+        type: string
+        default: "VERSION"
+        description: "File in the caller repo that stores the current version (X.Y.Z)."
+    secrets:
+      GIT_PUSH_TOKEN:
+        required: false
+        description: "Optional PAT with perms to push tags/commits. Falls back to GITHUB_TOKEN."
+
+jobs:
+  semver:
+    name: calc-next-version-and-tag
+    runs-on: ubuntu-latest
+
+    # Prevent racing two merges at once
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
+
+    permissions:
+      contents: write       # so we can push changelog/version + tags
+      pull-requests: write  # optional future: open gated PRs for MAJOR
+
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      changelog_fragment: ${{ steps.bump.outputs.changelog_fragment }}
+
+    steps:
+      # -----------------------------------------
+      # 1. Checkout full history because we need tags + commit logs
+      # -----------------------------------------
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release-branch }}
+          token: ${{ secrets.GIT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # 2. Configure git identity for commits & tag pushes.
+      - name: Configure git identity
+        run: |
+          git config user.name "brikbyte-bot"
+          git config user.email "platform+bot@brikbyte.local"
+
+      # -----------------------------------------
+      # 3. Find last version tag (vX.Y.Z)
+      #    Fallback to 0.1.0 if none.
+      # -----------------------------------------
+      - name: Detect last tag
+        id: lasttag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            LAST_TAG=$(git describe --tags --abbrev=0)
+          else
+            LAST_TAG="v0.1.0"
+          fi
+          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          echo "Last tag: $LAST_TAG"
+
+      # -----------------------------------------
+      # 4. Read current version file (if present)
+      #    We'll update it later.
+      # -----------------------------------------
+      - name: Read current VERSION
+        id: curver
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "${{ inputs.version-file }}" ]; then
+            CUR_VER=$(cat "${{ inputs.version-file }}" | tr -d '[:space:]')
+          else
+            CUR_VER="0.1.0"
+          fi
+          echo "cur_ver=$CUR_VER" >> $GITHUB_OUTPUT
+          echo "Current version file says: $CUR_VER"
+
+      # -----------------------------------------
+      # 5. Collect commits since LAST_TAG
+      #    We'll categorize them into:
+      #    - breaking
+      #    - features
+      #    - fixes/patches
+      #    Notes:
+      #    - Conventional Commits assumed.
+      #    - 'feat!' or 'type(scope)!:' or 'BREAKING CHANGE:' => major
+      #    - 'feat' => minor
+      #    - 'fix'/'perf'/'refactor'/'chore(deps)' => patch
+      # -----------------------------------------
+      - name: Analyze commit messages
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LAST_TAG="${{ steps.lasttag.outputs.last_tag }}"
+
+          # pull all commits since last tag on this branch
+          COMMITS=$(git log --pretty=format:'%H%x09%s%x09%b' ${LAST_TAG}..HEAD || true)
+
+          echo "Commits since $LAST_TAG:"
+          echo "$COMMITS"
+
+          HAS_BREAKING="false"
+          HAS_FEAT="false"
+          HAS_PATCH="false"
+
+          ADDED=""
+          FIXED=""
+          BREAKING_NOTES=""
+
+          while IFS=$'\t' read -r SHA SUBJECT BODY; do
+            [ -z "$SHA" ] && continue
+
+            SUBJECT_LC=$(echo "$SUBJECT" | tr '[:upper:]' '[:lower:]')
+            BODY_LC=$(echo "$BODY" | tr '[:upper:]' '[:lower:]')
+
+            # Breaking if '!' on the type/scope or body has "BREAKING CHANGE:"
+            if echo "$SUBJECT_LC" | grep -qE '!:|!$'; then
+              HAS_BREAKING="true"
+            fi
+            if echo "$BODY_LC" | grep -q 'breaking change'; then
+              HAS_BREAKING="true"
+            fi
+
+            # Feature => minor bump
+            if echo "$SUBJECT_LC" | grep -qE '^feat(\(|:)\s?'; then
+              HAS_FEAT="true"
+              ADDED="${ADDED}- ${SUBJECT}\n"
+            fi
+
+            # Fix / perf / refactor / chore(deps) => patch bump
+            if echo "$SUBJECT_LC" | grep -qE '^(fix|perf|refactor|chore|bugfix)(\(|:)\s?'; then
+              HAS_PATCH="true"
+              FIXED="${FIXED}- ${SUBJECT}\n"
+            fi
+
+            # Capture explicit breaking notes
+            if echo "$SUBJECT_LC$BODY_LC" | grep -q 'breaking change'; then
+              BREAKING_NOTES="${BREAKING_NOTES}- ${SUBJECT}\n"
+            fi
+          done <<< "$COMMITS"
+
+          echo "has_breaking=$HAS_BREAKING" >> $GITHUB_OUTPUT
+          echo "has_feat=$HAS_FEAT" >> $GITHUB_OUTPUT
+          echo "has_patch=$HAS_PATCH" >> $GITHUB_OUTPUT
+
+          # Write summaries to temp files for changelog generation
+          printf "%b" "$ADDED"          > .changelog_added.txt
+          printf "%b" "$FIXED"          > .changelog_fixed.txt
+          printf "%b" "$BREAKING_NOTES" > .changelog_breaking.txt
+
+      # -----------------------------------------
+      # 6. Decide bump type
+      #    Priority: breaking > feat > patch > fallback patch
+      #    Governance:
+      #      - if breaking && allow-major=false -> we DO NOT publish major.
+      #        We'll stop and require manual override from platform.
+      # -----------------------------------------
+      - name: Bump version, update changelog, push tag
+        id: bump
+        shell: bash
+        env:
+          ALLOW_MAJOR: ${{ inputs.allow-major }}
+          VERSION_FILE: ${{ inputs.version-file }}
+          REL_BRANCH: ${{ inputs.release-branch }}
+        run: |
+          set -euo pipefail
+          CUR_VER="${{ steps.curver.outputs.cur_ver }}"
+          HAS_BREAKING="${{ steps.classify.outputs.has_breaking }}"
+          HAS_FEAT="${{ steps.classify.outputs.has_feat }}"
+          HAS_PATCH="${{ steps.classify.outputs.has_patch }}"
+
+          MAJOR=$(echo "$CUR_VER" | cut -d. -f1)
+          MINOR=$(echo "$CUR_VER" | cut -d. -f2)
+          PATCH=$(echo "$CUR_VER" | cut -d. -f3)
+
+          # Priority: breaking > feat > patch
+          if [ "$HAS_BREAKING" = "true" ]; then
+            if [ "$ALLOW_MAJOR" = "true" ]; then
+              MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
+              BUMP_TYPE="major"
+            else
+              echo "::error::Breaking changes detected but allow-major=false. Stop."
+              echo "version=BLOCKED_MAJOR" >> $GITHUB_OUTPUT
+              echo "tag=BLOCKED_MAJOR" >> $GITHUB_OUTPUT
+              echo "changelog_fragment=" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          elif [ "$HAS_FEAT" = "true" ]; then
+            MINOR=$((MINOR+1)); PATCH=0; BUMP_TYPE="minor"
+          elif [ "$HAS_PATCH" = "true" ]; then
+            PATCH=$((PATCH+1)); BUMP_TYPE="patch"
+          else
+            PATCH=$((PATCH+1)); BUMP_TYPE="patch"
+          fi
+
+          NEXT_VER="${MAJOR}.${MINOR}.${PATCH}"
+          NEXT_TAG="v${NEXT_VER}"
+          DATE_UTC=$(date -u +"%Y-%m-%d")
+
+          echo "Decided bump: $BUMP_TYPE => ${NEXT_TAG}"
+
+          ADDED=$(cat .changelog_added.txt || true)
+          FIXED=$(cat .changelog_fixed.txt || true)
+          BREAKING_NOTES=$(cat .changelog_breaking.txt || true)
+
+          CHANGELOG_FRAGMENT="## ${NEXT_TAG} - ${DATE_UTC}\n"
+          if [ -n "$ADDED" ]; then
+            CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Added\n${ADDED}\n"
+          fi
+          if [ -n "$FIXED" ]; then
+            CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Fixed\n${FIXED}\n"
+          fi
+          if [ -n "$BREAKING_NOTES" ]; then
+            CHANGELOG_FRAGMENT="${CHANGELOG_FRAGMENT}### Breaking\n${BREAKING_NOTES}\n"
+          fi
+
+          # Update VERSION
+          echo "${NEXT_VER}" > "$VERSION_FILE"
+
+          # Prepend changelog block
+          if [ -f CHANGELOG.md ]; then
+            (printf "%b\n\n" "$CHANGELOG_FRAGMENT"; cat CHANGELOG.md) > CHANGELOG.new
+            mv CHANGELOG.new CHANGELOG.md
+          else
+            printf "%b\n" "$CHANGELOG_FRAGMENT" > CHANGELOG.md
+          fi
+
+          # Commit VERSION + CHANGELOG
+          git add "$VERSION_FILE" CHANGELOG.md
+          git commit -m "chore(release): ${NEXT_TAG}"
+
+          # Push back to release branch (main)
+          git push origin HEAD:"$REL_BRANCH"
+
+          # Tag + push tag
+          git tag -a "${NEXT_TAG}" -m "Release ${NEXT_TAG}"
+          git push origin "${NEXT_TAG}"
+
+          # Expose outputs for downstream workflow_call
+          printf "%s" "$CHANGELOG_FRAGMENT" | sed ':a;N;$!ba;s/\n/\\n/g' > .frag.out
+          echo "version=${NEXT_VER}" >> $GITHUB_OUTPUT
+          
+          echo "tag=${NEXT_TAG}" >> $GITHUB_OUTPUT
+          echo "changelog_fragment=$(cat .frag.out)" >> $GITHUB_OUTPUT

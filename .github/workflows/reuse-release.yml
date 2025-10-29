@@ -1,59 +1,114 @@
-name: Reuse - Release
+name: Reuse • Publish Release
 
 on:
   workflow_call:
     inputs:
+      version:
+        type: string
+        required: true
+        description: "e.g. 0.2.0"
       tag:
         type: string
         required: true
-        description: "Release tag (e.g. v1.2.3)"
-      changelog:
-        type: boolean
-        default: true
-        description: "Generate GitHub Release notes via GH API"
-      registry:
+        description: "e.g. v0.2.0"
+      artifact-build-name:
         type: string
-        default: "ghcr"
-        description: "Reserved for future use: ghcr|acr|ecr"
-    secrets:
-      token:
+        default: "service-build-artifacts"
+        description: "Artifact name for dist bundle / compiled output"
+      artifact-image-name:
+        type: string
+        default: "service-container-image"
+        description: "Artifact name for container image tar"
+      changelog-fragment:
+        type: string
         required: false
-        description: "Optional PAT; defaults to GITHUB_TOKEN"
+        default: ""
+        description: "Escaped newline changelog text from semver.yml"
+    secrets:
+      GITHUB_TOKEN:
+        required: true
 
 jobs:
-  release:
+  publish-release:
+    name: publish-github-release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # needed to create tags and releases
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Create tag (idempotent) and push
-        env:
-          GITHUB_TOKEN: ${{ secrets.token != '' && secrets.token || secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write   # needed to create/edit releases
+
+    steps:
+      - name: Checkout (optional for context)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 1. Download build artifacts that CI produced earlier
+      - name: Download service build bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-build-name }}
+          path: ./release_artifacts/dist
+
+      - name: Download service container image tar
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-image-name }}
+          path: ./release_artifacts/image
+
+      # 2. Rehydrate release notes body from changelog_fragment
+      - name: Build release body
+        id: body
         shell: bash
         run: |
           set -euo pipefail
+          FRAG="${{ inputs.changelog-fragment }}"
+          if [ -z "$FRAG" ]; then
+            FRAG="Release ${{ inputs.tag }}"
+          fi
+          printf "%b" "${FRAG//\\n/$'\n'}" > release_notes.md
+
+          echo "release_body<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 3. Ensure GitHub CLI is available (runner typically already has `gh`)
+      - name: Verify gh
+        run: gh --version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4. Create or update the GitHub Release and upload assets
+      - name: Create/Update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
           TAG="${{ inputs.tag }}"
+          TITLE="Release ${TAG}"
+          BODY_FILE="release_notes.md"
 
-          # ensure we are on default branch ref
-          git fetch --tags --force
-
-          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists; skipping creation."
+          # If release exists, update it. Otherwise create new.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists → updating notes"
+            gh release edit "$TAG" --notes-file "$BODY_FILE" --title "$TITLE"
           else
-            git tag -a "$TAG" -m "Release $TAG"
-            git push origin "$TAG"
+            echo "Creating release $TAG"
+            gh release create "$TAG" --notes-file "$BODY_FILE" --title "$TITLE"
           fi
 
-      - name: Generate GitHub Release (auto-notes)
-        if: ${{ inputs.changelog }}
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.token != '' && secrets.token || secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ inputs.tag }}
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+          # Upload artifacts (dist bundle, image tar, SBOM if present)
+          if [ -d release_artifacts/dist ]; then
+            for f in release_artifacts/dist/*; do
+              [ -e "$f" ] || continue
+              gh release upload "$TAG" "$f" --clobber
+            done
+          fi
+
+          if [ -d release_artifacts/image ]; then
+            for f in release_artifacts/image/*; do
+              [ -e "$f" ] || continue
+              gh release upload "$TAG" "$f" --clobber
+            done
+          fi
