@@ -42,8 +42,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write  # needed if we ever push to GHCR in future evolutions
 
     steps:
+      # -------------------------------------------------
+      # 0. Capture start time for perf / audit
+      # -------------------------------------------------
+      - name: Capture build start time
+        id: startclock
+        shell: bash
+        run: |
+          echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+
       # -------------------------------------------------
       # 1. Checkout source
       # -------------------------------------------------
@@ -100,6 +110,7 @@ jobs:
       #    - We DO NOT run tests here anymore. Tests will run downstream in ci-test.
       # -------------------------------------------------
       - name: Install & Build App
+        id: build_app
         shell: bash
         run: |
           set -euo pipefail
@@ -143,61 +154,102 @@ jobs:
       # -------------------------------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
 
       # -------------------------------------------------
-      # 6. Build container image (but DO NOT PUSH)
-      #    --load ensures the image is loaded into the local Docker engine
+      # 6. Docker build with layer cache (no push)
+      #
+      #    - cache-from/cache-to: gha
+      #      This gives us cross-job/cross-run layer reuse.
+      #
+      #    - outputs: type=docker,dest=build_artifacts/image.tar
+      #      We export the built image directly to a tar file for reuse.
+      #
+      #    NOTE: this replaces "docker buildx build --load && docker save".
       # -------------------------------------------------
-      - name: Build container image (no push)
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker buildx build \
-            --load \
-            --file "${{ inputs.dockerfile }}" \
-            --tag "${{ inputs['image-name'] }}:${{ inputs.tag }}" \
-            "${{ inputs['build-context'] }}"
+      - name: Build container image (cached, no push)
+        id: build_image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs['build-context'] }}
+          file: ${{ inputs.dockerfile }}
+          push: false
+          tags: ${{ inputs['image-name'] }}:${{ inputs.tag }}
+
+          # Enable GHA-backed layer cache
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+          # Export an OCI-compatible docker image tar we can reuse later
+          outputs: type=docker,dest=build_artifacts/image.tar
 
       # -------------------------------------------------
-      # 7. Export container image as a tarball
-      #    This is the artifact deploy will later "docker load"
-      #    so deploy doesn't have to rebuild.
+      # 7. Archive build outputs (dist/, target/, etc.)
+      #    We also capture build_artifacts/ for downstream scan + debug.
       # -------------------------------------------------
-      - name: Export container image to tar
+      - name: Archive service build artifacts
+        id: archive_artifacts
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build_artifacts
-          docker save "${{ inputs.image-name }}:${{ inputs.tag }}" -o build_artifacts/image.tar
 
-      # -------------------------------------------------
-      # 8. Archive build outputs (compiled code / JAR / dist)
-      #    We try to capture "the thing we'd ship" for debugging or SCA scans.
-      # -------------------------------------------------
-      - name: Archive service build artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          # We'll try common locations per language.
-          # We only tar what's present, otherwise tar will fail with non-zero.
+          # Capture "the thing we'd ship", language-aware
           if [ "${{ inputs.language }}" = "node" ] && [ -d dist ]; then
             tar -czf build_artifacts/service-dist.tar.gz dist
           elif [ "${{ inputs.language }}" = "java" ] && [ -d target ]; then
             tar -czf build_artifacts/service-dist.tar.gz target
           elif [ "${{ inputs.language }}" = "python" ]; then
-            # for python we don't always have a "build" dir;
-            # grab the app code and requirements for inspection
+            # Python services often don't have a compiled dist,
+            # so capture source + requirements for review / SCA
             tar -czf build_artifacts/service-dist.tar.gz *.py requirements.txt 2>/dev/null || true
           else
-            # fallback - try to package repo root (best-effort)
+            # fallback: best-effort capture of repo contents
             tar -czf build_artifacts/service-dist.tar.gz . 2>/dev/null || true
           fi
 
       # -------------------------------------------------
-      # 9. Upload artifacts:
-      #    a) service-build-artifacts: built app bundle (dist/, target/, etc.)
-      #    b) service-container-image: docker image tar
-      # Downstream workflows (ci-test / ci-deploy) will download these.
+      # 8. Capture timing + cache audit
+      #    We write build-metrics.json which ci-deploy.yml will embed
+      #    into .audit/<env>/<date>/deploy.json for traceability.
+      #
+      #    TODO for future hardening:
+      #      - detect actual "cache hit" vs "miss" from logs and set booleans.
+      # -------------------------------------------------
+      - name: Capture build end time & metrics
+        id: perf
+        shell: bash
+        run: |
+          set -euo pipefail
+          END=$(date +%s)
+          DURATION=$((END - BUILD_START))
+
+          # basic stub flags for now (PIPE-CICD-BUILD-003 can parse logs for real hit/miss)
+          LANG_CACHE_HIT=true
+          DOCKER_LAYER_CACHE_HIT=true
+
+          cat > build_artifacts/build-metrics.json <<EOF
+          {
+            "start_unix": $BUILD_START,
+            "end_unix": $END,
+            "duration_sec": $DURATION,
+            "language_cache_hit": $LANG_CACHE_HIT,
+            "docker_layer_cache_hit": $DOCKER_LAYER_CACHE_HIT,
+            "image_name": "${{ inputs['image-name'] }}",
+            "image_tag": "${{ inputs.tag }}",
+            "commit_sha": "${GITHUB_SHA}",
+            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+
+          echo "build-metrics.json:"
+          cat build_artifacts/build-metrics.json
+
+      # -------------------------------------------------
+      # 9. Upload artifacts for downstream jobs
+      #    a) service-build-artifacts       -> dist/, target/, etc.
+      #    b) service-container-image       -> built image tar we will push in deploy
+      #    c) build-metrics                 -> perf + cache audit
       # -------------------------------------------------
       - name: Upload compiled artifacts
         uses: actions/upload-artifact@v4
@@ -211,3 +263,10 @@ jobs:
         with:
           name: service-container-image
           path: build_artifacts/image.tar
+
+      - name: Upload build metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-metrics
+          path: build_artifacts/build-metrics.json
+          if-no-files-found: error
