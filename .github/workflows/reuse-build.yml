@@ -86,6 +86,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          cache: maven
 
       # -------------------------------------------------
       # 3. Cache dependencies
@@ -148,7 +149,17 @@ jobs:
           esac
 
       # -------------------------------------------------
-      # 5. Prepare Docker buildx
+      # 5. Prep build_artifacts dir BEFORE buildx writes image.tar
+      #   
+      # -------------------------------------------------
+      - name: Ensure build_artifacts dir exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build_artifacts
+
+      # -------------------------------------------------
+      # 6. Prepare Docker buildx
       #    We will build the container image ONCE here,
       #    and hand it off to later jobs (test / deploy) as an artifact.
       # -------------------------------------------------
@@ -157,15 +168,12 @@ jobs:
       
 
       # -------------------------------------------------
-      # 6. Docker build with layer cache (no push)
-      #
-      #    - cache-from/cache-to: gha
-      #      This gives us cross-job/cross-run layer reuse.
-      #
-      #    - outputs: type=docker,dest=build_artifacts/image.tar
-      #      We export the built image directly to a tar file for reuse.
-      #
-      #    NOTE: this replaces "docker buildx build --load && docker save".
+      # 7. Build image ONCE, with cache, export to tar
+      #    Note:
+      #      - cache-from/to: gha for warm reuse
+      #      - outputs: type=docker,dest=build_artifacts/image.tar
+      #        (requires build_artifacts/ to already exist)
+      #    We do NOT push here.
       # -------------------------------------------------
       - name: Build container image (cached, no push)
         id: build_image
@@ -184,7 +192,7 @@ jobs:
           outputs: type=docker,dest=build_artifacts/image.tar
 
       # -------------------------------------------------
-      # 7. Archive build outputs (dist/, target/, etc.)
+      # 8. Archive build outputs (dist/, target/, etc.)
       #    We also capture build_artifacts/ for downstream scan + debug.
       # -------------------------------------------------
       - name: Archive service build artifacts
@@ -192,6 +200,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # ensure dir still exists
           mkdir -p build_artifacts
 
           # Capture "the thing we'd ship", language-aware
@@ -209,7 +219,7 @@ jobs:
           fi
 
       # -------------------------------------------------
-      # 8. Capture timing + cache audit
+      # 9. Capture timing + cache audit
       #    We write build-metrics.json which ci-deploy.yml will embed
       #    into .audit/<env>/<date>/deploy.json for traceability.
       #
@@ -246,7 +256,7 @@ jobs:
           cat build_artifacts/build-metrics.json
 
       # -------------------------------------------------
-      # 9. Upload artifacts for downstream jobs
+      # 10. Upload artifacts for downstream jobs
       #    a) service-build-artifacts       -> dist/, target/, etc.
       #    b) service-container-image       -> built image tar we will push in deploy
       #    c) build-metrics                 -> perf + cache audit
