@@ -32,10 +32,37 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write   # future-proof for SARIF upload
+      security-events: write   # reserved for SARIF upload later
       actions: read
 
     steps:
+      # -------------------------------------------------
+      # 0. Context
+      #
+      # This workflow:
+      #   - Lints
+      #   - Runs unit + integration tests
+      #   - Generates coverage
+      #   - Optionally runs a (placeholder) security scan
+      #   - Uploads coverage artifacts
+      #
+      # It does NOT build or deploy. That happens in ci-build.yml / ci-deploy.yml.
+      #
+      # IMPORTANT:
+      # We did NOT change the workflow_call interface compared to v1.
+      # Callers in service repos can keep doing:
+      #
+      #   uses: brikbytes/.github/.github/workflows/ci-test.yml@v1
+      #   with:
+      #     language: node
+      #     run-integration: true
+      #     coverage-threshold: "80"
+      #     run-security: true
+      #
+      # That keeps this workflow compatible with the new artifact+cache scheme
+      # introduced in PIPE-CICD-BUILD-002.
+      # -------------------------------------------------
+
       # -------------------------------------------------
       # 1. Checkout source
       # -------------------------------------------------
@@ -69,7 +96,8 @@ jobs:
 
       # -------------------------------------------------
       # 3. Restore dependency cache
-      #    Matches ci-build.yml hash logic for fast warm runs
+      #    Uses same hashFiles logic as ci-build.yml.
+      #    This keeps warm test runs fast, aligned with PIPE-CICD-BUILD-002.
       # -------------------------------------------------
       - name: Cache deps
         uses: actions/cache@v4
@@ -85,7 +113,7 @@ jobs:
 
       # -------------------------------------------------
       # 4. Install dev/test dependencies
-      #    We explicitly install test tooling (linters, coverage libs)
+      #    We explicitly install linters, coverage libs, pytest, etc.
       # -------------------------------------------------
       - name: Install deps (Node)
         if: ${{ inputs.language == 'node' }}
@@ -124,10 +152,10 @@ jobs:
 
       # -------------------------------------------------
       # 5. Lint / static style checks
-      #    Fail closed for obvious style/lint issues.
+      #    Fail closed on obvious style violations.
       #    Node: eslint / prettier:check if available
       #    Python: flake8 / black --check / isort --check-only if available
-      #    Java: checkstyle or similar (soft for now)
+      #    Java: checkstyle or similar (soft fail note in echo)
       # -------------------------------------------------
       - name: Lint (Node)
         if: ${{ inputs.language == 'node' }}
@@ -161,7 +189,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Example: enforce checkstyle if configured. We don't hard fail yet if it's missing.
+          # We’re not hard-failing if checkstyle isn't configured yet.
           if mvn -q -B -DskipTests=true checkstyle:checkstyle; then
             echo "checkstyle ran"
           else
@@ -170,18 +198,14 @@ jobs:
 
       # -------------------------------------------------
       # 6. Run unit + integration tests with coverage
-      #    This is the heart of this workflow.
-      #    We assume:
-      #      - Jest/Vitest etc. for Node
-      #      - pytest + pytest-cov for Python
-      #      - mvn test + jacoco for Java
       #
-      #    Integration tests:
-      #      - For Node, commonly `npm run test:integration`
-      #      - For Python, pytest markers
-      #      - For Java, surefire vs failsafe plugins (ITs)
+      # We:
+      #   - run unit tests
+      #   - run integration tests if run-integration=true
+      #   - generate coverage (jest/vitest, pytest-cov, jacoco)
       #
-      #    We'll try to run them if they exist, and not fail if they don't.
+      # NOTE: we do NOT assume container image here.
+      # The image from ci-build is used later in deploy + security, not for test blocking.
       # -------------------------------------------------
 
       - name: Test & Coverage (Node)
@@ -197,14 +221,12 @@ jobs:
           run_with_cov_if_possible() {
             script_name="$1"
             if has_script "$script_name"; then
-              # Peek at the script body so we know what runner it calls
               body=$(npm pkg get scripts."$script_name" | sed 's/^"//;s/"$//')
-
               if echo "$body" | grep -qiE 'jest|vitest'; then
                 echo "→ running $script_name with coverage"
                 npm run "$script_name" -- --coverage
               else
-                echo "→ running $script_name without coverage (runner not jest/vitest)"
+                echo "→ running $script_name without explicit --coverage"
                 npm run "$script_name"
               fi
             else
@@ -227,13 +249,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          # pytest --cov produces .coverage + coverage.xml if pytest-cov installed
           if command -v pytest >/dev/null 2>&1; then
-            # run unit tests
+            # unit tests -> coverage.xml produced
             pytest --maxfail=1 --disable-warnings --cov=./ --cov-report=xml
 
-            # integration tests (marker "integration") if run-integration=true
+            # integration tests (pytest -m integration)
             if [ "${{ inputs.run-integration }}" = "true" ]; then
               pytest -m "integration" --maxfail=1 --disable-warnings --cov=./ --cov-append --cov-report=xml || true
             fi
@@ -246,20 +266,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # mvn test runs unit tests; jacoco:report emits coverage
+          # Unit tests + Jacoco coverage
           mvn -q -B test jacoco:report
 
-          # Integration tests: if you configure failsafe plugin (verify phase)
+          # Integration tests via failsafe (verify phase)
           if [ "${{ inputs.run-integration }}" = "true" ]; then
             mvn -q -B verify || true
-            # Note: verify runs integration-test + verify with maven-failsafe-plugin
           fi
 
       # -------------------------------------------------
-      # 7. Enforce coverage threshold (soft gate now)
-      #    We'll parse coverage if threshold > 0.
-      #    Implementation detail is intentionally flexible so
-      #    platform can harden later without touching services.
+      # 7. Enforce coverage threshold (soft gate)
+      #    We'll tighten this centrally in a later hardening task.
       # -------------------------------------------------
       - name: Check coverage threshold
         if: ${{ inputs.coverage-threshold != '0' }}
@@ -267,19 +284,12 @@ jobs:
         run: |
           set -euo pipefail
           echo "Minimum coverage required: ${{ inputs.coverage-threshold }}%"
-
-          # TODO (platform hardening step):
-          #   - Parse coverage.xml for Python/Jest (lcov) / Java (jacoco.xml)
-          #   - Extract line or branch coverage %
-          #   - Compare vs inputs.coverage-threshold
-          #   - exit 1 if below
-          #
-          # For BrikByteOS v1 we only emit intent.
-          echo "Coverage enforcement hook not yet strict in v1."
+          echo "TODO: parse coverage.xml / jacoco.xml / lcov and fail if below threshold."
+          echo "For BrikByteOS v1 this is advisory only."
 
       # -------------------------------------------------
-      # 8. Upload coverage artifacts so we can inspect them,
-      #    feed dashboards, and prove audit/compliance.
+      # 8. Upload coverage artifacts
+      #    This feeds observability / compliance / dashboards.
       # -------------------------------------------------
       - name: Upload coverage artifacts
         if: always()
@@ -298,19 +308,35 @@ jobs:
           if-no-files-found: ignore
 
       # -------------------------------------------------
-      # 9. Security scan placeholder (WARN in v1)
-      #    This is where we’ll eventually:
-      #      - download the built container image artifact
-      #      - docker load
-      #      - run Trivy or CodeQL container scan
-      #      - upload SARIF
-      #    For now we just drop a breadcrumb.
+      # 9. Security scan placeholder / prep
+      #
+      #   In PIPE-CICD-BUILD-002 we don't block on container vuln scan yet,
+      #   but we DO prep for it:
+      #     - If available in this workflow run context, pull down
+      #       service-container-image (the tar produced by ci-build)
+      #       so we could 'docker load' and scan it here.
+      #
+      #   This keeps the interface stable: callers don't change.
+      #   We can flip "WARN" -> "FAIL" in a central update later.
       # -------------------------------------------------
+      - name: Download built image (optional for scan)
+        if: ${{ inputs.run-security }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: service-container-image
+          path: ./ci_image
+
       - name: Security scan (soft gate)
         if: ${{ inputs.run-security }}
         shell: bash
         run: |
           set -euo pipefail
           echo "[SECURITY] placeholder scan hook"
-          echo "Future: pull service-container-image from ci-build, run Trivy/CodeQL"
-          echo "In v1, this does not fail the pipeline."
+          if [ -f ./ci_image/image.tar ]; then
+            echo "Found image.tar from ci-build (good)."
+            echo "Future: docker load && trivy fs / image && upload SARIF."
+          else
+            echo "No image.tar available in this job context."
+          fi
+          echo "In v1 this does NOT fail the pipeline."
