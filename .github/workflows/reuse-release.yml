@@ -24,7 +24,15 @@ on:
         required: false
         default: ""
         description: "Escaped newline changelog text from semver.yml"
-
+      build-run-id:
+        type: string
+        required: false
+        default: ""
+        description: "Optional Actions run id that produced artifacts. If blank, workflow will auto-discover."
+    outputs:
+      release_url:
+        description: "HTML URL of the created/updated GitHub Release"
+        value: ${{ jobs.publish-release.outputs.release_url }}
 jobs:
   publish-release:
     name: publish-github-release
@@ -33,28 +41,122 @@ jobs:
     # This job needs to be able to create/edit a GitHub Release and upload assets.
     # The CALLER must allow this by setting permissions.contents: write.
     permissions:
-      contents: write   # needed to create/edit releases
+      contents: write  # create/edit releases, upload assets
+      actions: read    # list & download artifacts from other workflow runs
+
+    outputs:
+      release_url: ${{ steps.release-info.outputs.release_url }}
 
     steps:
       - name: Checkout (optional for context)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      
+      - name: Ensure gh CLI available
+        run: gh --version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. Download build artifacts that CI produced earlier
+      # ─────────────────────────────────────────────────────────────
+      # 1) Determine the CI run that produced artifacts for THIS commit
+      #    If caller passed build-run-id, use it. Otherwise, discover by headSha.
+      # ─────────────────────────────────────────────────────────────
+      - name: Resolve CI build run id
+        id: findrun
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.build-run-id }}" ]; then
+            echo "Using provided build run id: ${{ inputs.build-run-id }}"
+            echo "run_id=${{ inputs.build-run-id }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SHA="${GITHUB_SHA}"
+
+          # Pick the most recent successful run matching this headSha
+          rid=$(gh run list --json databaseId,headSha,conclusion,name,createdAt \
+            -q "[.[] | select(.headSha==\"$SHA\" and .conclusion==\"success\")][0].databaseId" \
+          ) || true
+
+          if [ -z "${rid:-}" ] || [ "${rid}" = "null" ]; then
+            echo "::error::No successful CI run with artifacts found for commit $SHA."
+            echo "Make sure your CI workflow uploads artifacts named '${{ inputs.artifact-build-name }}' and '${{ inputs.artifact-image-name }}'."
+            exit 1
+          fi
+
+          echo "Found CI run id: ${rid}"
+          echo "run_id=${rid}" >> "$GITHUB_OUTPUT"
+
+      # Optional: short bounded wait in case CI is still finishing uploads
+      - name: Wait for artifacts (bounded)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rid="${{ steps.findrun.outputs.run_id }}"
+          for i in {1..12}; do
+            count=$(gh api repos/${GITHUB_REPOSITORY}/actions/runs/${rid}/artifacts -q '.artifacts | length')
+            if [ "${count}" != "0" ]; then
+              echo "Artifacts available: ${count}"
+              exit 0
+            fi
+            echo "Artifacts not ready yet… retry $i/12"
+            sleep 10
+          done
+          echo "::error::Artifacts not ready in time. Re-run this job once CI finishes."
+          exit 1
+
+      - name: List artifacts (diagnostic)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rid="${{ steps.findrun.outputs.run_id }}"
+          echo "Artifacts for run ${rid}:"
+          gh api repos/${GITHUB_REPOSITORY}/actions/runs/${rid}/artifacts \
+            -q '.artifacts[] | "\(.id)\t\(.name)\t\(.size_in_bytes) bytes\texpired=\(.expired)"' || true
+
+
+      # ─────────────────────────────────────────────────────────────
+      # 2) Download artifacts by name from that run
+      # ─────────────────────────────────────────────────────────────
       - name: Download service build bundle
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact-build-name }}
           path: ./release_artifacts/dist
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.findrun.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download service container image tar
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact-image-name }}
           path: ./release_artifacts/image
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.findrun.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Rehydrate release notes body from changelog_fragment
+      - name: Verify expected files exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d ./release_artifacts/dist ]; then
+            echo "Dist artifacts:"
+            ls -lah ./release_artifacts/dist || true
+          fi
+          test -s ./release_artifacts/image/image.tar || { echo "::error::Missing image tar at ./release_artifacts/image/image.tar"; exit 1; }
+
+       # ─────────────────────────────────────────────────────────────
+      # 3) Build Release body from changelog fragment
+      # ─────────────────────────────────────────────────────────────
       - name: Build release body
         id: body
         shell: bash
@@ -70,25 +172,19 @@ jobs:
           cat release_notes.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 3. Ensure GitHub CLI is available (runner typically already has `gh`)
-      - name: Verify gh
-        run: gh --version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 4. Create or update the GitHub Release and upload assets
+      # ─────────────────────────────────────────────────────────────
+      # 4) Create/Update Release and upload assets
+      # ─────────────────────────────────────────────────────────────
       - name: Create/Update GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh prefers GH_TOKEN, not GITHUB_TOKEN
         shell: bash
         run: |
           set -euo pipefail
-
           TAG="${{ inputs.tag }}"
           TITLE="Release ${TAG}"
           BODY_FILE="release_notes.md"
 
-          # If release exists, update it. Otherwise create new.
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists → updating notes"
             gh release edit "$TAG" --notes-file "$BODY_FILE" --title "$TITLE"
@@ -97,17 +193,31 @@ jobs:
             gh release create "$TAG" --notes-file "$BODY_FILE" --title "$TITLE"
           fi
 
-          # Upload artifacts (dist bundle, image tar, SBOM if present)
+          # Upload dist bundle(s)
           if [ -d release_artifacts/dist ]; then
+            shopt -s nullglob
             for f in release_artifacts/dist/*; do
-              [ -e "$f" ] || continue
+              echo "Uploading $f"
               gh release upload "$TAG" "$f" --clobber
             done
           fi
 
+          # Upload container image tar (and any sidecars like SBOM if present)
           if [ -d release_artifacts/image ]; then
+            shopt -s nullglob
             for f in release_artifacts/image/*; do
-              [ -e "$f" ] || continue
+              echo "Uploading $f"
               gh release upload "$TAG" "$f" --clobber
             done
           fi
+
+      - name: Output release URL
+        id: release-info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          url=$(gh release view "${{ inputs.tag }}" --json url -q .url)
+          echo "release_url=${url}" >> "$GITHUB_OUTPUT"
+          echo "Release URL: ${url}"
