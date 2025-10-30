@@ -158,7 +158,36 @@ jobs:
           fi
           test -s ./release_artifacts/image/image.tar || { echo "::error::Missing image tar at ./release_artifacts/image/image.tar"; exit 1; }
 
-       # ─────────────────────────────────────────────────────────────
+      - name: Validate tag/version inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          VER="${{ inputs.version }}"
+          if [ -z "$TAG" ] || [ -z "$VER" ]; then
+            echo "::error::inputs.tag ('${TAG}') or inputs.version ('${VER}') is empty. Did you pass outputs from semver.yml?"
+            exit 1
+          fi
+          # Require vX.Y.Z
+          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::inputs.tag must look like vX.Y.Z. Got: ${TAG}"
+            exit 1
+          fi
+          echo "Using tag=${TAG}, version=${VER}"
+
+      - name: Fetch tags (diagnostic)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force || true
+          if git rev-parse -q --verify "${{ inputs.tag }}" >/dev/null; then
+            echo "Verified git tag exists locally."
+          else
+            echo "WARN: git tag ${{ inputs.tag }} not found locally; continuing (release can still be created)."
+          fi
+
+
+      # ─────────────────────────────────────────────────────────────
       # 3) Build Release body from changelog fragment
       # ─────────────────────────────────────────────────────────────
       - name: Build release body
@@ -176,12 +205,19 @@ jobs:
           BODY_B64="$(base64 -w0 release_notes.md || base64 release_notes.md)"  # macOS compat
           echo "release_body_b64=$BODY_B64" >> "$GITHUB_OUTPUT"
 
+      - name: Materialize release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf "%s" '${{ steps.body.outputs.release_body_b64 }}' | base64 -d > release_notes.md
+
       # ─────────────────────────────────────────────────────────────
       # 4) Create/Update Release and upload assets
       # ─────────────────────────────────────────────────────────────
       - name: Create/Update GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh prefers GH_TOKEN, not GITHUB_TOKEN
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}     # gh prefers GH_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # actions APIs prefer this
         shell: bash
         run: |
           set -euo pipefail
@@ -189,6 +225,7 @@ jobs:
           TITLE="Release ${TAG}"
           BODY_FILE="release_notes.md"
 
+          # If release exists, update; else create
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists → updating notes"
             gh release edit "$TAG" --notes-file "$BODY_FILE" --title "$TITLE"
@@ -204,15 +241,19 @@ jobs:
               echo "Uploading $f"
               gh release upload "$TAG" "$f" --clobber
             done
+          else
+            echo "WARN: release_artifacts/dist not found (skipping)."
           fi
 
-          # Upload container image tar (and any sidecars like SBOM if present)
+          # Upload container image tar / extras
           if [ -d release_artifacts/image ]; then
             shopt -s nullglob
             for f in release_artifacts/image/*; do
               echo "Uploading $f"
               gh release upload "$TAG" "$f" --clobber
             done
+          else
+            echo "WARN: release_artifacts/image not found (skipping)."
           fi
 
       - name: Output release URL
