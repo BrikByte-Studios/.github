@@ -209,7 +209,8 @@ jobs:
       - name: Ensure 'release' label exists (best-effort)
         if: always()
         continue-on-error: true
-        env: { GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           gh label list --limit 200 --json name -q '.[] | select(.name=="release")' | grep -q release || \
@@ -218,7 +219,8 @@ jobs:
       - name: Open/Update PR (best-effort)
         if: always()
         continue-on-error: true
-        env: { GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
