@@ -166,15 +166,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FRAG="${{ inputs.changelog-fragment }}"
+
+          # 1) Rehydrate the fragment (escaped \n -> real newlines)
+          FRAG='${{ inputs.changelog-fragment }}'
           if [ -z "$FRAG" ]; then
             FRAG="Release ${{ inputs.tag }}"
           fi
           printf "%b" "${FRAG//\\n/$'\n'}" > release_notes.md
 
-          echo "release_body<<EOF" >> $GITHUB_OUTPUT
-          cat release_notes.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # 2) (optional) normalize line endings to avoid delimiter issues on CRLF
+          tr -d '\r' < release_notes.md > release_notes.unix.md
+          mv release_notes.unix.md release_notes.md
+
+          # 3) Emit a multiline output using a UNIQUE delimiter
+          DELIM="__REL_BODY_$(date +%s)_$RANDOM__"
+          {
+            echo "release_body<<$DELIM"
+            cat release_notes.md
+            echo "$DELIM"
+          } >> "$GITHUB_OUTPUT"
 
       # ─────────────────────────────────────────────────────────────
       # 4) Create/Update Release and upload assets
