@@ -27,8 +27,12 @@ on:
       build-run-id:
         type: string
         required: false
-        default: ""
-        description: "Optional Actions run id that produced artifacts. If blank, workflow will auto-discover."
+        description: "Workflow run id that produced the artifacts"
+      build-repository:
+        type: string
+        required: false
+        default: ${{ github.repository }}
+        description: "Repository where the artifacts live"
     outputs:
       release_url:
         description: "HTML URL of the created/updated GitHub Release"
