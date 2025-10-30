@@ -170,16 +170,17 @@ jobs:
           # 1) Rehydrate the fragment (escaped \n -> real newlines)
           FRAG='${{ inputs.changelog-fragment }}'
           if [ -z "$FRAG" ]; then
-            FRAG="Release ${{ inputs.tag }}"
+            FRAG="Release ${{ inputs.tag || '' }}"
           fi
           printf "%b" "${FRAG//\\n/$'\n'}" > release_notes.md
 
-          # 2) (optional) normalize line endings to avoid delimiter issues on CRLF
+          # 2) Normalize line endings (avoid CRLF issues)
           tr -d '\r' < release_notes.md > release_notes.unix.md
           mv release_notes.unix.md release_notes.md
 
-          # 3) Emit a multiline output using a UNIQUE delimiter
-          DELIM="__REL_BODY_$(date +%s)_$RANDOM__"
+          # 3) Emit multiline output with a UNIQUE delimiter
+          # Use braces around RANDOM to avoid "$RANDOM__" being parsed as ${RANDOM__}
+          DELIM="__REL_BODY_$(date +%s)_${RANDOM}__"
           {
             echo "release_body<<$DELIM"
             cat release_notes.md
