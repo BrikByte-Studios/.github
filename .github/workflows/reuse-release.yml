@@ -36,7 +36,7 @@ on:
       target-sha:
         type: string
         required: false
-        description: "Git SHA that the build artifacts correspond to",
+        description: "Git SHA that the build artifacts correspond to"
         default: ${{ github.sha }}
     outputs:
       release_url:
@@ -68,7 +68,7 @@ jobs:
           echo "tag='${{ inputs.tag }}'"
           echo "build-run-id='${{ inputs.build-run-id }}'"
           echo "target-sha='${{ inputs.target-sha }}'"
-          
+
       - name: Validate tag/version inputs
         shell: bash
         run: |
