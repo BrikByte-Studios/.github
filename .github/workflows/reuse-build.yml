@@ -280,3 +280,19 @@ jobs:
           name: build-metrics
           path: build_artifacts/build-metrics.json
           if-no-files-found: error
+
+      - name: Download service build bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-build-name }}
+          path: ./release_artifacts/dist
+          repository: ${{ inputs.build-repository }}
+          run-id: ${{ inputs.build-run-id }}
+
+      - name: Download service container image tar
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-image-name }}
+          path: ./release_artifacts/image
+          repository: ${{ inputs.build-repository }}
+          run-id: ${{ inputs.build-run-id }}
