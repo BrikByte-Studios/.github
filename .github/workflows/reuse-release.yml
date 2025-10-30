@@ -33,6 +33,11 @@ on:
         required: false
         default: ${{ github.repository }}
         description: "Repository where the artifacts live"
+      target-sha:
+        type: string
+        required: false
+        description: "Git SHA that the build artifacts correspond to",
+        default: ${{ github.sha }}
     outputs:
       release_url:
         description: "HTML URL of the created/updated GitHub Release"
@@ -56,6 +61,29 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      
+      - name: Debug inputs (temporary)
+        run: |
+          echo "version='${{ inputs.version }}'"
+          echo "tag='${{ inputs.tag }}'"
+          echo "build-run-id='${{ inputs.build-run-id }}'"
+          echo "target-sha='${{ inputs.target-sha }}'"
+          
+      - name: Validate tag/version inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          VER="${{ inputs.version }}"
+          if [ -z "$TAG" ] || [ -z "$VER" ]; then
+            echo "::error::inputs.tag ('${TAG}') or inputs.version ('${VER}') is empty. Did you pass outputs from semver.yml?"
+            exit 1
+          fi
+          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::inputs.tag must look like vX.Y.Z. Got: ${TAG}"
+            exit 1
+          fi
+          echo "Using tag=${TAG}, version=${VER}"
       
       - name: Ensure gh CLI available
         run: gh --version
@@ -158,22 +186,6 @@ jobs:
           fi
           test -s ./release_artifacts/image/image.tar || { echo "::error::Missing image tar at ./release_artifacts/image/image.tar"; exit 1; }
 
-      - name: Validate tag/version inputs
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="${{ inputs.tag }}"
-          VER="${{ inputs.version }}"
-          if [ -z "$TAG" ] || [ -z "$VER" ]; then
-            echo "::error::inputs.tag ('${TAG}') or inputs.version ('${VER}') is empty. Did you pass outputs from semver.yml?"
-            exit 1
-          fi
-          # Require vX.Y.Z
-          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::inputs.tag must look like vX.Y.Z. Got: ${TAG}"
-            exit 1
-          fi
-          echo "Using tag=${TAG}, version=${VER}"
 
       - name: Fetch tags (diagnostic)
         shell: bash
@@ -224,17 +236,18 @@ jobs:
           TAG="${{ inputs.tag }}"
           TITLE="Release ${TAG}"
           BODY_FILE="release_notes.md"
+          TARGET="${{ inputs.target-sha }}"
 
-          # If release exists, update; else create
+          # If release exists, update notes; else create and point tag at TARGET
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists → updating notes"
             gh release edit "$TAG" --notes-file "$BODY_FILE" --title "$TITLE"
           else
-            echo "Creating release $TAG"
-            gh release create "$TAG" --notes-file "$BODY_FILE" --title "$TITLE"
+            echo "Creating release $TAG at $TARGET"
+            gh release create "$TAG" --target "$TARGET" --notes-file "$BODY_FILE" --title "$TITLE"
           fi
 
-          # Upload dist bundle(s)
+          # Upload assets (best-effort)
           if [ -d release_artifacts/dist ]; then
             shopt -s nullglob
             for f in release_artifacts/dist/*; do
@@ -245,7 +258,6 @@ jobs:
             echo "WARN: release_artifacts/dist not found (skipping)."
           fi
 
-          # Upload container image tar / extras
           if [ -d release_artifacts/image ]; then
             shopt -s nullglob
             for f in release_artifacts/image/*; do
