@@ -19,6 +19,17 @@ on:
       GIT_PUSH_TOKEN:
         required: false
         description: "Optional PAT with perms to push tags/commits. Falls back to GITHUB_TOKEN."
+        
+    outputs:
+      version:
+        description: "Computed X.Y.Z"
+        value: ${{ jobs.semver.outputs.version }}
+      tag:
+        description: "Computed vX.Y.Z"
+        value: ${{ jobs.semver.outputs.tag }}
+      changelog_fragment:
+        description: "Escaped markdown changelog fragment"
+        value: ${{ jobs.semver.outputs.changelog_fragment }}
 
 jobs:
   semver:
