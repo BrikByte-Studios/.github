@@ -1,25 +1,167 @@
-name: "🐞 Bug Report"
-description: Report a reproducible defect
-title: "[Bug]: <brief>"
-labels: ["bug"]
+name: "🐞 Bug / Issue Report"
+description: Report a clear, reproducible defect with all required details
+title: "[Bug]: <Module> — <Symptom> when <Action>"
+labels: ["bug", "needs-triage"]
 assignees: ["qa"]
+
 body:
+  - type: input
+    id: reporter
+    attributes:
+      label: Reporter
+      description: "Your name or tester ID"
+      placeholder: "e.g., David M. (QA Tester)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: "Select the environment where the issue occurs"
+      options:
+        - Development
+        - QA / Test
+        - UAT / Staging
+        - Production
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App Version / Build
+      description: "Specify app build number or commit SHA"
+      placeholder: "e.g., v1.3.4 • Build 2025.10.30 • SHA abc1234"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: "Operating System / Device / Browser"
+      placeholder: "e.g., Windows 11 / Chrome 129 / Pixel 8 (Android 14)"
+    validations:
+      required: true
+
   - type: textarea
-    id: env
-    attributes: { label: Environment, description: "App, version, OS/browser" }
-    validations: { required: true }
+    id: description
+    attributes:
+      label: Description
+      description: "Briefly describe what went wrong and where"
+      placeholder: "e.g., Submit button unresponsive when payment exceeds R10,000."
+    validations:
+      required: true
+
+  - type: textarea
+    id: preconditions
+    attributes:
+      label: Preconditions
+      description: "List any setup needed before reproducing the issue"
+      placeholder: "- User must be logged in\n- Feature flag 'payments_v2' enabled"
+
   - type: textarea
     id: steps
-    attributes: { label: Steps to Reproduce, description: "1… 2… 3…" }
-    validations: { required: true }
+    attributes:
+      label: Steps to Reproduce
+      description: "Provide clear, numbered steps"
+      placeholder: |
+        1. Go to Login page
+        2. Enter valid credentials
+        3. Navigate to Payments > New Transaction
+        4. Enter amount above R10,000
+        5. Click Submit
+    validations:
+      required: true
+
   - type: textarea
     id: expected
-    attributes: { label: Expected Result }
-    validations: { required: true }
+    attributes:
+      label: Expected Result
+      description: "Describe what should have happened"
+      placeholder: "System processes payment and shows confirmation message."
+    validations:
+      required: true
+
   - type: textarea
     id: actual
-    attributes: { label: Actual Result }
-    validations: { required: true }
+    attributes:
+      label: Actual Result
+      description: "Describe what actually happened"
+      placeholder: "Button remains inactive; console logs 'TypeError: cannot read property of null'."
+    validations:
+      required: true
+
   - type: textarea
-    id: logs
-    attributes: { label: Logs/Screenshots }
+    id: evidence
+    attributes:
+      label: Evidence (Logs, Screenshots, or Video)
+      description: "Attach links or paste screenshots, logs, trace IDs, or HAR file paths"
+      placeholder: "Attach annotated screenshots, error logs, console output, trace ID"
+
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: Reproducibility
+      description: "How often does it happen?"
+      options:
+        - Always
+        - Intermittent (e.g., 3/10)
+        - Rare
+        - Unable to Reproduce
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: "Rate how severe the impact is"
+      options:
+        - Blocker – core functionality unusable
+        - Critical – major function broken, no workaround
+        - Major – feature degraded, workaround possible
+        - Minor – small defect, no major impact
+        - Trivial – cosmetic or typo
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: "Optional; leave blank if unsure"
+      options:
+        - P0 – Fix immediately
+        - P1 – Next release
+        - P2 – Regular sprint
+        - P3 – Low priority / backlog
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact Assessment
+      description: "Who or what is affected, and how severely?"
+      placeholder: "e.g., All customers using Chrome cannot complete checkout."
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: "If users can bypass the issue, explain how"
+      placeholder: "e.g., Works if user switches to Firefox."
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related Tickets / References
+      description: "Mention test case IDs, requirement IDs, or related bug IDs"
+      placeholder: "TC-PAY-014, REQ-102, BUG-438"
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: "Anything else relevant (security, localization, regression, etc.)"
+      placeholder: "e.g., Appears after merging PR #221; regression from v1.3.2."

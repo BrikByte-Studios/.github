@@ -1,21 +1,105 @@
 name: "✨ Feature Request"
-description: Propose new capability
-title: "[Feature]: <brief>"
-labels: ["enhancement"]
-assignees: ["platform-leads"]
+description: Suggest a new feature or enhancement
+title: "[Feature]: <brief summary>"
+labels: ["feature", "enhancement"]
+assignees: ["product", "dev-team"]
+
 body:
+  - type: input
+    id: reporter
+    attributes:
+      label: Requested By
+      description: "Name or team making the request"
+      placeholder: "e.g., QA Team / Customer Support"
+    validations:
+      required: true
+
   - type: textarea
     id: summary
-    attributes: { label: Summary }
-    validations: { required: true }
+    attributes:
+      label: Summary
+      description: "Briefly describe the new feature or enhancement"
+      placeholder: "e.g., Add dark mode option for the dashboard"
+    validations:
+      required: true
+
   - type: textarea
-    id: value
-    attributes: { label: Value / Outcome }
-    validations: { required: true }
+    id: problem
+    attributes:
+      label: Problem Statement / Background
+      description: "Describe the problem or limitation this feature solves"
+      placeholder: "e.g., Users experience eye strain using the app at night."
+    validations:
+      required: true
+
   - type: textarea
-    id: ac
-    attributes: { label: Acceptance Criteria }
-    validations: { required: true }
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: "Explain how the feature should work or behave"
+      placeholder: "e.g., Add a toggle in settings for dark mode; store preference per user."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: "List clear, testable requirements for completion"
+      placeholder: |
+        - [ ] User can toggle dark/light mode
+        - [ ] Mode persists across sessions
+        - [ ] All UI elements visible in both themes
+
+  - type: textarea
+    id: user_story
+    attributes:
+      label: User Story (optional)
+      description: "As a <user role>, I want <goal> so that <benefit>"
+      placeholder: "As a user, I want to enable dark mode so that I can work comfortably at night."
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 – Immediate
+        - P1 – Next Release
+        - P2 – Backlog
+        - P3 – Nice-to-have
+
+  - type: dropdown
+    id: business_value
+    attributes:
+      label: Business Value
+      options:
+        - High – Significant user or business impact
+        - Medium – Noticeable improvement
+        - Low – Minor enhancement
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / Constraints
+      description: "Mention related systems, APIs, or blockers"
+      placeholder: "e.g., Requires theme variables update and design assets."
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups / References
+      description: "Attach or link to design mockups, screenshots, or specs"
+
   - type: textarea
     id: risks
-    attributes: { label: Risks / Tradeoffs }
+    attributes:
+      label: Risks / Considerations
+      description: "List any potential challenges or regressions"
+      placeholder: "e.g., Possible performance hit on low-end devices."
+
+  - type: textarea
+    id: success_metrics
+    attributes:
+      label: Success Metrics
+      description: "Define measurable outcomes to confirm success"
+      placeholder: "e.g., 80% of users adopt the feature within a week."
