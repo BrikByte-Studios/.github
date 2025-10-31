@@ -1,20 +1,130 @@
 name: "🧠 RFC"
-description: Request for Comments (design/architecture)
-title: "[RFC]: <brief>"
-labels: ["rfc"]
-assignees: ["platform-leads","security"]
+description: Request for Comments (design, architecture, or policy change)
+title: "[RFC]: <short summary>"
+labels: ["rfc", "discussion"]
+assignees: ["platform-leads", "security", "architecture-review"]
+
 body:
+  - type: input
+    id: author
+    attributes:
+      label: Author
+      description: "Person or team drafting this RFC"
+      placeholder: "e.g., David / Platform Team"
+    validations:
+      required: true
+
+  - type: input
+    id: date
+    attributes:
+      label: Date Proposed
+      description: "Date of RFC submission"
+      placeholder: "YYYY-MM-DD"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: RFC Status
+      description: "Track RFC lifecycle"
+      options:
+        - Draft
+        - Under Discussion
+        - Approved
+        - Rejected
+        - Superseded
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: "Brief overview of the proposal in 1–2 sentences"
+      placeholder: "e.g., Introduce centralized secrets manager to replace per-service .env files."
+    validations:
+      required: true
+
   - type: textarea
     id: problem
-    attributes: { label: Problem Statement }
-    validations: { required: true }
+    attributes:
+      label: Problem Statement
+      description: "Describe the underlying problem, gap, or limitation prompting this RFC"
+      placeholder: |
+        - What issue are we solving?
+        - Why now?
+        - Who is affected?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Background / Context
+      description: "Provide relevant background information, related systems, or prior decisions"
+      placeholder: "e.g., Current configuration management is fragmented across services."
+
   - type: textarea
     id: proposal
-    attributes: { label: Proposed Solution }
-    validations: { required: true }
+    attributes:
+      label: Proposed Solution
+      description: "Describe the proposed design, approach, or technical plan"
+      placeholder: |
+        - High-level architecture
+        - Component changes
+        - API contracts
+        - Data flows or diagrams (link to docs)
+    validations:
+      required: true
+
   - type: textarea
     id: alternatives
-    attributes: { label: Alternatives Considered }
+    attributes:
+      label: Alternatives Considered
+      description: "Outline other designs or approaches evaluated, with pros and cons"
+      placeholder: |
+        - Option A: <summary> — pros/cons
+        - Option B: <summary> — pros/cons
+        - Why the chosen approach wins
+
   - type: textarea
     id: impact
-    attributes: { label: Impact & Rollout }
+    attributes:
+      label: Impact & Rollout Plan
+      description: "Describe implications, risks, dependencies, and rollout strategy"
+      placeholder: |
+        - Affected components / teams
+        - Migration or backward compatibility plan
+        - Rollout stages (e.g., feature flag, pilot, full deploy)
+        - Monitoring / rollback strategy
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security, Privacy & Compliance Considerations
+      description: "List any security, compliance, or data-handling implications"
+      placeholder: |
+        - Data sensitivity
+        - Access control
+        - Audit or logging changes
+
+  - type: textarea
+    id: open_questions
+    attributes:
+      label: Open Questions
+      description: "List unresolved items needing feedback or further discussion"
+      placeholder: |
+        - What trade-offs need review?
+        - What input is required from other teams?
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References & Related Documents
+      description: "Link relevant ADRs, design docs, tickets, or diagrams"
+      placeholder: |
+        - ADR-0005 Secrets Management
+        - Design Doc: https://docs.company.com/rfc/central-secrets

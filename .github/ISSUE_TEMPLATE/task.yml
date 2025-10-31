@@ -1,16 +1,125 @@
 name: "🧰 Task"
-description: Executable work item
-title: "[Task]: <brief>"
-labels: ["task"]
+description: Executable work item (feature, refactor, or improvement)
+title: "[Task]: <brief summary>"
+labels: ["task", "ready-for-dev"]
+
 body:
+  - type: input
+    id: assignee
+    attributes:
+      label: Assignee
+      description: "Primary person or team responsible for this task"
+      placeholder: "e.g., David / DevOps Team"
+    validations:
+      required: true
+
+  - type: input
+    id: reporter
+    attributes:
+      label: Reporter
+      description: "Person creating this task"
+      placeholder: "e.g., QA Team / Product Owner"
+    validations:
+      required: true
+
   - type: textarea
     id: objective
-    attributes: { label: Objective }
-    validations: { required: true }
+    attributes:
+      label: Objective
+      description: "Describe the purpose and intended outcome of this task"
+      placeholder: |
+        e.g.,
+        - Set up GitHub Actions for CI pipeline
+        - Add Jest unit tests for auth module
+        - Refactor user controller for SOLID compliance
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description / Context
+      description: "Add background, dependencies, or context to understand the task fully"
+      placeholder: |
+        Why is this needed? What’s the problem or opportunity?
+        e.g.,
+        - CI currently runs manually; need automated workflow on PR merge
+        - Feature request from RFC-004 for code coverage enforcement
+
+  - type: textarea
+    id: subtasks
+    attributes:
+      label: Subtasks / Implementation Steps
+      description: "Break the task into smaller actionable steps"
+      placeholder: |
+        - [ ] Create new workflow file `.github/workflows/ci.yml`
+        - [ ] Add build + test jobs
+        - [ ] Validate environment secrets
+        - [ ] Add status badge to README.md
+
   - type: textarea
     id: dod
-    attributes: { label: Definition of Done }
-    validations: { required: true }
+    attributes:
+      label: Definition of Done (DoD)
+      description: "Define measurable completion criteria"
+      placeholder: |
+        - [ ] Code reviewed and approved
+        - [ ] Tests passing locally and in CI
+        - [ ] Documentation updated
+        - [ ] No security or lint issues
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 – Urgent / Critical Path
+        - P1 – High / Sprint Goal
+        - P2 – Medium / Planned Work
+        - P3 – Low / Nice-to-have
+    validations:
+      required: true
+
   - type: input
     id: estimate
-    attributes: { label: Estimate (days) }
+    attributes:
+      label: Time Estimate
+      description: "Rough estimate in days or hours (e.g., 2d, 6h)"
+      placeholder: "e.g., 3d"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / Blockers
+      description: "Mention related issues, PRs, or tasks this depends on"
+      placeholder: "e.g., Depends on [RFC-0003], blocked by issue #45"
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: QA / Testing Notes
+      description: "Specify what needs to be verified or tested once complete"
+      placeholder: |
+        - Verify CI workflow triggers correctly on `main` and PRs
+        - Check build logs for proper environment variable injection
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: "List testable, stakeholder-approved criteria for success"
+      placeholder: |
+        - [ ] CI workflow automatically runs on PR merge
+        - [ ] All jobs succeed in less than 10 min
+        - [ ] Artifacts are stored under `/build/cache/`
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / Comments
+      description: "Add any relevant context, discussions, or references"
+      placeholder: "e.g., Linked to sprint 2025.10 backlog / milestone v1.2.0"

@@ -1,8 +1,50 @@
 blank_issues_enabled: false
+
 contact_links:
   - name: 📚 BrikByteOS Docs
     url: https://github.com/BrikByte-Studios/brikbyteos-docs
     about: Platform and workflow documentation
+
   - name: 💬 Support (Slack)
-    url: https://example.com/slack # replace with real
-    about: Ask the team for help
+    url: https://example.com/slack # TODO: replace with your real Slack invite URL
+    about: Ask the team for help in our support channel
+
+  - name: 🧭 Project Roadmap
+    url: https://github.com/orgs/BrikByte-Studios/projects # adjust to your org/project board
+    about: See priorities, timelines, and what’s shipping next
+
+  - name: 💬 Discussions
+    url: https://github.com/BrikByte-Studios/brikbyteos/discussions
+    about: Propose ideas, ask questions, and collaborate asynchronously
+
+  - name: 🛠 Contributing Guide
+    url: https://github.com/BrikByte-Studios/brikbyteos/blob/main/CONTRIBUTING.md
+    about: Read how to contribute (branching, PR flow, commit style, DCO)
+
+  - name: 📜 Code of Conduct
+    url: https://github.com/BrikByte-Studios/brikbyteos/blob/main/CODE_OF_CONDUCT.md
+    about: Standards for respectful, inclusive collaboration
+
+  - name: 🔐 Security Policy / Responsible Disclosure
+    url: https://github.com/BrikByte-Studios/brikbyteos/security/policy
+    about: Report security vulnerabilities privately to the maintainers
+
+  - name: 🚦 Status Page
+    url: https://status.example.com # TODO: replace with your status page
+    about: Check live service health and incident updates
+
+  - name: 🚨 Incident / P1 Hotline
+    url: https://pagerduty.example.com/incidents/new # TODO: replace with your on-call intake
+    about: Production-severity (P0/P1) only—pages the on-call engineer
+
+  - name: 🧾 Release Notes & Changelog
+    url: https://github.com/BrikByte-Studios/brikbyteos/releases
+    about: Track versions, fixes, and upgrade notes
+
+  - name: 🎫 Service Desk (Internal)
+    url: https://jira.example.com/servicedesk # TODO: replace if you use Jira/Helpdesk
+    about: File operational requests that aren’t GitHub issues (access, configs, etc.)
+
+  - name: ✉️ Contact Maintainers
+    url: mailto:maintainers@brikbyte.dev
+    about: Email the core team for private coordination (non-security)
