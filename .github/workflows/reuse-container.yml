@@ -16,9 +16,9 @@ on:
         required: true
         description: "Tag to deploy (typically commit SHA from build job)"
       dry-run:
-        type: boolean
+        type: string
         required: false
-        default: false
+        default: 'true'
         description: "If true, don't push image / don't apply Helm"
     secrets:
       REGISTRY_USERNAME:
@@ -41,6 +41,7 @@ jobs:
       packages: write   # needed to push to ghcr.io
       deployments: write
 
+    if: ${{ !fromJSON(inputs.dry-run) }} 
     steps:
       # -------------------------------------------------
       # 1. Checkout code of the calling repo
