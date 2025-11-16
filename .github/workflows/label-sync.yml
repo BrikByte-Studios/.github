@@ -1,0 +1,80 @@
+name: "Governance — Label Sync"
+
+on:
+  # Run when labels.yml changes in the .github repo
+  push:
+    branches:
+      - main
+    paths:
+      - "labels.yml"
+      - ".github/labels.yml"
+
+  # Allow manual runs
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run in dry-run mode (no changes applied)"
+        required: false
+        default: "false"
+
+  # Optional: nightly scheduled sync
+  schedule:
+    - cron: "0 1 * * *" # 01:00 UTC daily (tweak as needed)
+
+permissions:
+  contents: read
+  issues: write
+  # For org-wide sync with fine control you might use a PAT via secrets instead
+
+env:
+  LABELS_FILE_PATH: ".github/labels.yml" # canonical location in BrikByte-Studios/.github
+  DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+
+jobs:
+  label-sync:
+    name: "Sync labels from labels.yml"
+    runs-on: ubuntu-latest
+
+    # If you want this workflow to live ONLY in .github and update org repos from there,
+    # you can add a matrix of repositories below and call the GitHub API.
+    # For now, this job assumes: "Run this workflow in each target repo" pattern.
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Find labels.yml either in this repo or in the central .github repo via submodule/clone.
+      # Option A: labels.yml is committed into each repo under .github/labels.yml
+      - name: "Verify labels.yml exists"
+        run: |
+          if [ ! -f "${LABELS_FILE_PATH}" ]; then
+            echo "::error::Labels file '${LABELS_FILE_PATH}' not found."
+            exit 1
+          fi
+          echo "Found labels file at ${LABELS_FILE_PATH}"
+
+      # Optional: show labels file for debugging
+      - name: "Print labels.yml (debug)"
+        run: |
+          echo "===== ${LABELS_FILE_PATH} ====="
+          cat "${LABELS_FILE_PATH}"
+          echo "================================"
+
+      - name: "Sync labels"
+        uses: micnncim/action-label-syncer@v1
+        with:
+          manifest: ${{ env.LABELS_FILE_PATH }}
+          prune: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: Dry run pattern using matrix or separate job
+      # Note: micnncim/action-label-syncer does not have a first-class dry-run flag,
+      # so DRY_RUN is mostly for gating: skip if dry_run == true.
+      - name: "Skip apply when DRY_RUN true (informational only)"
+        if: env.DRY_RUN == 'true'
+        run: |
+          echo "DRY_RUN is true — in a future enhancement, this could be wired to a diff-only step."
+

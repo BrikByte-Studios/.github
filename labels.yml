@@ -1,0 +1,279 @@
+# ============================================================
+# BrikByte Studios — Standardized Label Taxonomy (Org-wide)
+# Applies to all repositories through the .github org repo.
+# ============================================================
+
+labels:
+
+# ------------------------------------------------------------
+# 1. TYPE LABELS (Top-level classification)
+# ------------------------------------------------------------
+
+  - name: "type:feature"
+    color: "1f883d"
+    description: "New feature or major enhancement"
+
+  - name: "type:enhancement"
+    color: "22863a"
+    description: "Improvements to existing features"
+
+  - name: "type:bug"
+    color: "d73a4a"
+    description: "Defect, malfunction, wrong behaviour"
+
+  - name: "type:task"
+    color: "0e8a16"
+    description: "Concrete work item / implementation task"
+
+  - name: "type:refactor"
+    color: "0366d6"
+    description: "Code re-architecture, cleanup, or restructuring"
+
+  - name: "type:docs"
+    color: "a2eeef"
+    description: "Documentation updates"
+
+  - name: "type:test"
+    color: "fbca04"
+    description: "Test creation or updates (unit/integration/e2e)"
+
+  - name: "type:chore"
+    color: "cccccc"
+    description: "Non-functional change, housekeeping, maintenance"
+
+  - name: "type:infra"
+    color: "b60205"
+    description: "Infrastructure, CI/CD, config, DevOps work"
+
+  - name: "type:hotfix"
+    color: "8b0000"
+    description: "Urgent production fix (P0/P1)"
+
+  - name: "type:security"
+    color: "ff0033"
+    description: "Security-related changes or vulnerabilities"
+
+  - name: "type:governance"
+    color: "6f42c1"
+    description: "Governance, policies, compliance, ADRs"
+
+  - name: "type:incident"
+    color: "cc0000"
+    description: "SRE-grade incidents, service degradation, outages"
+
+  - name: "type:rfc"
+    color: "0052cc"
+    description: "Architecture or platform proposal (RFC)"
+
+  - name: "type:epic"
+    color: "5319e7"
+    description: "Large feature or multi-task initiative"
+
+# ------------------------------------------------------------
+# 2. PRIORITY LABELS (Work sequencing)
+# ------------------------------------------------------------
+
+  - name: "priority:P0"
+    color: "b60205"
+    description: "Critical — blocking, production impact"
+
+  - name: "priority:P1"
+    color: "d93f0b"
+    description: "High priority — important but not blocking"
+
+  - name: "priority:P2"
+    color: "fbca04"
+    description: "Medium — regular prioritization"
+
+  - name: "priority:P3"
+    color: "c2e0c6"
+    description: "Low — backlog, nice-to-have"
+
+# ------------------------------------------------------------
+# 3. STATUS LABELS (Lifecycle)
+# ------------------------------------------------------------
+
+  - name: "status:triage"
+    color: "ededed"
+    description: "Awaiting triage or classification"
+
+  - name: "status:in-progress"
+    color: "0e8a16"
+    description: "Work is in progress"
+
+  - name: "status:blocked"
+    color: "b60205"
+    description: "Work blocked by dependency"
+
+  - name: "status:needs-review"
+    color: "fbca04"
+    description: "PR or solution needs review"
+
+  - name: "status:ready"
+    color: "5319e7"
+    description: "Ready for implementation or merge"
+
+  - name: "status:needs-info"
+    color: "d93f0b"
+    description: "Waiting for more details from reporter"
+
+  - name: "status:duplicate"
+    color: "cccccc"
+    description: "Issue duplicates an existing one"
+
+  - name: "status:wontfix"
+    color: "e4e669"
+    description: "Closed; will not be addressed"
+
+  - name: "status:done"
+    color: "1f883d"
+    description: "Completed and released"
+
+# ------------------------------------------------------------
+# 4. AREA LABELS (Tech & domain areas)
+# ------------------------------------------------------------
+
+  - name: "area:auth"
+    color: "5319e7"
+    description: "Authentication/Authorization components"
+
+  - name: "area:billing"
+    color: "0052cc"
+    description: "Billing, payments, invoicing"
+
+  - name: "area:infra"
+    color: "b60205"
+    description: "Infrastructure, operations, CI/CD, cloud"
+
+  - name: "area:api"
+    color: "0e8a16"
+    description: "Backend API services or endpoints"
+
+  - name: "area:ui"
+    color: "fbca04"
+    description: "Front-end UI or design system"
+
+  - name: "area:database"
+    color: "5319e7"
+    description: "Database schema, queries, migrations"
+
+  - name: "area:observability"
+    color: "0366d6"
+    description: "Metrics, logs, tracing, dashboards, alerts"
+
+  - name: "area:security"
+    color: "ff0033"
+    description: "Security, compliance, identity"
+
+  - name: "area:governance"
+    color: "6f42c1"
+    description: "Policies, ADRs, organizational standards"
+
+  - name: "area:sre"
+    color: "b60205"
+    description: "SRE-focused changes, reliability, SLO/SLI"
+
+  - name: "area:data"
+    color: "0366d6"
+    description: "Data pipelines, ETL, analytics"
+
+  - name: "area:test"
+    color: "fbca04"
+    description: "Testing frameworks, QAOps, automation"
+
+  - name: "area:docs"
+    color: "a2eeef"
+    description: "Documentation and developer experience"
+
+# ------------------------------------------------------------
+# 5. PROJECT LABELS (proj/*)
+# ------------------------------------------------------------
+
+  - name: "proj/brikbyteos"
+    color: "5319e7"
+    description: "BrikByteOS unified DevOps, QAOps, governance OS"
+
+  - name: "proj/stackcraft"
+    color: "0366d6"
+    description: "StackCraft SaaS templates & starter kits"
+
+# ------------------------------------------------------------
+# 6. PHASE LABELS (Roadmap waves)
+# ------------------------------------------------------------
+
+  - name: "phase/foundation"
+    color: "1f883d"
+    description: "Initial development phase"
+
+  - name: "phase/expansion"
+    color: "0366d6"
+    description: "Feature expansion, scaling, integrations"
+
+  - name: "phase/hardening"
+    color: "b60205"
+    description: "Stabilization, performance, reliability"
+
+  - name: "phase/maintenance"
+    color: "cccccc"
+    description: "Low-change maintenance mode"
+
+# ------------------------------------------------------------
+# 7. QA, SRE, SECURITY & SUPPORT LABELS
+# ------------------------------------------------------------
+
+  - name: "qa:needs-tests"
+    color: "d73a4a"
+    description: "Missing or insufficient test coverage"
+
+  - name: "qa:approved"
+    color: "0e8a16"
+    description: "QA reviewed and approved"
+
+  - name: "sre:impact"
+    color: "b60205"
+    description: "Impacts reliability/SLOs; requires SRE review"
+
+  - name: "security:review-needed"
+    color: "ff0033"
+    description: "Requires security review before merge"
+
+  - name: "support:customer-issue"
+    color: "0366d6"
+    description: "Reported by customer or end user"
+
+  - name: "support:internal"
+    color: "6f42c1"
+    description: "Internal support ticket"
+
+# ------------------------------------------------------------
+# 8. MISC UTILITY LABELS
+# ------------------------------------------------------------
+
+  - name: "good first issue"
+    color: "7057ff"
+    description: "Beginner-friendly issue for new contributors"
+
+  - name: "help wanted"
+    color: "008672"
+    description: "Open to contributions; actively seeking help"
+
+  - name: "discussion"
+    color: "cfd3d7"
+    description: "Requires conversation and alignment"
+
+  - name: "design needed"
+    color: "ffcc00"
+    description: "UX/UI/architectural design required"
+
+  - name: "needs-reproduction"
+    color: "d93f0b"
+    description: "Bug or issue needs reproduction steps"
+
+  - name: "blocked:external"
+    color: "b60205"
+    description: "Blocked by a third-party dependency"
+
+  - name: "blocked:internal"
+    color: "d73a4a"
+    description: "Blocked by an internal team or service"
+
