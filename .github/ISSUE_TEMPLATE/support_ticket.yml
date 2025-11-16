@@ -1,0 +1,283 @@
+name: "🆘 Support Ticket"
+description: "Log a customer support request so it can be triaged into bugs, incidents, or feature work."
+title: "[SUPPORT] <short summary>"
+labels:
+  - "type:support"
+  - "triage"
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for **customer / internal support requests**.
+
+        Use it to capture:
+        - Who is affected
+        - What they’re experiencing
+        - Business impact
+        - Enough detail for engineering / product to act
+
+        > 🔐 **Note:** Do not paste secrets, credentials, or sensitive personal information. Mask any such data before submission.
+
+  # --- Requester & Customer Info ---
+  - type: input
+    id: requester_name
+    attributes:
+      label: "Requester Name"
+      description: "Who raised this ticket? (customer or internal)"
+      placeholder: "e.g., John Doe / Internal: @support-agent"
+    validations:
+      required: true
+
+  - type: input
+    id: requester_contact
+    attributes:
+      label: "Requester Contact"
+      description: "Preferred contact details for follow-up."
+      placeholder: "e.g., john.doe@example.com, +27..., or internal Slack handle"
+    validations:
+      required: false
+
+  - type: input
+    id: customer_account
+    attributes:
+      label: "Customer / Tenant / Account"
+      description: "Which customer or tenant is affected?"
+      placeholder: "e.g., Tenant: ACME Logistics, Zone: SA-North"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: request_channel
+    attributes:
+      label: "Request Channel"
+      description: "How did this request come in?"
+      options:
+        - "Email"
+        - "Support Portal"
+        - "Phone"
+        - "WhatsApp"
+        - "Slack / Internal"
+        - "Other"
+    validations:
+      required: true
+
+  # --- Classification & Impact ---
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: "Request Type"
+      description: "Classify the nature of the request."
+      options:
+        - "Question / How-to"
+        - "Bug / Something is broken"
+        - "Access / Account issue"
+        - "Data issue (missing/incorrect/non-PII)"
+        - "Billing / Invoicing"
+        - "Feature request / Enhancement"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: "Urgency (Customer View)"
+      description: "How urgent is this from the requester’s perspective?"
+      options:
+        - "Critical – Cannot work / system unusable"
+        - "High – Major disruption / no workaround"
+        - "Medium – Some disruption / workaround exists"
+        - "Low – Minor issue / general query"
+    validations:
+      required: true
+
+  - type: textarea
+    id: business_impact
+    attributes:
+      label: "Business Impact Description"
+      description: "Describe how this affects the customer’s business or operations."
+      placeholder: |
+        - What business process is blocked?
+        - Approx. number of affected users:
+        - Time sensitivity / deadlines:
+    validations:
+      required: true
+
+  # --- Product & Environment Context ---
+  - type: input
+    id: product_area
+    attributes:
+      label: "Product / Module / Repo"
+      description: "Which BrikByte product or module is involved? Use your proj/* and area:* taxonomy where possible."
+      placeholder: "e.g., CargoPulse Web • proj/cargopulse • area:shipments"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: "Environment"
+      description: "Where is the issue observed?"
+      options:
+        - "Production"
+        - "Staging / UAT"
+        - "Test / QA"
+        - "Unknown / Not specified"
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: "Version / Build (if known)"
+      description: "App version, build number, or release tag if the customer provided it."
+      placeholder: "e.g., v1.4.2 (web), Android app v1.0.3"
+    validations:
+      required: false
+
+  # --- Description & Reproduction (if applicable) ---
+  - type: input
+    id: summary
+    attributes:
+      label: "Short Summary of the Issue / Question"
+      description: "One-line summary from the customer’s point of view."
+      placeholder: "e.g., Unable to upload documents to shipment record."
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Full Description (Customer’s Words, if possible)"
+      description: "Paste or paraphrase the customer’s description. Highlight their exact wording for key parts, if helpful."
+      placeholder: |
+        - What the customer reports:
+        - Additional clarifications from support:
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: "Steps to Reproduce (if this looks like a bug)"
+      description: "If it appears to be a bug, list clear steps so engineering/QA can try to reproduce."
+      placeholder: |
+        1. Customer logs in as ...
+        2. Navigates to ...
+        3. Clicks on ...
+        4. Observes ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: "Expected vs Actual Behaviour"
+      description: "What did the customer expect, and what actually happened?"
+      placeholder: |
+        Expected:
+        - ...
+
+        Actual:
+        - ...
+    validations:
+      required: false
+
+  # --- Attachments & Diagnostics ---
+  - type: textarea
+    id: attachments
+    attributes:
+      label: "Screenshots / Attachments / Recording Links"
+      description: "List or paste links to any screenshots, recordings, or files provided by the customer."
+      placeholder: "Drag-and-drop images here or paste Loom / video / file links."
+    validations:
+      required: false
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: "Support Diagnostics (If Any)"
+      description: "Any quick checks you did (e.g., replicated on your side, checked logs, confirmed status page)."
+      placeholder: |
+        - Checks performed:
+        - Could you reproduce it?
+        - Any obvious configuration issues?
+    validations:
+      required: false
+
+  # --- Internal Routing & Links ---
+  - type: textarea
+    id: internal_links
+    attributes:
+      label: "Related Internal Items (Optional)"
+      description: "Link any related bugs, incidents, feature requests, or governance issues if already created."
+      placeholder: |
+        - Bug: #123
+        - Incident: #456
+        - Feature request: #789
+        - GOV issue: #101
+    validations:
+      required: false
+
+  - type: dropdown
+    id: suggested_routing
+    attributes:
+      label: "Suggested Routing"
+      description: "Where should this likely go next?"
+      options:
+        - "Support team investigation"
+        - "Engineering – potential bug"
+        - "Product – potential feature request"
+        - "Billing / Finance"
+        - "Access / Identity team"
+        - "Unsure / Needs triage"
+    validations:
+      required: false
+
+  # --- Follow-up & SLA Notes ---
+  - type: input
+    id: sla_or_deadline
+    attributes:
+      label: "SLA / Deadline (If Any)"
+      description: "Any promised SLA, go-live date, or critical external deadline."
+      placeholder: "e.g., Go-live on 2025-11-30; customer expecting response within 4 business hours."
+    validations:
+      required: false
+
+  - type: textarea
+    id: next_steps
+    attributes:
+      label: "Immediate Next Steps for Support"
+      description: "What should support do next (acknowledge, gather more info, escalate, etc.)?"
+      placeholder: |
+        - Acknowledge ticket with template:
+        - Request more details:
+        - Escalate to:
+    validations:
+      required: false
+
+  # --- Metadata & Checklist ---
+  - type: input
+    id: support_agent
+    attributes:
+      label: "Support Agent"
+      description: "Who logged this ticket?"
+      placeholder: "e.g., @support-agent"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: "Pre-Flight Checklist"
+      description: "Confirm before submitting this ticket."
+      options:
+        - label: "Customer’s main concern is captured clearly."
+          required: true
+        - label: "Impact and urgency reflect the customer’s reality."
+          required: true
+        - label: "Any screenshots/attachments are added (if provided)."
+          required: false
+        - label: "No secrets, credentials, or sensitive personal data are included."
+          required: true
