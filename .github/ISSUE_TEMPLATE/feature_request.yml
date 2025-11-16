@@ -15,7 +15,7 @@ body:
         > 🔐 **Note:** Do not include secrets, credentials, or personal information.
 
   # --- High-level summary & classification ---
-  - type: input
+  - type: textarea
     id: summary
     attributes:
       label: "Summary"
