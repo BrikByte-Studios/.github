@@ -1,0 +1,91 @@
+# BrikByte Studios — Issue Template Configuration
+
+blank_issues_enabled: false
+
+contact_links:
+  - name: 🔐 Security & Vulnerability Reports
+    url: https://github.com/BrikByte-Studios/.github/security/policy
+    about: >
+      For suspected security vulnerabilities, data exposure, or privacy issues.
+      Do NOT open a public GitHub issue. Follow the Responsible Disclosure policy.
+
+  - name: 🆘 Customer / User Support
+    url: https://brikbyte-support.example.com
+    about: >
+      For product usage questions, account issues, troubleshooting,
+      or customer support. This is the correct place to get help.
+
+  - name: 📚 Product & Developer Documentation
+    url: https://docs.brikbyte.example.com
+    about: >
+      Setup guides, API references, FAQs, runbooks, and product documentation.
+      Check here before opening a new GitHub issue.
+
+  - name: 🏛️ Architecture & Governance (BrikByteOS)
+    url: https://github.com/BrikByte-Studios/.github
+    about: >
+      Organization-wide governance, platform standards, policies, ADR index,
+      architecture decisions, and BrikByteOS reference materials.
+
+  - name: 💬 Internal Engineering Discussions
+    url: https://chat.brikbyte.example.com
+    about: >
+      Use internal chat (Slack/Teams) for brainstorming, Q&A,
+      or early-stage discussions before raising RFCs or governance issues.
+
+  - name: 💬 Support (Slack)
+    url: https://example.com/slack
+    about: >
+      Join our internal Slack and ask the team for assistance in #support.
+
+  - name: 🧭 Project Roadmap
+    url: https://github.com/orgs/BrikByte-Studios/projects
+    about: >
+      View priorities, timelines, milestones, and what’s currently in progress.
+
+  - name: 💬 Discussions (Ideas & Q&A)
+    url: https://github.com/BrikByte-Studios/brikbyteos/discussions
+    about: >
+      Start community discussions, propose ideas, or ask questions asynchronously.
+
+  - name: 🛠 Contributing Guide
+    url: https://github.com/BrikByte-Studios/brikbyteos/blob/main/CONTRIBUTING.md
+    about: >
+      Contribution rules, PR workflow, commit style, branching model, and DCO guidelines.
+
+  - name: 📜 Code of Conduct
+    url: https://github.com/BrikByte-Studios/brikbyteos/blob/main/CODE_OF_CONDUCT.md
+    about: >
+      Standards for respectful, inclusive collaboration across all BrikByte projects.
+
+  - name: 🔐 Security Policy / Responsible Disclosure
+    url: https://github.com/BrikByte-Studios/brikbyteos/security/policy
+    about: >
+      How to report security issues privately to maintainers. No public issues please.
+
+  - name: 🚦 Status Page
+    url: https://status.example.com
+    about: >
+      Live system health, uptime metrics, incidents, and maintenance announcements.
+
+  - name: 🚨 Incident / P1 Hotline
+    url: https://pagerduty.example.com/incidents/new
+    about: >
+      Production-severity (P0/P1) only. Alerts the on-call SRE or engineer immediately.
+
+  - name: 🧾 Release Notes & Changelog
+    url: https://github.com/BrikByte-Studios/brikbyteos/releases
+    about: >
+      View version history, release notes, fix logs, upgrade notes, and migration steps.
+
+  - name: 🎫 Service Desk (Internal Ops)
+    url: https://jira.example.com/servicedesk
+    about: >
+      File operational requests such as access provisioning, configuration changes,
+      or environment-related tasks that are not GitHub issues.
+
+  - name: ✉️ Contact Maintainers
+    url: mailto:maintainers@brikbyte.dev
+    about: >
+      Email the core BrikByteOS maintainers for private coordination
+      (non-security sensitive only).
