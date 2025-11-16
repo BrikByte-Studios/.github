@@ -1,7 +1,6 @@
 name: "Governance — Label Sync"
 
 on:
-  # Run when labels.yml changes in the .github repo
   push:
     branches:
       - main
@@ -9,7 +8,6 @@ on:
       - "labels.yml"
       - ".github/labels.yml"
 
-  # Allow manual runs
   workflow_dispatch:
     inputs:
       dry_run:
@@ -17,17 +15,16 @@ on:
         required: false
         default: "false"
 
-  # Optional: nightly scheduled sync
   schedule:
-    - cron: "0 1 * * *" # 01:00 UTC daily (tweak as needed)
+    - cron: "0 1 * * *" # 01:00 UTC daily
 
 permissions:
   contents: read
   issues: write
-  # For org-wide sync with fine control you might use a PAT via secrets instead
 
 env:
-  LABELS_FILE_PATH: ".github/labels.yml" # canonical location in BrikByte-Studios/.github
+  # Default; will be overridden by detection step below
+  LABELS_FILE_PATH: ".github/labels.yml"
   DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
 
 jobs:
@@ -35,46 +32,45 @@ jobs:
     name: "Sync labels from labels.yml"
     runs-on: ubuntu-latest
 
-    # If you want this workflow to live ONLY in .github and update org repos from there,
-    # you can add a matrix of repositories below and call the GitHub API.
-    # For now, this job assumes: "Run this workflow in each target repo" pattern.
-
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Find labels.yml either in this repo or in the central .github repo via submodule/clone.
-      # Option A: labels.yml is committed into each repo under .github/labels.yml
-      - name: "Verify labels.yml exists"
+      - name: "Locate labels.yml"
+        id: locate_labels
+        shell: bash
         run: |
-          if [ ! -f "${LABELS_FILE_PATH}" ]; then
-            echo "::error::Labels file '${LABELS_FILE_PATH}' not found."
+          if [ -f ".github/labels.yml" ]; then
+            echo "Found .github/labels.yml"
+            echo "labels_file=.github/labels.yml" >> "$GITHUB_OUTPUT"
+          elif [ -f "labels.yml" ]; then
+            echo "Found labels.yml at repo root"
+            echo "labels_file=labels.yml" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No labels.yml found. Expected either '.github/labels.yml' or 'labels.yml' at repo root."
             exit 1
           fi
-          echo "Found labels file at ${LABELS_FILE_PATH}"
 
-      # Optional: show labels file for debugging
       - name: "Print labels.yml (debug)"
         run: |
-          echo "===== ${LABELS_FILE_PATH} ====="
-          cat "${LABELS_FILE_PATH}"
+          echo "Using labels file: ${{ steps.locate_labels.outputs.labels_file }}"
+          echo "===== labels.yml content ====="
+          cat "${{ steps.locate_labels.outputs.labels_file }}"
           echo "================================"
 
       - name: "Sync labels"
+        if: env.DRY_RUN == 'false'
         uses: micnncim/action-label-syncer@v1
         with:
-          manifest: ${{ env.LABELS_FILE_PATH }}
+          manifest: ${{ steps.locate_labels.outputs.labels_file }}
           prune: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Optional: Dry run pattern using matrix or separate job
-      # Note: micnncim/action-label-syncer does not have a first-class dry-run flag,
-      # so DRY_RUN is mostly for gating: skip if dry_run == true.
-      - name: "Skip apply when DRY_RUN true (informational only)"
+      - name: "Dry-run notice (no changes applied)"
         if: env.DRY_RUN == 'true'
         run: |
-          echo "DRY_RUN is true — in a future enhancement, this could be wired to a diff-only step."
-
+          echo "DRY_RUN=true — labels.yml located at '${{ steps.locate_labels.outputs.labels_file }}'."
+          echo "No changes were applied. Set dry_run=false or omit input to sync labels."
