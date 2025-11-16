@@ -1,0 +1,393 @@
+name: "🚨 Incident (SRE)"
+description: "Record a production or critical environment incident with full SRE context."
+title: "[INCIDENT] <short summary>"
+labels:
+  - "type:incident"
+  - "sre"
+  - "triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for recording an incident for BrikByte Studios 👋
+
+        This template is designed for **SRE-grade incident tracking**:
+        - Clear impact & severity
+        - Accurate timeline
+        - SLO/SLA impact
+        - Mitigation & follow-up actions
+        - Governance & traceability hooks (RTM, ADRs, REQ/TC, etc.)
+
+        > 🔐 **Note:** Do not include secrets, credentials, or personal information. Sanitize logs and payloads.
+
+  # --- Summary & classification ---
+  - type: input
+    id: summary
+    attributes:
+      label: "Incident Summary"
+      description: "Short, clear description of the incident."
+      placeholder: "e.g., Checkout failures for all SA tenants due to payment gateway outage."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: "Severity (SEV-*)"
+      description: "Overall severity of the incident."
+      options:
+        - "SEV-0 - Critical (full outage / safety / major data loss)"
+        - "SEV-1 - High (major degradation; core flows severely impacted)"
+        - "SEV-2 - Medium (partial degradation; workarounds exist)"
+        - "SEV-3 - Low (minor impact / edge cases)"
+        - "SEV-4 - Informational / Near miss"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact_type
+    attributes:
+      label: "Impact Type"
+      description: "Primary type of impact observed."
+      options:
+        - "Availability / Outage"
+        - "Performance Degradation"
+        - "Functional Error / Incorrect Behaviour"
+        - "Data Quality / Data Loss (non-PII)"
+        - "Security / Privacy (raise via security process as well)"
+        - "Operational / Process"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: "Incident Status"
+      description: "Current lifecycle stage of this incident."
+      options:
+        - "Open"
+        - "Mitigation in progress"
+        - "Mitigated - Monitoring"
+        - "Resolved - Postmortem pending"
+        - "Postmortem completed"
+    validations:
+      required: true
+
+  # --- Environment & scope ---
+  - type: dropdown
+    id: environment
+    attributes:
+      label: "Environment"
+      description: "Where did this incident occur?"
+      options:
+        - "Production"
+        - "Pre-Production / Staging"
+        - "Test / QA"
+        - "Development / Sandbox"
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected_scope
+    attributes:
+      label: "Affected Products / Services / Tenants"
+      description: "List impacted products, services, components, and tenants/customers."
+      placeholder: |
+        - Products: (e.g., CargoPulse Web, CargoPulse API)
+        - Services: (e.g., payments-service, notification-service)
+        - Tenants / Customers: (e.g., Tenant A, SA region)
+        - Geographies: (e.g., ZA, EU)
+    validations:
+      required: true
+
+  - type: textarea
+    id: customer_impact
+    attributes:
+      label: "Customer Impact Summary"
+      description: "Describe how customers were impacted in business terms."
+      placeholder: |
+        - What could/couldn’t users do?
+        - Approx. number of affected users / tenants:
+        - Business impact (e.g., failed checkouts, delayed notifications, reporting unavailable):
+    validations:
+      required: true
+
+  # --- Detection & timestamps ---
+  - type: dropdown
+    id: detected_by
+    attributes:
+      label: "Detection Source"
+      description: "How was the incident detected?"
+      options:
+        - "Monitoring / Alerting"
+        - "Internal user (staff)"
+        - "Customer report"
+        - "Automated test / synthetic checks"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: first_detected_at
+    attributes:
+      label: "First Detected (UTC)"
+      description: "When was the incident first detected?"
+      placeholder: "e.g., 2025-11-16T14:25:00Z"
+    validations:
+      required: true
+
+  - type: input
+    id: started_at
+    attributes:
+      label: "Estimated Start Time (UTC)"
+      description: "If known, when did the impact actually begin?"
+      placeholder: "e.g., 2025-11-16T14:00:00Z (logs / metrics estimate)"
+    validations:
+      required: false
+
+  - type: input
+    id: mitigated_at
+    attributes:
+      label: "Mitigated At (UTC)"
+      description: "When was customer impact mitigated (even if not fully fixed)?"
+      placeholder: "e.g., 2025-11-16T14:45:00Z"
+    validations:
+      required: false
+
+  - type: input
+    id: resolved_at
+    attributes:
+      label: "Fully Resolved At (UTC)"
+      description: "When was the incident fully resolved?"
+      placeholder: "e.g., 2025-11-16T15:10:00Z"
+    validations:
+      required: false
+
+  - type: textarea
+    id: alert_refs
+    attributes:
+      label: "Alert & Monitoring References"
+      description: "Links or IDs for alerts, dashboards, and monitoring tools."
+      placeholder: |
+        - Alert IDs / Names:
+        - Grafana dashboards:
+        - Logging / tracing queries:
+    validations:
+      required: false
+
+  # --- Timeline ---
+  - type: textarea
+    id: timeline
+    attributes:
+      label: "Incident Timeline"
+      description: "Chronological sequence of key events (UTC)."
+      placeholder: |
+        - 14:00Z – Issue started (approx., based on logs)
+        - 14:25Z – Alert fired in Grafana
+        - 14:30Z – On-call acknowledged
+        - 14:40Z – Mitigation applied (rolled back deploy / feature flag)
+        - 14:45Z – Customer impact mitigated
+        - 15:10Z – Root cause fix deployed
+        - 15:30Z – Monitoring stable; incident resolved
+    validations:
+      required: false
+
+  # --- Technical details & analysis ---
+  - type: textarea
+    id: current_status
+    attributes:
+      label: "Current Status & Mitigation Summary"
+      description: "Brief current status and what actions have been taken so far."
+      placeholder: |
+        - Current system state:
+        - Temporary mitigations in place:
+        - Residual risk / degraded modes:
+    validations:
+      required: true
+
+  - type: textarea
+    id: suspected_root_cause
+    attributes:
+      label: "Suspected Root Cause (Initial)"
+      description: "Initial hypothesis of what caused the incident. This can be updated later after deeper analysis."
+      placeholder: |
+        - Early hypothesis:
+        - Components suspected:
+        - Any recent changes that may be related:
+    validations:
+      required: false
+
+  - type: textarea
+    id: contributing_factors
+    attributes:
+      label: "Contributing Factors"
+      description: "List factors that made the incident more likely or more severe (technical, operational, process)."
+      placeholder: |
+        - Technical:
+        - Operational:
+        - Process / communication:
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs_and_diagnostics
+    attributes:
+      label: "Logs & Diagnostics (sanitized)"
+      description: "Relevant logs, traces, errors, and diagnostics. Remove any secrets and personal data."
+      render: shell
+      placeholder: |
+        [Logs]
+        2025-11-16T14:23:01Z ERROR ...
+
+        [Traces]
+        Trace IDs / span samples...
+
+        [Network / HTTP]
+        Endpoint failures, status codes, etc.
+    validations:
+      required: false
+
+  - type: textarea
+    id: infra_changes
+    attributes:
+      label: "Recent Changes (Code / Infra / Config)"
+      description: "List relevant deployments, config changes, migrations, or infra work around the incident time."
+      placeholder: |
+        - Deployments (service, version, commit SHA, time):
+        - Infrastructure changes (Kubernetes, DB, network, etc.):
+        - Feature flag flips / config changes:
+    validations:
+      required: false
+
+  # --- Mitigation, resolution & follow-up ---
+  - type: textarea
+    id: mitigation_steps
+    attributes:
+      label: "Mitigation Steps"
+      description: "What actions were taken to reduce or stop customer impact?"
+      placeholder: |
+        - Rolled back service X from v1.4.2 to v1.4.1
+        - Disabled feature flag feature.payments.ozow
+        - Increased capacity on Y
+    validations:
+      required: false
+
+  - type: textarea
+    id: resolution_details
+    attributes:
+      label: "Resolution Details"
+      description: "What ultimately resolved the incident? Include technical fix and its validation."
+      placeholder: |
+        - Root-cause fix implemented:
+        - Tests / checks run:
+        - Validation that system is healthy:
+    validations:
+      required: false
+
+  - type: textarea
+    id: follow_up_actions
+    attributes:
+      label: "Follow-up Actions / Action Items"
+      description: "List follow-up tasks for preventing recurrence or improving detection/response."
+      placeholder: |
+        - [ ] Add alert for ...
+        - [ ] Improve runbook for ...
+        - [ ] Implement circuit breaker / timeout for ...
+        - [ ] Update ADR / policy ...
+        - [ ] Create bug/feature tasks:
+    validations:
+      required: false
+
+  # --- SLO / SLA & metrics impact ---
+  - type: textarea
+    id: slo_impact
+    attributes:
+      label: "SLO / SLA Impact"
+      description: "Describe impact to SLOs, SLIs, error budgets, or contractual SLAs."
+      placeholder: |
+        - SLOs affected:
+        - Estimated SLI during incident window:
+        - Error budget consumed:
+        - Any SLA breach (if applicable):
+    validations:
+      required: false
+
+  - type: textarea
+    id: metrics_impact
+    attributes:
+      label: "Metrics & Observability Notes"
+      description: "Any notable patterns in metrics, logs, or traces that informed diagnosis."
+      placeholder: |
+        - Traffic patterns:
+        - Latency / error rate spikes:
+        - Resource saturation (CPU, memory, DB connections):
+    validations:
+      required: false
+
+  # --- Governance & traceability (BrikByteOS) ---
+  - type: textarea
+    id: governance_links
+    attributes:
+      label: "Related Issues / Changes / Governance Items"
+      description: "Link related bugs, tasks, PRs, ADRs, requirements, test cases, or RTM rows."
+      placeholder: |
+        - Bugs: #123, #456
+        - Tasks: #789
+        - PRs / Deploys: org/repo#PR, commit SHAs
+        - Requirements (REQ-*):
+        - Test cases (TC-*):
+        - ADRs:
+        - RTM rows:
+    validations:
+      required: false
+
+  - type: textarea
+    id: runbooks_and_docs
+    attributes:
+      label: "Runbooks & Documentation"
+      description: "Which runbooks were used, and what doc changes are required?"
+      placeholder: |
+        - Runbooks consulted:
+        - Gaps identified:
+        - Docs to update (runbooks, onboarding, playbooks):
+    validations:
+      required: false
+
+  # --- Roles & communication ---
+  - type: textarea
+    id: roles_and_comms
+    attributes:
+      label: "Roles & Communication"
+      description: "Who was involved and how communication was handled (internal/external)."
+      placeholder: |
+        - Incident commander:
+        - On-call engineer(s):
+        - Product / Support / Stakeholders:
+        - Customer communications (if any):
+    validations:
+      required: false
+
+  - type: input
+    id: reporter
+    attributes:
+      label: "Incident Reporter"
+      description: "Your name or GitHub handle."
+      placeholder: "e.g., @oncall-sre"
+    validations:
+      required: true
+
+  # --- Pre-flight checklist ---
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: "Pre-Flight Checklist"
+      description: "Confirm before submitting this incident."
+      options:
+        - label: "Customer impact and severity are described clearly."
+          required: true
+        - label: "Relevant timestamps are provided in UTC or best-effort estimates."
+          required: true
+        - label: "Logs and diagnostics are sanitized (no secrets or personal data)."
+          required: true
+        - label: "Related issues / changes are linked where possible."
+          required: false
