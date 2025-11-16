@@ -228,7 +228,7 @@ body:
     validations:
       required: false
 
-    - type: textarea
+  - type: textarea
     id: risks_constraints
     attributes:
       label: "Risks, Constraints & Open Questions"
