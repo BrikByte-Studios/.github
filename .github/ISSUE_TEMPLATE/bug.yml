@@ -14,7 +14,7 @@ body:
         > 🔐 **Note:** Remove or mask any sensitive data (keys, tokens, personal information, etc.) from logs and screenshots.
 
   # --- High-level summary & impact ---
-  - type: input
+  - type: textarea
     id: summary
     attributes:
       label: "Summary"
