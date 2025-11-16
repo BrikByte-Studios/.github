@@ -1,0 +1,271 @@
+name: "🐞 Bug Report"
+description: "Report a defect so we can triage, reproduce, and fix it efficiently."
+title: "[BUG] <short summary>"
+labels:
+  - "type:bug"
+  - "triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug!  
+        Please fill in as much detail as possible so the team can reproduce and fix it quickly.
+
+        > 🔐 **Note:** Remove or mask any sensitive data (keys, tokens, personal information, etc.) from logs and screenshots.
+
+  # --- High-level summary & impact ---
+  - type: input
+    id: summary
+    attributes:
+      label: "Summary"
+      description: "Short, clear description of the bug."
+      placeholder: "e.g., Cannot submit payment form when selecting Ozow on mobile."
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: "Impact"
+      description: "Who is affected and how badly? Include counts, customer names, or revenue impact if known."
+      placeholder: |
+        - Affected users: (e.g., all users / specific tenants / internal only)
+        - Business impact: (e.g., cannot complete checkout / blocks release / cosmetic only)
+        - Time sensitivity: (e.g., must fix before next release / nice-to-have)
+    validations:
+      required: true
+
+  # --- Severity / Frequency ---
+  - type: dropdown
+    id: severity
+    attributes:
+      label: "Severity (S*)"
+      description: "How severe is the bug from a business / user perspective?"
+      options:
+        - "S0 - Critical (system down / data loss / security)"
+        - "S1 - High (core flows broken; no workaround)"
+        - "S2 - Medium (important but workaround exists)"
+        - "S3 - Low (minor / cosmetic / edge case)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: "Frequency"
+      description: "How often does this bug occur?"
+      options:
+        - "Every time"
+        - "Often"
+        - "Sometimes"
+        - "Rarely"
+        - "Unable to reproduce consistently"
+    validations:
+      required: true
+
+  # --- Environment / context ---
+  - type: dropdown
+    id: environment
+    attributes:
+      label: "Environment"
+      description: "Where was the bug observed?"
+      options:
+        - "Production"
+        - "Staging / UAT"
+        - "Test / QA"
+        - "Development"
+        - "Local"
+    validations:
+      required: true
+
+  - type: input
+    id: product_area
+    attributes:
+      label: "Product / Repo / Area"
+      description: "Which product, repository, or module is affected? Use BrikByte taxonomy where possible."
+      placeholder: "e.g., CargoPulse API • proj/cargopulse • area:billing"
+    validations:
+      required: true
+
+  - type: input
+    id: version_build
+    attributes:
+      label: "Version / Build / Tag"
+      description: "App version, build number, or release tag where the bug was seen."
+      placeholder: "e.g., v1.4.2 (build 2310) / tag: v1.4.2"
+    validations:
+      required: false
+
+  - type: input
+    id: commit_sha
+    attributes:
+      label: "Commit SHA (if known)"
+      description: "Git commit SHA deployed in the affected environment."
+      placeholder: "e.g., 1a2b3c4d5e6f7g8h9i0j"
+    validations:
+      required: false
+
+  - type: input
+    id: branch
+    attributes:
+      label: "Branch (if not from main release)"
+      placeholder: "e.g., feature/payments-refactor"
+    validations:
+      required: false
+
+  - type: input
+    id: observed_at
+    attributes:
+      label: "Date / Time Observed (UTC)"
+      placeholder: "e.g., 2025-11-16T14:25:00Z"
+    validations:
+      required: false
+
+  - type: input
+    id: client_platform
+    attributes:
+      label: "Client Platform"
+      description: "Browser, OS, device, or app version where bug appears."
+      placeholder: "e.g., Chrome 120 / Windows 11 • Safari on iOS 18 • Android app v1.0.3"
+    validations:
+      required: false
+
+  # --- Reproduction details ---
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: "Steps to Reproduce"
+      description: "Exact steps so that someone else can reliably reproduce the bug."
+      placeholder: |
+        1. Go to ...
+        2. Sign in as ...
+        3. Navigate to ...
+        4. Click on ...
+        5. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: "Expected Behavior"
+      description: "What did you expect to happen?"
+      placeholder: "e.g., Payment should be processed and confirmation screen displayed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: "Actual Behavior"
+      description: "What actually happened instead?"
+      placeholder: "e.g., Error banner appears with message 'Something went wrong' and no payment is taken."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: regression
+    attributes:
+      label: "Regression?"
+      description: "Did this work before and recently break?"
+      options:
+        - "Yes, previously working (regression)"
+        - "No, new behaviour / newly discovered"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: regression_details
+    attributes:
+      label: "If regression, when did it last work?"
+      description: "If known, include last known working version, build, or date."
+      placeholder: "e.g., Worked in v1.3.9 (release-2025-10-01); broken since v1.4.0."
+    validations:
+      required: false
+
+  # --- Diagnostics ---
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs & Diagnostics (sanitized)"
+      description: "Relevant application logs, stack traces, network errors, or console output. Remove any secrets or personal data."
+      render: shell
+      placeholder: |
+        [Server logs]
+        2025-11-16T14:23:01Z ERROR ...
+
+        [Browser console]
+        Failed to load resource: the server responded with a status of 500 (Internal Server Error)
+
+        [Network]
+        POST /api/payments → 500
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots / Recordings"
+      description: "Links to screenshots or screen recordings that help illustrate the issue."
+      placeholder: "Drag-and-drop images here or paste links to Loom, etc."
+    validations:
+      required: false
+
+  # --- BrikByte-specific governance hooks ---
+  - type: textarea
+    id: req_tc_ids
+    attributes:
+      label: "Related Requirements / Test Cases / RTM Links"
+      description: "If known, reference any REQ-*, TC-*, or RTM entries related to this bug. This helps traceability."
+      placeholder: |
+        - REQ-BILLING-012
+        - TC-BILLING-API-004
+        - RTM row: Billing → Purpose-of-insurance mapping
+    validations:
+      required: false
+
+  - type: textarea
+    id: feature_flags
+    attributes:
+      label: "Feature Flags / Config"
+      description: "List any feature flags, environment variables, or config values that might influence this bug."
+      placeholder: |
+        - feature.payments.ozow = enabled
+        - PAYMENTS_PROVIDER = 'ozow'
+    validations:
+      required: false
+
+  - type: textarea
+    id: suspected_cause
+    attributes:
+      label: "Suspected Cause / Technical Notes (optional)"
+      description: "If you have a hypothesis, add it here. This can speed up triage for engineers."
+      placeholder: "e.g., Likely related to recent refactor in PaymentService when handling redirect callbacks."
+    validations:
+      required: false
+
+  # --- Reporter metadata & checklist ---
+  - type: input
+    id: reporter_role
+    attributes:
+      label: "Your Role / Team"
+      description: "Who is reporting this bug?"
+      placeholder: "e.g., QA • Support • Product • Customer • Dev"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: "Pre-Flight Checklist"
+      description: "Please confirm the following where applicable."
+      options:
+        - label: "I searched existing issues and this bug has not already been reported."
+          required: true
+        - label: "I provided clear steps to reproduce the bug."
+          required: true
+        - label: "Logs and screenshots are sanitized (no secrets or personal data)."
+          required: true
+        - label: "I verified that this is not caused by local dev setup only (if applicable)."
+          required: false

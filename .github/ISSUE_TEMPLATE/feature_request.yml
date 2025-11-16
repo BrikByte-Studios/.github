@@ -228,7 +228,7 @@ body:
     validations:
       required: false
 
-  - type: textarea
+    - type: textarea
     id: risks_constraints
     attributes:
       label: "Risks, Constraints & Open Questions"
@@ -239,6 +239,21 @@ body:
         - Open questions:
     validations:
       required: false
+
+  - type: textarea
+    id: considerations_mitigations
+    attributes:
+      label: "Considerations / Mitigations"
+      description: "List mitigation strategies, fallbacks, or safeguards to reduce the likelihood or impact of identified risks."
+      placeholder: |
+        - Mitigation 1: (e.g., Use feature flag to avoid impacting production users)
+        - Mitigation 2: (e.g., Implement rate limiting to reduce load risk)
+        - Mitigation 3: (e.g., Add pre-release testing: smoke tests, regression tests, or A/B shadow mode)
+        - Safeguards: (e.g., Observability, logs, alerts, dashboards)
+        - Contingency plan: (e.g., Rollback steps, toggle off flag)
+    validations:
+      required: false
+
 
   # --- Reporter metadata & checklist ---
   - type: input

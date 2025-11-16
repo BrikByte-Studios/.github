@@ -247,6 +247,21 @@ body:
     validations:
       required: false
 
+  - type: textarea
+    id: considerations_mitigations
+    attributes:
+      label: "Considerations / Mitigations"
+      description: "List mitigation strategies, safeguards, and fallbacks to reduce the likelihood or impact of the identified risks."
+      placeholder: |
+        - Mitigation 1: (e.g., hide behind feature flag; dark launch before full rollout)
+        - Mitigation 2: (e.g., add extra logging / metrics to observe behaviour)
+        - Mitigation 3: (e.g., run change in lower envs first; canary or phased rollout)
+        - Safeguards: (e.g., alerts, dashboards, health checks)
+        - Contingency plan: (e.g., how to rollback, disable, or revert changes quickly)
+    validations:
+      required: false
+
+
   - type: input
     id: target_milestone
     attributes:
