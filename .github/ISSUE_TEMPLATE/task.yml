@@ -3,7 +3,7 @@ description: "Plan and track a concrete piece of work aligned to a feature, bug,
 title: "[TASK] <short summary>"
 labels:
   - "type:task"
-  - "triage"
+  - "status:triage"
 body:
   - type: markdown
     attributes:

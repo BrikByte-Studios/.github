@@ -3,7 +3,7 @@ description: "Report a defect so we can triage, reproduce, and fix it efficientl
 title: "[BUG] <short summary>"
 labels:
   - "type:bug"
-  - "triage"
+  - "status:triage"
 body:
   - type: markdown
     attributes:

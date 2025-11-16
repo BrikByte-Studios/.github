@@ -3,8 +3,8 @@ description: "Record a production or critical environment incident with full SRE
 title: "[INCIDENT] <short summary>"
 labels:
   - "type:incident"
-  - "sre"
-  - "triage"
+  - "area:sre"
+  - "status:triage"
 body:
   - type: markdown
     attributes:

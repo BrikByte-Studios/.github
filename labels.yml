@@ -69,6 +69,14 @@
   color: "5319e7"
   description: "Large feature or multi-task initiative"
 
+- name: "type:architecture"
+  color: "0052cc"
+  description: "Architecture-level changes, system design, structural decisions"
+
+- name: "type:design"
+  color: "ffcc00"
+  description: "UI/UX design, interaction flows, visual design or wireframes"
+
 # ------------------------------------------------------------
 # 2. PRIORITY LABELS (Work sequencing)
 # ------------------------------------------------------------
@@ -184,6 +192,15 @@
 - name: "area:docs"
   color: "a2eeef"
   description: "Documentation and developer experience"
+
+- name: "area:architecture"
+  color: "0052cc"
+  description: "System architecture, patterns, modules, component boundaries"
+
+- name: "area:design"
+  color: "ffcc00"
+  description: "UX/UI work, component behavior, design system updates"
+
 
 # ------------------------------------------------------------
 # 5. PROJECT LABELS (proj/*)

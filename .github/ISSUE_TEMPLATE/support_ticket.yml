@@ -2,8 +2,8 @@ name: "🆘 Support Ticket"
 description: "Log a customer support request so it can be triaged into bugs, incidents, or feature work."
 title: "[SUPPORT] <short summary>"
 labels:
-  - "type:support"
-  - "triage"
+  - "support:customer-issue"
+  - "status:triage"
 
 body:
   - type: markdown

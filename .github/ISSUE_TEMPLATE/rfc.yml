@@ -3,9 +3,9 @@ description: "Propose a significant design, architectural change, platform capab
 title: "[RFC] <short summary>"
 labels:
   - "type:rfc"
-  - "architecture"
-  - "design"
-  - "triage"
+  - "area:architecture"
+  - "area:design"
+  - "status:triage"
 
 body:
   - type: markdown

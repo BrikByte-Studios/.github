@@ -3,7 +3,7 @@ description: "Propose a new feature or enhancement for a BrikByte product."
 title: "[FEAT] <short summary>"
 labels:
   - "type:feature"
-  - "triage"
+  - "status:triage"
 body:
   - type: markdown
     attributes:
