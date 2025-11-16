@@ -1,0 +1,266 @@
+name: "✨ Feature Request"
+description: "Propose a new feature or enhancement for a BrikByte product."
+title: "[FEAT] <short summary>"
+labels:
+  - "type:feature"
+  - "triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature for BrikByte Studios 👋
+
+        This form is designed to capture **product intent**, **business impact**, and **technical context** so we can evaluate, prioritize, and implement the request effectively.
+
+        > 🔐 **Note:** Do not include secrets, credentials, or personal information.
+
+  # --- High-level summary & classification ---
+  - type: input
+    id: summary
+    attributes:
+      label: "Summary"
+      description: "Short, clear description of the feature."
+      placeholder: "e.g., Add Ozow as an additional payment option at checkout."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature_type
+    attributes:
+      label: "Request Type"
+      description: "What kind of change is this?"
+      options:
+        - "New feature"
+        - "Enhancement of existing feature"
+        - "Technical capability / platform feature"
+        - "Experiment / A/B test"
+        - "Other"
+    validations:
+      required: true
+
+  # --- Product / area / environment context ---
+  - type: input
+    id: product_area
+    attributes:
+      label: "Product / Repo / Area"
+      description: "Which product, repository, or module does this feature relate to? Use BrikByte taxonomy where possible."
+      placeholder: "e.g., CargoPulse Web • proj/cargopulse • area:shipments"
+    validations:
+      required: true
+
+  - type: textarea
+    id: target_users
+    attributes:
+      label: "Primary Users / Personas"
+      description: "Who is this feature for?"
+      placeholder: |
+        - Persona(s): (e.g., Logistics Manager, Zone Youth Leader, Support Agent)
+        - Tenants / Markets: (e.g., SA market, internal only, beta customers)
+    validations:
+      required: true
+
+  # --- Problem / opportunity framing ---
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: "Problem / Opportunity"
+      description: "Describe the problem this feature solves, or the opportunity it unlocks. Focus on the pain, not the solution."
+      placeholder: |
+        - Current situation:
+        - Pain / friction:
+        - Who is impacted:
+        - What happens if we do nothing:
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_story
+    attributes:
+      label: "User Story / Use Cases"
+      description: "Capture the feature from the user’s perspective. Add multiple if needed."
+      placeholder: |
+        As a <role>,
+        I want <capability>,
+        So that <value>.
+
+        Use Cases:
+        1)
+        2)
+        3)
+    validations:
+      required: true
+
+  - type: textarea
+    id: business_value
+    attributes:
+      label: "Business Value & Outcomes"
+      description: "Why should we build this? Describe expected impact on revenue, cost, risk, NPS, activation, retention, etc."
+      placeholder: |
+        - Business drivers:
+        - Impact (e.g., increase activation, reduce support tickets):
+        - Who is asking (customer, internal stakeholder, regulatory, etc.):
+    validations:
+      required: true
+
+  # --- Scope & acceptance criteria ---
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: "In Scope"
+      description: "What is explicitly included in this feature?"
+      placeholder: |
+        - UI changes:
+        - API / backend changes:
+        - Data / reporting changes:
+        - Integrations:
+    validations:
+      required: false
+
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: "Out of Scope (Explicitly Not Included)"
+      description: "Clarify what this feature will NOT cover to avoid scope creep."
+      placeholder: |
+        - Not changing:
+        - Not part of this iteration:
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: "Acceptance Criteria"
+      description: "Define clear, testable conditions that must be met for this feature to be considered done."
+      placeholder: |
+        - [ ] Given <context>, when <action>, then <expected outcome>.
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_functional_requirements
+    attributes:
+      label: "Non-Functional Requirements (NFRs)"
+      description: "List any performance, security, reliability, compliance, UX, or accessibility expectations."
+      placeholder: |
+        - Performance: (e.g., endpoint p95 < 300ms at 50 RPS)
+        - Security: (e.g., must comply with POPIA; no sensitive data logged)
+        - Reliability: (e.g., feature behind feature flag, with safe rollback)
+        - UX: (e.g., mobile-friendly, keyboard accessible)
+    validations:
+      required: false
+
+  # --- Governance & traceability (BrikByteOS) ---
+  - type: textarea
+    id: requirements_ids
+    attributes:
+      label: "Requirements / RTM / ADR Links (if known)"
+      description: "If this relates to existing requirements or decisions, list them. If not, leave blank and they will be created later."
+      placeholder: |
+        - New REQ to create: REQ-CARGOPULSE-PAYMENTS-XXX
+        - Related RTM row(s):
+        - Related ADR(s): ADR-00X (e.g., payment providers strategy)
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies_rel
+    attributes:
+      label: "Dependencies & Relationships"
+      description: "List upstream/downstream systems, teams, or features this depends on or impacts."
+      placeholder: |
+        - Depends on: (e.g., Ozow sandbox configured; GOV-POLICY-XXX accepted)
+        - Impacts: (e.g., Reporting service, Billing API, Mobile app)
+        - Related GitHub issues / epics:
+    validations:
+      required: false
+
+  # --- Design & implementation hints ---
+  - type: textarea
+    id: design_ideas
+    attributes:
+      label: "Design Notes / Proposed Approach (optional)"
+      description: "Any proposed UX, API shapes, data models, or technical ideas. This is not binding, but helps kickstart solutioning."
+      placeholder: |
+        - UX sketch (description or link to Figma):
+        - API changes:
+        - Data model changes:
+        - Config / feature flags:
+    validations:
+      required: false
+
+  - type: textarea
+    id: rollout_plan
+    attributes:
+      label: "Rollout & Release Strategy"
+      description: "How should this be rolled out?"
+      placeholder: |
+        - Behind feature flag? (which one)
+        - Phased rollout or limited beta?
+        - Migration / backfill steps?
+        - Rollback strategy:
+    validations:
+      required: false
+
+  # --- Success metrics & measurement ---
+  - type: textarea
+    id: success_metrics
+    attributes:
+      label: "Success Metrics"
+      description: "How will we know this feature is successful?"
+      placeholder: |
+        - Leading metrics (e.g., feature adoption, click-through, time-on-task):
+        - Lagging metrics (e.g., revenue uplift, churn reduction, ticket volume drop):
+        - Measurement plan (dashboards, events, tracking requirements):
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives Considered"
+      description: "List any alternative solutions or workarounds that were considered, and why they were rejected."
+      placeholder: |
+        - Alternative 1:
+        - Alternative 2:
+        - Why this proposal is preferred:
+    validations:
+      required: false
+
+  - type: textarea
+    id: risks_constraints
+    attributes:
+      label: "Risks, Constraints & Open Questions"
+      description: "Highlight key risks, technical constraints, or questions that must be resolved."
+      placeholder: |
+        - Risks:
+        - Constraints (technical, regulatory, timeline):
+        - Open questions:
+    validations:
+      required: false
+
+  # --- Reporter metadata & checklist ---
+  - type: input
+    id: reporter_role
+    attributes:
+      label: "Your Role / Team"
+      description: "Who is requesting this feature?"
+      placeholder: "e.g., Product • QA • Customer • Support • Engineering"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: "Pre-Flight Checklist"
+      description: "Please confirm the following before submitting."
+      options:
+        - label: "I searched existing issues to ensure this feature has not already been requested."
+          required: true
+        - label: "The problem and business value are clearly described."
+          required: true
+        - label: "I provided at least one user story and acceptance criteria."
+          required: true
+        - label: "I avoided including secrets, credentials, or personal information."
+          required: true
