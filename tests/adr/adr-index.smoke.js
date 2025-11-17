@@ -12,8 +12,8 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 const TMP = path.join(__dirname, ".tmp-index");
-const SCHEMA = path.join(__dirname, "..", "docs", "adr", "adr.schema.json");
-const INDEXER = path.join(__dirname, "..", "scripts", "adr", "adr-index-generate.js");
+const SCHEMA = path.join(__dirname, "../..", "docs", "adr", "adr.schema.json");
+const INDEXER = path.join(__dirname, "../..", "scripts", "adr", "adr-index-generate.js");
 
 function write(p, c) {
   const file = path.join(TMP, p);

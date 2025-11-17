@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://brikbyte-studios.github.io/schemas/policy.schema.json",
+  "title": "BrikByte Studios — Org Policy Schema",
+  "description": "Canonical schema for .github/policy.yml used as the organization-wide governance policy.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "description": "Schema version (not policy_version). Used to track breaking changes in the schema itself.",
+      "minimum": 1
+    },
+    "policy_version": {
+      "type": "string",
+      "description": "Semantic version for this policy definition (X.Y.Z).",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "mode": {
+      "type": "string",
+      "description": "Operational mode: advisory (warn only) or enforce (block merges).",
+      "enum": ["advisory", "enforce"]
+    },
+    "reviews": {
+      "type": "object",
+      "description": "Review-related policy (required approvals, CODEOWNERS, etc.).",
+      "additionalProperties": false,
+      "required": ["required_approvals", "require_code_owner_review"],
+      "properties": {
+        "required_approvals": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Minimum number of GitHub approvals required on protected branches."
+        },
+        "require_code_owner_review": {
+          "type": "boolean",
+          "description": "Whether at least one CODEOWNER review is required."
+        },
+        "additional_reviewer_teams": {
+          "type": "array",
+          "description": "Additional reviewer teams that should be requested automatically.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "description": "Test quality and coverage requirements.",
+      "additionalProperties": false,
+      "required": ["coverage_min", "require_tests_green"],
+      "properties": {
+        "coverage_min": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum test coverage percentage required on protected branches."
+        },
+        "require_tests_green": {
+          "type": "boolean",
+          "description": "Whether all required test jobs must be green for a policy pass."
+        },
+        "critical_paths_only": {
+          "type": "boolean",
+          "description": "If true, coverage_min applies only to critical paths (e.g., core services)."
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "description": "Static/dynamic security scan thresholds.",
+      "additionalProperties": false,
+      "required": ["sast_threshold", "sca_threshold", "dast_threshold"],
+      "properties": {
+        "sast_threshold": {
+          "type": "string",
+          "description": "Allowed level for static application security testing findings.",
+          "enum": ["none", "no-high", "no-critical"]
+        },
+        "sca_threshold": {
+          "type": "string",
+          "description": "Allowed level for software composition analysis findings.",
+          "enum": ["none", "no-high", "no-critical"]
+        },
+        "dast_threshold": {
+          "type": "string",
+          "description": "Allowed level for dynamic application security testing findings.",
+          "enum": ["none", "no-high", "no-critical"]
+        }
+      }
+    },
+    "docs": {
+      "type": "object",
+      "description": "Documentation / ADR update requirements.",
+      "additionalProperties": false,
+      "required": ["require_docs_on_feature_change"],
+      "properties": {
+        "require_docs_on_feature_change": {
+          "type": "boolean",
+          "description": "If true, changes labelled as features must include docs updates."
+        },
+        "paths": {
+          "type": "array",
+          "description": "Glob patterns for paths considered 'docs' for enforcement.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "supply_chain": {
+      "type": "object",
+      "description": "Software supply chain requirements.",
+      "additionalProperties": false,
+      "properties": {
+        "require_signed_artifacts": {
+          "type": "boolean",
+          "description": "Require build artifacts to be signed (e.g., Sigstore)."
+        },
+        "require_sbom": {
+          "type": "boolean",
+          "description": "Require SBOM generation for releases."
+        }
+      }
+    }
+  },
+  "required": [
+    "policy_version",
+    "mode",
+    "reviews",
+    "tests",
+    "security",
+    "docs"
+  ]
+}

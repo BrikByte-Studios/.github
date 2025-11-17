@@ -1,0 +1,41 @@
+# BrikByte Studios — Org-wide Governance Policy (PIPE-GOV-7.1)
+#
+# This file defines the **baseline governance policy** for BrikByte-Studios.
+# Product / service repos MAY define their own .github/policy.yml, but:
+#   - They MUST conform to docs/policy/policy.schema.json
+#   - They SHOULD be at least as strict as this baseline (see policy-validate.js lint rules)
+
+version: 1                # Schema version (not policy_version)
+policy_version: "1.0.0"   # Policy version (semver)
+mode: "advisory"          # advisory | enforce
+
+reviews:
+  required_approvals: 2
+  require_code_owner_review: true
+  additional_reviewer_teams:
+    - "platform-leads"
+
+tests:
+  coverage_min: 80                # Minimum coverage for protected branches (org baseline recommendation)
+  require_tests_green: true
+  critical_paths_only: false      # Apply coverage_min across all code, not only 'critical paths'
+
+security:
+  # "none"        → no check
+  # "no-high"     → block if HIGH or CRITICAL
+  # "no-critical" → block only CRITICAL
+  sast_threshold: "no-high"
+  sca_threshold: "no-critical"
+  dast_threshold: "no-critical"
+
+docs:
+  require_docs_on_feature_change: true
+  paths:
+    - "docs/**"
+    - "ADR/**"
+    - "adr/**"
+    - "docs/adr/**"
+
+supply_chain:
+  require_signed_artifacts: true
+  require_sbom: true

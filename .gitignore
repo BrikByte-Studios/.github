@@ -32,8 +32,7 @@ Thumbs.db
 # ADR Tooling Tmp Folders
 # Smoke tests generate these
 # ------------------------------
-tests/.tmp-tests/
-tests/.tmp-index/
+.tmp-*/
 
 # ------------------------------
 # Logs / Output

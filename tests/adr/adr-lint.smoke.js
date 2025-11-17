@@ -13,8 +13,8 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 const TMP = path.join(__dirname, ".tmp-tests");
-const SCHEMA = path.join(__dirname, "..", "docs", "adr", "adr.schema.json");
-const LINTER = path.join(__dirname, "..", "scripts", "adr", "adr-lint.js");
+const SCHEMA = path.join(__dirname, "../..", "docs", "adr", "adr.schema.json");
+const LINTER = path.join(__dirname, "../..", "scripts", "adr", "adr-lint.js");
 
 function write(p, c) {
   const file = path.join(TMP, p);

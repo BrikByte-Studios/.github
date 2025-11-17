@@ -69,4 +69,4 @@ jobs:
         #   node tests/adr-lint.smoke.js
         #   node tests/adr-index.smoke.js
         # as defined in package.json "test" script.
-        run: npm test
+        run: npm run adr:test

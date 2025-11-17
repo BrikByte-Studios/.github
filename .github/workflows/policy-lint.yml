@@ -1,0 +1,67 @@
+# GOV-POLICY-001 / PIPE-GOV-7.1 — Policy Lint (Reusable Workflow)
+#
+# Purpose:
+#   Validate a policy file (default: .github/policy.yml) against the canonical
+#   policy schema (docs/policy/policy.schema.json) using scripts/policy/policy-validate.js.
+#
+# Usage in a consumer repo:
+#
+#   name: Policy Validate
+#   on:
+#     pull_request:
+#       paths:
+#         - ".github/policy.yml"
+#         - ".github/workflows/**"
+#   jobs:
+#     policy:
+#       uses: BrikByte-Studios/.github/.github/workflows/policy-lint.yml@main
+#       with:
+#         policy_path: ".github/policy.yml"
+#
+name: GOV-POLICY-001 — Policy Lint
+
+on:
+  workflow_call:
+    inputs:
+      policy_path:
+        description: "Path to the policy YAML file to validate"
+        required: false
+        default: ".github/policy.yml"
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  policy-lint:
+    name: Policy Schema & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        # Uses npm ci when lockfile exists for reproducible installs.
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --ignore-scripts
+          else
+            npm install --ignore-scripts
+          fi
+
+      - name: Validate policy
+        # Validates:
+        #   - YAML parses correctly
+        #   - Structure matches docs/policy/policy.schema.json
+        #   - Lint rule: tests.coverage_min >= ORG_MIN_COVERAGE
+        run: |
+          node scripts/policy/policy-validate.js \
+            --schema docs/policy/policy.schema.json \
+            --file "${{ inputs.policy_path }}"
