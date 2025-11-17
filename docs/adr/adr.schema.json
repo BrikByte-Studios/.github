@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://brikbyte-studios.github.io/schemas/adr.schema.json",
   "title": "BrikByte Studios ADR Front-Matter Schema",
   "description": "Canonical schema for Architecture Decision Record (ADR) front-matter used by BrikByte Studios.",
@@ -46,16 +46,22 @@
     },
     "area": {
       "type": "array",
-      "description": "One or more areas this ADR belongs to (e.g., PIPE, GOV, SEC)",
+      "description": "One or more areas this ADR belongs to (e.g., PIPE, GOV, SEC, IAC)",
       "items": {
         "type": "string"
       },
       "minItems": 1
     },
     "rfc": {
-      "type": "string",
       "description": "Optional RFC document ID that this ADR relates to",
-      "nullable": true
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "supersedes": {
       "type": "array",

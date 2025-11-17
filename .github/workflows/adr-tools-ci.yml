@@ -1,0 +1,72 @@
+# GOV-ADR-TOOLS-001 — ADR Tooling CI
+#
+# Purpose:
+#   Run tiny smoke tests for ADR tools in the .github governance repo:
+#     - scripts/adr/adr-lint.js
+#     - scripts/adr/adr-index-generate.js
+#     - tests/*.smoke.js
+#
+# Triggers:
+#   - pull_request: when ADR tooling or ADR docs/schema/tests change
+#   - push to main: safety net to keep main green
+#
+# Notes:
+#   - Assumes package.json exists at repo root with:
+#       "test": "node tests/adr-lint.smoke.js && node tests/adr-index.smoke.js"
+#   - Uses Node.js 20 to match org-wide standard.
+#
+name: GOV-ADR-TOOLS-001 — ADR Tooling CI
+
+on:
+  pull_request:
+    # Only run when relevant files change
+    paths:
+      - "scripts/adr/**"
+      - "docs/adr/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/adr-tools-ci.yml"
+  push:
+    branches: [ main ]
+    paths:
+      - "scripts/adr/**"
+      - "docs/adr/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/adr-tools-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  adr-tools-ci:
+    name: ADR Tooling Smoke Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        # Uses npm ci for reproducible installs.
+        # If you don't commit package-lock.json you can switch to `npm install`.
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --ignore-scripts
+          else
+            npm install --ignore-scripts
+          fi
+
+      - name: Run ADR smoke tests
+        # Runs:
+        #   node tests/adr-lint.smoke.js
+        #   node tests/adr-index.smoke.js
+        # as defined in package.json "test" script.
+        run: npm test
