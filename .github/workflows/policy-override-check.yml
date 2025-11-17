@@ -1,0 +1,53 @@
+name: GOV-POLICY-OVR — Policy Override Check
+
+on:
+  workflow_call:
+    inputs:
+      repo_policy_path:
+        description: "Path to repo-local policy.yml (relative to repo root)"
+        required: false
+        default: "policy.yml"
+        type: string
+
+jobs:
+  policy-override:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) Checkout consumer repo (the one that calls this workflow)
+      - name: Checkout consumer repo
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      # 2) Checkout governance repo (.github) to access schema + scripts + base policy
+      - name: Checkout governance repo (.github)
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          path: governance
+
+      # 3) Setup Node.js runtime
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 4) Validate repo policy against canonical schema
+      - name: Validate repo policy schema
+        working-directory: governance
+        run: >
+          node scripts/policy/policy-validate.js
+          --schema docs/policy/policy.schema.json
+          --file "../repo/${{ inputs.repo_policy_path }}"
+
+      # 5) Merge with org policy & enforce non-relaxable constraints
+      - name: Merge with org policy & check constraints
+        working-directory: governance
+        run: >
+          mkdir -p ../out &&
+          node scripts/policy/policy-merge.js
+          --base .github/policy.yml
+          --repo "../repo/${{ inputs.repo_policy_path }}"
+          --schema docs/policy/policy.schema.json
+          --out "../out/effective-policy.json"

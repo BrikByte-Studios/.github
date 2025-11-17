@@ -10,6 +10,7 @@
 | ID | Seq | Title | Date | Areas | File |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | 1 | [Central Policy Definition](001-central-policy-definition.md) | 2025-11-17 | PIPE, GOV | `001-central-policy-definition.md` |
+| ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | 2025-11-17 | PIPE, GOV | `002-repo-level-policy-overrides-via-extends.md` |
 
 ## By Area
 
@@ -18,9 +19,11 @@
 | ID | Seq | Title | Status | Date | File |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | 1 | [Central Policy Definition](001-central-policy-definition.md) | Proposed | 2025-11-17 | `001-central-policy-definition.md` |
+| ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | Proposed | 2025-11-17 | `002-repo-level-policy-overrides-via-extends.md` |
 
 ### GOV
 
 | ID | Seq | Title | Status | Date | File |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | 1 | [Central Policy Definition](001-central-policy-definition.md) | Proposed | 2025-11-17 | `001-central-policy-definition.md` |
+| ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | Proposed | 2025-11-17 | `002-repo-level-policy-overrides-via-extends.md` |

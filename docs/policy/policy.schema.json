@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://brikbyte-studios.github.io/schemas/policy.schema.json",
-  "title": "BrikByte Studios — Org Policy Schema",
-  "description": "Canonical schema for .github/policy.yml used as the organization-wide governance policy.",
+  "title": "BrikByte Studios — Org & Repo Policy Schema",
+  "description": "Canonical schema for .github/policy.yml (org baseline) and repo-level policy.yml files.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -10,6 +10,11 @@
       "type": "integer",
       "description": "Schema version (not policy_version). Used to track breaking changes in the schema itself.",
       "minimum": 1
+    },
+    "extends": {
+      "type": "string",
+      "description": "Inheritance directive for repo-level policies. 'org' inherits the org baseline; 'none' opts out (requires governance approval). Org .github/policy.yml SHOULD omit this.",
+      "enum": ["org", "none"]
     },
     "policy_version": {
       "type": "string",

@@ -14,12 +14,16 @@
     "adr:create": "node scripts/adr/adr-create.js",
     "adr:test": "node tests/adr/adr-lint.smoke.js && node tests/adr/adr-index.smoke.js",
     "policy:validate": "node scripts/policy/policy-validate.js --schema docs/policy/policy.schema.json --file .github/policy.yml",
-    "policy:test": "node tests/policy/policy-valid.smoke.js && node tests/policy/policy-invalid.smoke.js"
+    "policy:test": "node tests/policy/policy-valid.smoke.js && node tests/policy/policy-invalid.smoke.js",
+    "policy:merge:test": "node tests/policy/policy-merge.inherit-only.js && node tests/policy/policy-merge-tightening.js && node tests/policy/policy-merge-illegal-relax.js && node tests/policy/policy-merge-unknown-field.js",
+    "policy:test:all": "npm run policy:test && npm run policy:merge:test"
   },
   "dependencies": {
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
+    "chalk": "^5.6.2",
     "glob": "^11.0.0",
+    "js-yaml": "^4.1.1",
     "yaml": "^2.6.0"
   }
 }
