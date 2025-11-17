@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# BrikByte Studios — .github Repo
+# Governance tooling, ADR schemas, reusable workflows, scripts
+# ------------------------------------------------------------
+
+# ------------------------------
+# Node / NPM Artifacts
+# ------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+
+# If you decide package-lock.json should be committed, remove above line.
+
+# ------------------------------
+# Temp / Scratch Files
+# ------------------------------
+*.tmp
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+
+# IDE folders
+.vscode/
+.idea/
+
+# ------------------------------
+# ADR Tooling Tmp Folders
+# Smoke tests generate these
+# ------------------------------
+tests/.tmp-tests/
+tests/.tmp-index/
+
+# ------------------------------
+# Logs / Output
+# ------------------------------
+logs/
+*.log
+*.log.*
+
+# ------------------------------
+# Audit Artifacts
+# NOTE: The .github repo ONLY stores canonical schemas & workflows.
+# Audit bundles belong in product repos, NOT in .github.
+# ------------------------------
+.audit/
+**/.audit/
+
+# ------------------------------
+# Build / Transpiler Outputs
+# (future-proofing if governance scripts grow)
+# ------------------------------
+dist/
+out/
+build/
+
+# ------------------------------
+# OS / Misc
+# ------------------------------
+*.bak
+*.old
+*.orig
+*.rej
+
+# ------------------------------
+# Coverage (if local testing expands)
+# ------------------------------
+coverage/
+
+# ------------------------------
+# NPM local link artifacts
+# ------------------------------
+.npm/

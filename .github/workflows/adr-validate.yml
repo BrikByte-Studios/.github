@@ -1,0 +1,79 @@
+# GOV-ADR-TOOLS-001 — Centralized ADR validation workflow & template
+#
+# Purpose:
+#   Expose a reusable ADR validation workflow that:
+#     - Lints ADRs against the canonical JSON schema
+#     - Enforces basic ID/seq/status/date rules
+#     - Optionally generates an ADR index (non-blocking v1)
+#
+# Usage (in a consumer repo):
+#
+#   name: adr-validate
+#   on:
+#     pull_request:
+#       paths: [ "docs/adr/**" ]
+#   jobs:
+#     adr-validate:
+#       uses: BrikByte-Studios/.github/.github/workflows/adr-validate.yml@main
+#       with:
+#         adr_path: "docs/adr/[0-9][0-9][0-9]-*.md"
+#         generate_index: false
+#
+name: GOV-ADR-TOOLS-001 — ADR Validate
+
+on:
+  workflow_call:
+    inputs:
+      adr_path:
+        description: "Glob for ADR files to validate"
+        required: false
+        default: "docs/adr/[0-9][0-9][0-9]-*.md"
+        type: string
+      generate_index:
+        description: "Generate ADR index (non-blocking in v1)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  adr-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install ADR tool dependencies (if package.json present)
+        run: |
+          if [ -f package.json ]; then
+            npm ci --ignore-scripts
+          else
+            echo "No package.json in repo root; assuming ADR tools are self-contained."
+          fi
+
+      - name: ADR Lint
+        # The linter will:
+        #   - Validate ADR front-matter against docs/adr/adr.schema.json
+        #   - Enforce ID/seq uniqueness
+        #   - Emit GitHub Annotations on error
+        run: |
+          node scripts/adr/adr-lint.js \
+            --glob "${{ inputs.adr_path }}" \
+            --schema "docs/adr/adr.schema.json"
+
+      - name: ADR Index (optional, non-blocking in v1)
+        if: ${{ inputs.generate_index == true }}
+        continue-on-error: true
+        run: |
+          node scripts/adr/adr-index-generate.js \
+            --glob "${{ inputs.adr_path }}" \
+            --output "docs/adr/000-index.md"

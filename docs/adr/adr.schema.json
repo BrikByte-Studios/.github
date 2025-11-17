@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brikbyte-studios.github.io/schemas/adr.schema.json",
+  "title": "BrikByte Studios ADR Front-Matter Schema",
+  "description": "Canonical schema for Architecture Decision Record (ADR) front-matter used by BrikByte Studios.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "seq", "title", "status", "date", "authors", "area"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable ADR identifier, e.g. ADR-0003",
+      "pattern": "^ADR-\\d{4}$"
+    },
+    "seq": {
+      "type": "integer",
+      "description": "Numeric sequence that matches the filename prefix, e.g. 3 for 003-....md",
+      "minimum": 1
+    },
+    "title": {
+      "type": "string",
+      "description": "Short, imperative decision title"
+    },
+    "status": {
+      "type": "string",
+      "description": "Lifecycle status of this ADR",
+      "enum": ["Proposed", "Accepted", "Superseded", "Rejected", "Deprecated"]
+    },
+    "date": {
+      "type": "string",
+      "description": "Date the ADR was written or last updated (YYYY-MM-DD)",
+      "format": "date"
+    },
+    "review_after": {
+      "type": "string",
+      "description": "Optional: date after which the ADR should be reviewed (YYYY-MM-DD)",
+      "format": "date"
+    },
+    "authors": {
+      "type": "array",
+      "description": "List of authors by GitHub handle or name",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "area": {
+      "type": "array",
+      "description": "One or more areas this ADR belongs to (e.g., PIPE, GOV, SEC)",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "rfc": {
+      "type": "string",
+      "description": "Optional RFC document ID that this ADR relates to",
+      "nullable": true
+    },
+    "supersedes": {
+      "type": "array",
+      "description": "Optional list of ADR IDs that this ADR supersedes",
+      "items": {
+        "type": "string",
+        "pattern": "^ADR-\\d{4}$"
+      }
+    },
+    "superseded_by": {
+      "description": "Optional ADR ID that supersedes this ADR, or null",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^ADR-\\d{4}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "links": {
+      "type": "array",
+      "description": "Optional list of related links (docs, PRs, issues, specs)",
+      "items": {
+        "type": "object",
+        "required": ["type", "url"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Link type, e.g., doc, issue, pr, spec"
+          },
+          "label": {
+            "type": "string",
+            "description": "Short label for this link"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the linked resource"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}
