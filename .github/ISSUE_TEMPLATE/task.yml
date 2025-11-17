@@ -294,6 +294,16 @@ body:
     validations:
       required: false
 
+  - type: input
+    id: commit_sha
+    attributes:
+      label: "Commit SHA / PR Link (optional)"
+      description: "If known, link the commit or pull request that implements or completes this task."
+      placeholder: "e.g., 9f8a12b, or #456"
+    validations:
+      required: false
+
+
   # --- Pre-flight checklist ---
   - type: checkboxes
     id: preflight
