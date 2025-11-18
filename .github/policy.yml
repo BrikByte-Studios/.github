@@ -10,10 +10,36 @@ policy_version: "1.0.0"   # Policy version (semver)
 mode: "advisory"          # advisory | enforce
 
 reviews:
+  # Legacy baseline (still used by tools as global minimums)
   required_approvals: 2
   require_code_owner_review: true
   additional_reviewer_teams:
     - "platform-leads"
+
+  # New: default rule (optional but recommended)
+  default:
+    required_approvals: 2
+    require_code_owner_review: true
+    required_roles: [] # none globally
+
+  # New: branch-specific rules
+  branches:
+    main:
+      required_approvals: 2
+      require_code_owner_review: true
+
+    "release/*":
+      required_approvals: 2
+      require_code_owner_review: true
+
+    "hotfix/*":
+      required_approvals: 2
+      required_roles:
+        - "platform-leads"
+
+    "feature/*":
+      required_approvals: 1
+      require_code_owner_review: false
 
 tests:
   coverage_min: 80                # Minimum coverage for protected branches (org baseline recommendation)

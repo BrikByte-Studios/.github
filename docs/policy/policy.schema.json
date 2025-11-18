@@ -49,7 +49,54 @@
             "type": "string"
           }
         }
-      }
+      },
+      "default": {
+        "type": "object",
+        "description": "Default review rules when no branch-specific rule matches.",
+        "additionalProperties": false,
+        "properties": {
+          "required_approvals": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6
+          },
+          "require_code_owner_review": {
+            "type": "boolean"
+          },
+          "required_roles": {
+            "type": "array",
+            "description": "Logical roles/teams (e.g. GitHub team slugs) from which at least one approver is required.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+       "branches": {
+          "type": "object",
+          "description": "Branch-specific rules keyed by exact branch name or glob patterns (e.g. 'main', 'release/*', 'hotfix/*').",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "required_approvals": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 6
+              },
+              "require_code_owner_review": {
+                "type": "boolean"
+              },
+              "required_roles": {
+                "type": "array",
+                "description": "Roles/teams required for this branch pattern.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
     },
     "tests": {
       "type": "object",
