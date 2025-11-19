@@ -248,6 +248,21 @@
           }
         }
       }
+    },
+    "required_on_paths": {
+      "type": "array",
+      "description": "Glob patterns where code changes MUST be backed by an ADR (e.g. infra, .github, security).",
+      "items": {
+        "type": "string"
+      }
+    },
+    "require_accepted_adr": {
+      "type": "boolean",
+      "description": "If true, referenced ADRs must have status: Accepted."
+    },
+    "adr_file_glob": {
+      "type": "string",
+      "description": "Glob for ADR files, used to locate ADR docs (e.g. docs/adr/[0-9][0-9][0-9]-*.md)."
     }
   },
 

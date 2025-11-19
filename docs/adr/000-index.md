@@ -13,6 +13,8 @@
 | ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | 2025-11-17 | PIPE, GOV | `002-repo-level-policy-overrides-via-extends.md` |
 | ADR-0003 | 3 | [Branch-aware required reviewers via policy gate (PIPE-GOV-7.3.1)](003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md) | 2025-11-18 | PIPE, GOV | `003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md` |
 | ADR-0004 | 4 | [Enforce minimum test coverage via policy gate (PIPE-GOV-7.3.2)](004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md) | 2025-11-19 | PIPE, GOV, QA | `004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md` |
+| ADR-0005 | 5 | [Enforce SAST/SCA severity thresholds via policy gate (PIPE-GOV-7.3.3)](005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md) | 2025-11-19 | PIPE, GOV, SEC | `005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md` |
+| ADR-0006 | 6 | [Enforce ADR & documentation checks via policy gate (PIPE-GOV-7.3.4)](006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md) | 2025-11-19 | PIPE, GOV, ARCH | `006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md` |
 
 ## By Area
 
@@ -24,6 +26,8 @@
 | ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | Proposed | 2025-11-17 | `002-repo-level-policy-overrides-via-extends.md` |
 | ADR-0003 | 3 | [Branch-aware required reviewers via policy gate (PIPE-GOV-7.3.1)](003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md) | Proposed | 2025-11-18 | `003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md` |
 | ADR-0004 | 4 | [Enforce minimum test coverage via policy gate (PIPE-GOV-7.3.2)](004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md) | Proposed | 2025-11-19 | `004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md` |
+| ADR-0005 | 5 | [Enforce SAST/SCA severity thresholds via policy gate (PIPE-GOV-7.3.3)](005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md) | Proposed | 2025-11-19 | `005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md` |
+| ADR-0006 | 6 | [Enforce ADR & documentation checks via policy gate (PIPE-GOV-7.3.4)](006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md) | Proposed | 2025-11-19 | `006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md` |
 
 ### GOV
 
@@ -33,6 +37,20 @@
 | ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | Proposed | 2025-11-17 | `002-repo-level-policy-overrides-via-extends.md` |
 | ADR-0003 | 3 | [Branch-aware required reviewers via policy gate (PIPE-GOV-7.3.1)](003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md) | Proposed | 2025-11-18 | `003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md` |
 | ADR-0004 | 4 | [Enforce minimum test coverage via policy gate (PIPE-GOV-7.3.2)](004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md) | Proposed | 2025-11-19 | `004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md` |
+| ADR-0005 | 5 | [Enforce SAST/SCA severity thresholds via policy gate (PIPE-GOV-7.3.3)](005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md) | Proposed | 2025-11-19 | `005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md` |
+| ADR-0006 | 6 | [Enforce ADR & documentation checks via policy gate (PIPE-GOV-7.3.4)](006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md) | Proposed | 2025-11-19 | `006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md` |
+
+### ARCH
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0006 | 6 | [Enforce ADR & documentation checks via policy gate (PIPE-GOV-7.3.4)](006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md) | Proposed | 2025-11-19 | `006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md` |
+
+### SEC
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0005 | 5 | [Enforce SAST/SCA severity thresholds via policy gate (PIPE-GOV-7.3.3)](005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md) | Proposed | 2025-11-19 | `005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md` |
 
 ### QA
 

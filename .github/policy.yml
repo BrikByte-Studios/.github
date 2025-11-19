@@ -3,26 +3,30 @@
 # This file defines the **baseline governance policy** for BrikByte-Studios.
 # Product / service repos MAY define their own .github/policy.yml, but:
 #   - They MUST conform to docs/policy/policy.schema.json
-#   - They SHOULD be at least as strict as this baseline (see policy-validate.js lint rules)
+#   - They MUST NOT relax org-wide minimums
+#   - They MAY tighten (stricter) rules
 
-version: 1                # Schema version (not policy_version)
-policy_version: "1.0.0"   # Policy version (semver)
-mode: "advisory"          # advisory | enforce
+version: 1                     # Schema version (not policy_version)
+policy_version: "1.0.0"        # Policy version (semantic versioning)
+mode: "advisory"               # advisory | enforce
+
+# ---------------------------------------------------------------------------
+# REVIEWS — PIPE-GOV-7.3.1
+# ---------------------------------------------------------------------------
 
 reviews:
-  # Legacy baseline (still used by tools as global minimums)
+  # Legacy baseline (still enforced by the merge/extends logic)
   required_approvals: 2
   require_code_owner_review: true
   additional_reviewer_teams:
     - "platform-leads"
 
-  # New: default rule (optional but recommended)
+  # New standardized form
   default:
     required_approvals: 2
     require_code_owner_review: true
-    required_roles: [] # none globally
+    required_roles: [] # None globally by default
 
-  # New: branch-specific rules
   branches:
     main:
       required_approvals: 2
@@ -41,28 +45,44 @@ reviews:
       required_approvals: 1
       require_code_owner_review: false
 
+# ---------------------------------------------------------------------------
+# TESTS — PIPE-GOV-7.3.2
+# ---------------------------------------------------------------------------
+
 tests:
-  # Absolute minimum coverage for org-wide protected branches (non-relaxable baseline).
+  # Org-wide baseline coverage minimum (non-relaxable)
   coverage_min: 80
-  # Require all tests to be green.
+
+  # All tests must be green for gate to pass
   require_tests_green: true
-  # For v1, this is informational only; future versions may narrow coverage checks to critical paths.
+
+  # Future enhancement: restrict to critical-path coverage only
   critical_paths_only: false
 
-  # Allowed drop vs baseline in percentage points.
-  # Example: -2 means “may drop by at most 2 percentage points”.
+  # Allowed drop vs baseline in percentage points
   coverage_delta_min: -2
 
-  # Where CI will write the coverage summary JSON (relative to repo root).
+  # Location of test coverage summary artifact (relative to repo root)
   coverage_report_path: "coverage/coverage-summary.json"
 
+# ---------------------------------------------------------------------------
+# SECURITY — PIPE-GOV-7.3.3
+# ---------------------------------------------------------------------------
+
 security:
-  # "none"        → no check
-  # "no-high"     → block if HIGH or CRITICAL
-  # "no-critical" → block only CRITICAL
-  sast_threshold: "no-high"
-  sca_threshold: "no-critical"
-  dast_threshold: "no-critical"
+  sast:
+    tool: "codeql"                        # or "semgrep"
+    max_severity: "medium"                # no high/critical allowed unless waived
+    report_path: "reports/codeql-results.json"
+
+  sca:
+    tool: "npm-audit"                     # or pip-audit, mvn-dependency-check
+    max_severity: "high"                  # critical only allowed via waiver
+    report_path: "reports/npm-audit.json"
+
+# ---------------------------------------------------------------------------
+# DOCUMENTATION GOVERNANCE
+# ---------------------------------------------------------------------------
 
 docs:
   require_docs_on_feature_change: true
@@ -72,24 +92,35 @@ docs:
     - "adr/**"
     - "docs/adr/**"
 
+# ---------------------------------------------------------------------------
+# SUPPLY CHAIN — Release integrity, SBOMs, signatures
+# ---------------------------------------------------------------------------
+
 supply_chain:
   require_signed_artifacts: true
   require_sbom: true
 
 
-security:
-  sast:
-    tool: "codeql"
-    max_severity: "medium"        # no high/critical allowed unless waived
-    report_path: "reports/codeql-results.json"  # or SARIF → normalized to JSON elsewhere
+adr:
+  # Paths where changes *usually* require ADRs
+  required_on_paths:
+    - "infra/**"
+    - ".github/**"
+    - "charts/**"
+    - "security/**"
 
-  sca:
-    tool: "npm-audit"
-    max_severity: "high"          # no critical allowed unless waived
-    report_path: "reports/npm-audit.json"
+  # If true, ADRs referenced in PRs must have status: Accepted
+  require_accepted_adr: true
+
+  # Glob used by ADR tooling to find ADR files
+  adr_file_glob: "docs/adr/[0-9][0-9][0-9]-*.md"
+
+# ---------------------------------------------------------------------------
+# WAIVERS — explicit, time-bound, auditable
+# ---------------------------------------------------------------------------
 
 waivers:
-  # Example: one critical SCA finding temporarily waived
+  # EXAMPLE (keep or remove)
   - rule: "security.sca"
     scope: "CVE-2025-12345"
     reason: "Vendor patch not yet available; WAF rule in place"
