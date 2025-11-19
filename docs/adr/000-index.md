@@ -11,6 +11,8 @@
 | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | 1 | [Central Policy Definition](001-central-policy-definition.md) | 2025-11-17 | PIPE, GOV | `001-central-policy-definition.md` |
 | ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | 2025-11-17 | PIPE, GOV | `002-repo-level-policy-overrides-via-extends.md` |
+| ADR-0003 | 3 | [Branch-aware required reviewers via policy gate (PIPE-GOV-7.3.1)](003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md) | 2025-11-18 | PIPE, GOV | `003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md` |
+| ADR-0004 | 4 | [Enforce minimum test coverage via policy gate (PIPE-GOV-7.3.2)](004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md) | 2025-11-19 | PIPE, GOV, QA | `004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md` |
 
 ## By Area
 
@@ -20,6 +22,8 @@
 | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | 1 | [Central Policy Definition](001-central-policy-definition.md) | Proposed | 2025-11-17 | `001-central-policy-definition.md` |
 | ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | Proposed | 2025-11-17 | `002-repo-level-policy-overrides-via-extends.md` |
+| ADR-0003 | 3 | [Branch-aware required reviewers via policy gate (PIPE-GOV-7.3.1)](003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md) | Proposed | 2025-11-18 | `003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md` |
+| ADR-0004 | 4 | [Enforce minimum test coverage via policy gate (PIPE-GOV-7.3.2)](004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md) | Proposed | 2025-11-19 | `004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md` |
 
 ### GOV
 
@@ -27,3 +31,11 @@
 | --- | --- | --- | --- | --- | --- |
 | ADR-0001 | 1 | [Central Policy Definition](001-central-policy-definition.md) | Proposed | 2025-11-17 | `001-central-policy-definition.md` |
 | ADR-0002 | 2 | [Repo-level policy overrides via extends](002-repo-level-policy-overrides-via-extends.md) | Proposed | 2025-11-17 | `002-repo-level-policy-overrides-via-extends.md` |
+| ADR-0003 | 3 | [Branch-aware required reviewers via policy gate (PIPE-GOV-7.3.1)](003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md) | Proposed | 2025-11-18 | `003-branch-aware-required-reviewers-via-policy-gate-pipe-gov-7-3-1.md` |
+| ADR-0004 | 4 | [Enforce minimum test coverage via policy gate (PIPE-GOV-7.3.2)](004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md) | Proposed | 2025-11-19 | `004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md` |
+
+### QA
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0004 | 4 | [Enforce minimum test coverage via policy gate (PIPE-GOV-7.3.2)](004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md) | Proposed | 2025-11-19 | `004-enforce-minimum-test-coverage-via-policy-gate-pipe-gov-7-3-2.md` |

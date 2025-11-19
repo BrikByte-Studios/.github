@@ -108,7 +108,16 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 100,
-          "description": "Minimum test coverage percentage required on protected branches."
+          "description": "Absolute minimum overall test coverage percentage required on protected branches."
+        },
+        "coverage_delta_min": {
+          "type": "number",
+          "description": "Minimum allowed delta vs baseline coverage in percentage points. Example: -2 means coverage may drop by at most 2 percentage points.",
+          "default": -2
+        },
+        "coverage_report_path": {
+          "type": "string",
+          "description": "Relative path (from repo root) to the coverage summary JSON file (e.g., coverage/coverage-summary.json)."
         },
         "require_tests_green": {
           "type": "boolean",

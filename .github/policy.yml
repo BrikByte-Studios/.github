@@ -42,9 +42,19 @@ reviews:
       require_code_owner_review: false
 
 tests:
-  coverage_min: 80                # Minimum coverage for protected branches (org baseline recommendation)
+  # Absolute minimum coverage for org-wide protected branches (non-relaxable baseline).
+  coverage_min: 80
+  # Require all tests to be green.
   require_tests_green: true
-  critical_paths_only: false      # Apply coverage_min across all code, not only 'critical paths'
+  # For v1, this is informational only; future versions may narrow coverage checks to critical paths.
+  critical_paths_only: false
+
+  # Allowed drop vs baseline in percentage points.
+  # Example: -2 means “may drop by at most 2 percentage points”.
+  coverage_delta_min: -2
+
+  # Where CI will write the coverage summary JSON (relative to repo root).
+  coverage_report_path: "coverage/coverage-summary.json"
 
 security:
   # "none"        → no check

@@ -18,7 +18,9 @@
     "policy:merge:test": "node tests/policy/policy-merge.inherit-only.js && node tests/policy/policy-merge-tightening.js && node tests/policy/policy-merge-illegal-relax.js && node tests/policy/policy-merge-unknown-field.js",
     "policy:test:all": "npm run policy:test && npm run policy:merge:test",
     "policy:reviews:test":
-      "node tests/policy/reviews-main-insufficient.js && node tests/policy/reviews-hotfix-missing-platform.js && node tests/policy/reviews-happy-path.js"
+      "node tests/policy/reviews-main-insufficient.js && node tests/policy/reviews-hotfix-missing-platform.js && node tests/policy/reviews-happy-path.js",
+    "coverage:test": "node tests/policy/coverage.absolute-fail.js && node tests/policy/coverage.delta.js"
+
   },
   "dependencies": {
     "ajv": "^8.17.1",
