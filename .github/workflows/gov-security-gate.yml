@@ -1,0 +1,36 @@
+name: GOV-SEC — Security Severity Gate
+
+on:
+  workflow_call:
+    inputs:
+      effective_policy_path:
+        description: "Path to merged effective policy JSON"
+        required: false
+        default: "out/effective-policy.json"
+        type: string
+      decision_path:
+        description: "Path to decision.json for audit"
+        required: false
+        default: ".audit/decision.json"
+        type: string
+
+jobs:
+  security-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Assumes earlier steps produced:
+      #  - out/effective-policy.json (PIPE-GOV-7.2 merge)
+      #  - reports/codeql-results.json
+      #  - reports/npm-audit.json
+
+      - name: Run security severity gate
+        run: >
+          node scripts/policy/security-gate.mjs
+          --policy "${{ inputs.effective_policy_path }}"
+          --decision "${{ inputs.decision_path }}"

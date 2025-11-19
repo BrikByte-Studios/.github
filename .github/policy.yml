@@ -75,3 +75,24 @@ docs:
 supply_chain:
   require_signed_artifacts: true
   require_sbom: true
+
+
+security:
+  sast:
+    tool: "codeql"
+    max_severity: "medium"        # no high/critical allowed unless waived
+    report_path: "reports/codeql-results.json"  # or SARIF → normalized to JSON elsewhere
+
+  sca:
+    tool: "npm-audit"
+    max_severity: "high"          # no critical allowed unless waived
+    report_path: "reports/npm-audit.json"
+
+waivers:
+  # Example: one critical SCA finding temporarily waived
+  - rule: "security.sca"
+    scope: "CVE-2025-12345"
+    reason: "Vendor patch not yet available; WAF rule in place"
+    ttl: "2025-12-31"
+    approver: "@security-lead"
+    evidence: "https://internal/wiki/waivers/CVE-2025-12345"

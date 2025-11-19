@@ -19,7 +19,8 @@
     "policy:test:all": "npm run policy:test && npm run policy:merge:test",
     "policy:reviews:test":
       "node tests/policy/reviews-main-insufficient.js && node tests/policy/reviews-hotfix-missing-platform.js && node tests/policy/reviews-happy-path.js",
-    "coverage:test": "node tests/policy/coverage.absolute-fail.js && node tests/policy/coverage.delta.js"
+    "coverage:test": "node tests/policy/coverage.absolute-fail.js && node tests/policy/coverage.delta.js",
+    "policy:security:test": "node tests/policy/security-eval.smoke.mjs"
 
   },
   "dependencies": {

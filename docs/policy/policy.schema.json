@@ -131,26 +131,53 @@
     },
     "security": {
       "type": "object",
-      "description": "Static/dynamic security scan thresholds.",
+      "description": "Static/dynamic security scan thresholds and tools.",
       "additionalProperties": false,
-      "required": ["sast_threshold", "sca_threshold", "dast_threshold"],
       "properties": {
-        "sast_threshold": {
-          "type": "string",
-          "description": "Allowed level for static application security testing findings.",
-          "enum": ["none", "no-high", "no-critical"]
+        "sast": {
+          "type": "object",
+          "description": "SAST (CodeQL, Semgrep, etc.) configuration.",
+          "additionalProperties": false,
+          "required": ["tool", "max_severity"],
+          "properties": {
+            "tool": {
+              "type": "string",
+              "description": "SAST tool identifier (e.g., codeql, semgrep)."
+            },
+            "max_severity": {
+              "type": "string",
+              "description": "Maximum allowed SAST severity for unwaived findings.",
+              "enum": ["none", "low", "medium", "high", "critical"]
+            },
+            "report_path": {
+              "type": "string",
+              "description": "Path to SAST report (e.g., SARIF or JSON summary)."
+            }
+          }
         },
-        "sca_threshold": {
-          "type": "string",
-          "description": "Allowed level for software composition analysis findings.",
-          "enum": ["none", "no-high", "no-critical"]
-        },
-        "dast_threshold": {
-          "type": "string",
-          "description": "Allowed level for dynamic application security testing findings.",
-          "enum": ["none", "no-high", "no-critical"]
+        "sca": {
+          "type": "object",
+          "description": "SCA (dependency vulnerability) configuration.",
+          "additionalProperties": false,
+          "required": ["tool", "max_severity"],
+          "properties": {
+            "tool": {
+              "type": "string",
+              "description": "SCA tool identifier (e.g., npm-audit, pip-audit, mvn-dependency-check)."
+            },
+            "max_severity": {
+              "type": "string",
+              "description": "Maximum allowed SCA severity for unwaived findings.",
+              "enum": ["none", "low", "medium", "high", "critical"]
+            },
+            "report_path": {
+              "type": "string",
+              "description": "Path to SCA report (e.g., JSON summary)."
+            }
+          }
         }
-      }
+      },
+      "required": ["sast", "sca"]
     },
     "docs": {
       "type": "object",
@@ -185,8 +212,45 @@
           "description": "Require SBOM generation for releases."
         }
       }
+    },
+
+    "waivers": {
+      "type": "array",
+      "description": "Policy-level waivers for specific rules (including security.sast/security.sca).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "scope", "reason", "ttl", "approver", "evidence"],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "description": "Rule identifier, e.g. security.sca or security.sast."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Scope of the waiver (e.g., CVE ID, query ID, package name)."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this waiver is granted (context/justification)."
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Expiry date in YYYY-MM-DD format."
+          },
+          "approver": {
+            "type": "string",
+            "description": "GitHub handle or name of the approver."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "Link to evidence of compensating controls or risk acceptance."
+          }
+        }
+      }
     }
   },
+
   "required": [
     "policy_version",
     "mode",
