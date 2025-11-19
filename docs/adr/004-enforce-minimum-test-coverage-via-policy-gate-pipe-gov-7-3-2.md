@@ -401,7 +401,7 @@ Coverage expectations are defined in `.github/policy.yml` and evaluated by a sha
 
 - **External**
   - Jest / Istanbul coverage summary format (`coverage-summary.json`).
-  - General testing & coverage best practices (language/framework-specific docs).
+  - General testing & coverage best practices (language/framework-specific docs)
 
 
 
