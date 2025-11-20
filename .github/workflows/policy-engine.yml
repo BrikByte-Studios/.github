@@ -1,0 +1,60 @@
+name: Policy Engine Tests (BrikByteOS)
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/*"
+      - "release/*"
+      - "hotfix/*"
+    paths:
+      - "scripts/**"
+      - "tests/policy/**"
+      - "docs/policy/**"
+      - "package.json"
+      - "package-lock.json"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scripts/**"
+      - "tests/policy/**"
+      - "docs/policy/**"
+      - "package.json"
+      - "package-lock.json"
+
+jobs:
+  policy-engine:
+    name: Policy Engine Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Policy schema + merge tests
+        run: npm run policy:test:all
+
+      - name: Reviews rules tests
+        run: npm run policy:reviews:test
+
+      - name: Coverage gate tests
+        run: npm run coverage:test
+
+      - name: Security gate tests (SAST/SCA)
+        run: npm run policy:security:test
+
+      - name: ADR gate tests
+        run: npm run policy:adr:test
+
+      - name: Artifact integrity smoke tests
+        run: npm run test:policy:artifacts:smoke

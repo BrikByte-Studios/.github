@@ -1,0 +1,50 @@
+name: Governance Gate (BrikByteOS)
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "release/*"
+      - "hotfix/*"
+    paths:
+      - ".github/policy.yml"
+      - "docs/policy/**"
+      - "docs/adr/**"
+      - "scripts/**"
+      - "tests/policy/**"
+      - "tests/adr/**"
+      - "package.json"
+      - "package-lock.json"
+
+jobs:
+  gov-gate:
+    name: Governance Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate policy.yml against schema
+        run: npm run policy:validate
+
+      - name: ADR lint
+        run: npm run adr:lint
+
+      - name: ADR index up-to-date
+        run: |
+          npm run adr:index
+          # Ensure ADR index is committed locally – no drift
+          git diff --exit-code || (echo "ADR index is stale. Run 'npm run adr:index' and commit the change." && exit 1)
+
+      - name: Artifact integrity smoke tests
+        run: npm run test:policy:artifacts:smoke

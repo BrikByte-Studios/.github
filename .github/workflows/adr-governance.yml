@@ -1,0 +1,40 @@
+name: ADR Governance (BrikByteOS)
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "docs/adr/**"
+      - "scripts/adr/**"
+      - "tests/adr/**"
+  workflow_dispatch: {}
+
+jobs:
+  adr-governance:
+    name: ADR Governance Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ADR lint
+        run: npm run adr:lint
+
+      - name: ADR index up-to-date
+        run: |
+          npm run adr:index
+          git diff --exit-code || (echo "ADR index is stale. Run 'npm run adr:index' locally and commit the change." && exit 1)
+
+      - name: ADR smoke tests
+        run: npm run adr:test

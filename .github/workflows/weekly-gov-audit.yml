@@ -1,0 +1,39 @@
+name: Weekly Governance Audit (BrikByteOS)
+
+on:
+  schedule:
+    - cron: "0 2 * * 1" # Every Monday at 02:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  weekly-gov-audit:
+    name: Weekly Governance Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Policy regression tests
+        run: npm run policy:test:all
+
+      - name: Security gate regression tests
+        run: npm run policy:security:test
+
+      - name: Coverage gate regression tests
+        run: npm run coverage:test
+
+      - name: ADR gate regression tests
+        run: npm run policy:adr:test
+
+      - name: Artifact integrity smoke tests
+        run: npm run test:policy:artifacts:smoke
