@@ -34,13 +34,19 @@ tests:
   require_tests_green: true
 
 security:
-  sast_threshold: "no-high"
-  sca_threshold: "no-critical"
-  dast_threshold: "no-critical"
+  sast:
+    tool: "codeql"
+    max_severity: "medium"
+    report_path: "reports/codeql-results.json"
+  sca:
+    tool: "npm-audit"
+    max_severity: "high"
+    report_path: "reports/npm-audit.json"
 
 docs:
   require_docs_on_feature_change: true
 `;
+
 
 const repoPolicyPath = path.join(tmpDir, "policy.yml");
 fs.writeFileSync(repoPolicyPath, repoPolicy);

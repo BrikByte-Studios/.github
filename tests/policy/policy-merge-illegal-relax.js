@@ -26,6 +26,9 @@ const baseCoverage = basePolicy.tests && basePolicy.tests.coverage_min;
 // If baseCoverage is not defined, default to 80 for the purpose of the test
 const relaxedCoverage = (typeof baseCoverage === "number" ? baseCoverage : 80) - 10;
 
+const orgSast = basePolicy.security?.sast || {};
+const orgSca  = basePolicy.security?.sca  || {};
+
 const repoPolicy = `
 extends: org
 policy_version: "1.0.0"
@@ -40,9 +43,16 @@ tests:
   require_tests_green: true
 
 security:
-  sast_threshold: "${basePolicy.security.sast_threshold || "no-high"}"
-  sca_threshold: "${basePolicy.security.sca_threshold || "no-critical"}"
-  dast_threshold: "${basePolicy.security.dast_threshold || "no-critical"}"
+  # Intentionally *more lenient* than org to trigger illegal-relax test
+  sast:
+    tool: "${orgSast.tool || "codeql"}"
+    max_severity: "critical"  # relax vs org's e.g. "medium"/"high"
+    report_path: "${orgSast.report_path || "reports/codeql-results.json"}"
+
+  sca:
+    tool: "${orgSca.tool || "npm-audit"}"
+    max_severity: "critical"  # relax vs org's e.g. "high"
+    report_path: "${orgSca.report_path || "reports/npm-audit.json"}"
 
 docs:
   require_docs_on_feature_change: true

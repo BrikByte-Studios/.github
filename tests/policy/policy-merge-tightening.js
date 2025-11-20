@@ -30,6 +30,9 @@ const baseCoverage = basePolicy.tests && basePolicy.tests.coverage_min;
 // 1) Repo policy: tighten coverage + add reviewer team
 const tightenedCoverage = (typeof baseCoverage === "number" ? baseCoverage : 80) + 5;
 
+const orgSast = basePolicy.security?.sast || {};
+const orgSca  = basePolicy.security?.sca  || {};
+
 const repoPolicy = `
 extends: org
 policy_version: "1.0.0"
@@ -46,15 +49,25 @@ tests:
   require_tests_green: true
 
 security:
-  sast_threshold: "${basePolicy.security.sast_threshold || "no-high"}"
-  sca_threshold: "${basePolicy.security.sca_threshold || "no-critical"}"
-  dast_threshold: "${basePolicy.security.dast_threshold || "no-critical"}"
+  # Repo is STRICTER than org here → valid tightening
+  sast:
+    tool: "${orgSast.tool || "codeql"}"
+    # tighten from e.g. "medium" → "low"
+    max_severity: "low"
+    report_path: "${orgSast.report_path || "reports/codeql-results.json"}"
+
+  sca:
+    tool: "${orgSca.tool || "npm-audit"}"
+    # tighten from e.g. "high" → "medium"
+    max_severity: "medium"
+    report_path: "${orgSca.report_path || "reports/npm-audit.json"}"
 
 docs:
   require_docs_on_feature_change: true
   paths:
     - "docs/**"
 `;
+
 
 const repoPolicyPath = path.join(tmpDir, "policy.yml");
 fs.writeFileSync(repoPolicyPath, repoPolicy);

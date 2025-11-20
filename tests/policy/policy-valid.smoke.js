@@ -36,13 +36,20 @@ reviews:
 
 tests:
   coverage_min: 80
+  coverage_delta_min: -2
+  coverage_report_path: "coverage/coverage-summary.json"
   require_tests_green: true
   critical_paths_only: false
 
 security:
-  sast_threshold: "no-high"
-  sca_threshold: "no-critical"
-  dast_threshold: "no-critical"
+  sast:
+    tool: "codeql"
+    max_severity: "medium"
+    report_path: "reports/codeql-results.json"
+  sca:
+    tool: "npm-audit"
+    max_severity: "high"
+    report_path: "reports/npm-audit.json"
 
 docs:
   require_docs_on_feature_change: true
@@ -53,6 +60,7 @@ supply_chain:
   require_signed_artifacts: true
   require_sbom: true
 `;
+
 
 const policyPath = path.join(tmpDir, "policy.yml");
 fs.writeFileSync(policyPath, validPolicy);

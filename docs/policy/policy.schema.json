@@ -30,49 +30,43 @@
       "type": "object",
       "description": "Review-related policy (required approvals, CODEOWNERS, etc.).",
       "additionalProperties": false,
-      "required": ["required_approvals", "require_code_owner_review"],
       "properties": {
         "required_approvals": {
           "type": "integer",
           "minimum": 1,
           "maximum": 6,
-          "description": "Minimum number of GitHub approvals required on protected branches."
+          "description": "Legacy baseline minimum approvals (used by merge/extends logic)."
         },
         "require_code_owner_review": {
           "type": "boolean",
-          "description": "Whether at least one CODEOWNER review is required."
+          "description": "Legacy baseline CODEOWNER requirement."
         },
         "additional_reviewer_teams": {
           "type": "array",
           "description": "Additional reviewer teams that should be requested automatically.",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "default": {
-        "type": "object",
-        "description": "Default review rules when no branch-specific rule matches.",
-        "additionalProperties": false,
-        "properties": {
-          "required_approvals": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 6
-          },
-          "require_code_owner_review": {
-            "type": "boolean"
-          },
-          "required_roles": {
-            "type": "array",
-            "description": "Logical roles/teams (e.g. GitHub team slugs) from which at least one approver is required.",
-            "items": {
-              "type": "string"
+          "items": { "type": "string" }
+        },
+        "default": {
+          "type": "object",
+          "description": "Default review rules when no branch-specific rule matches.",
+          "additionalProperties": false,
+          "properties": {
+            "required_approvals": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 6
+            },
+            "require_code_owner_review": {
+              "type": "boolean"
+            },
+            "required_roles": {
+              "type": "array",
+              "description": "Logical roles/teams (e.g. GitHub team slugs) from which at least one approver is required.",
+              "items": { "type": "string" }
             }
           }
-        }
-      },
-       "branches": {
+        },
+        "branches": {
           "type": "object",
           "description": "Branch-specific rules keyed by exact branch name or glob patterns (e.g. 'main', 'release/*', 'hotfix/*').",
           "additionalProperties": {
@@ -90,13 +84,13 @@
               "required_roles": {
                 "type": "array",
                 "description": "Roles/teams required for this branch pattern.",
-                "items": {
-                  "type": "string"
-                }
+                "items": { "type": "string" }
               }
             }
           }
         }
+      },
+      "required": ["required_approvals", "require_code_owner_review"]
     },
     "tests": {
       "type": "object",
@@ -249,20 +243,75 @@
         }
       }
     },
-    "required_on_paths": {
-      "type": "array",
-      "description": "Glob patterns where code changes MUST be backed by an ADR (e.g. infra, .github, security).",
-      "items": {
-        "type": "string"
+    "adr": {
+      "type": "object",
+      "description": "ADR / architecture decision governance rules.",
+      "additionalProperties": false,
+      "properties": {
+        "required_on_paths": {
+          "type": "array",
+          "description": "Glob patterns where code changes MUST be backed by an ADR (e.g. infra, .github, security).",
+          "items": { "type": "string" }
+        },
+        "require_accepted_adr": {
+          "type": "boolean",
+          "description": "If true, referenced ADRs must have status: Accepted."
+        },
+        "adr_file_glob": {
+          "type": "string",
+          "description": "Glob for ADR files, used to locate ADR docs (e.g. docs/adr/[0-9][0-9][0-9]-*.md)."
+        }
       }
     },
-    "require_accepted_adr": {
-      "type": "boolean",
-      "description": "If true, referenced ADRs must have status: Accepted."
-    },
-    "adr_file_glob": {
-      "type": "string",
-      "description": "Glob for ADR files, used to locate ADR docs (e.g. docs/adr/[0-9][0-9][0-9]-*.md)."
+    "artifacts": {
+      "type": "object",
+      "description": "Artifact integrity requirements (SBOM, hashes, signatures).",
+      "additionalProperties": false,
+      "properties": {
+        "require_sbom": {
+          "type": "boolean",
+          "description": "Require SBOM generation for applicable release builds."
+        },
+        "require_hashes": {
+          "type": "boolean",
+          "description": "Require a hash manifest for artifacts."
+        },
+        "require_signatures": {
+          "type": "boolean",
+          "description": "Require signature verification for artifacts."
+        },
+        "hash_algorithm": {
+          "type": "string",
+          "description": "Hash algorithm used when generating manifest entries (e.g. sha256)."
+        },
+        "sbom_path": {
+          "type": "string",
+          "description": "Expected path to SBOM file (e.g. artifacts/sbom.spdx.json)."
+        },
+        "hashes_manifest_path": {
+          "type": "string",
+          "description": "Expected path to hash manifest JSON (e.g. artifacts/manifest.json)."
+        },
+        "signature": {
+          "type": "object",
+          "description": "Signature verification settings.",
+          "additionalProperties": false,
+          "properties": {
+            "tool": {
+              "type": "string",
+              "description": "Signature tool (e.g., cosign)."
+            },
+            "verify_subject": {
+              "type": "string",
+              "description": "Expected signer/subject (e.g., org identity)."
+            },
+            "status_path": {
+              "type": "string",
+              "description": "Path to JSON status file produced by signature verification."
+            }
+          }
+        }
+      }
     }
   },
 

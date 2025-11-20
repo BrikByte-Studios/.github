@@ -1,19 +1,27 @@
 /**
- * BrikByte Studios — Governance Gather Helpers (PIPE-GOV-7.3.3)
+ * BrikByte Studios — Governance Gather Helpers (PIPE-GOV-7.3.x)
  *
  * This file is responsible for reading raw artefacts from CI (reports, logs, etc.)
  * and normalizing them into structured JSON that evaluation functions can consume.
  *
- * The security-related helpers below:
- *  - Read SAST and SCA reports based on policy.security.sast/sca.report_path
- *  - Normalize tool-specific severities into the standard scale:
- *      none < low < medium < high < critical
- *  - Produce a compact summary suitable for decision.json
+ * Currently covers:
+ *  - Security:
+ *      - SAST and SCA reports based on policy.security.sast/sca.report_path
+ *      - Normalises tool-specific severities into the standard scale:
+ *          none < low < medium < high < critical
+ *      - Produces compact summaries suitable for decision.json
+ *
+ *  - Artifact Integrity (via gather-artifacts.mjs):
+ *      - SBOM presence
+ *      - Hash manifest presence + basic validity
+ *      - Signature verification status
  */
+
 
 import fs from "node:fs";
 import path from "node:path";
 import { SECURITY_SEVERITIES } from "./security-severity.mjs";
+import { gatherArtifactIntegrity } from "./gather-artifacts.mjs";
 
 /**
  * Map various tool-specific severity labels into our canonical set.
@@ -191,3 +199,36 @@ export function gatherSecurityFindings(policy, workspaceRoot = process.cwd()) {
 
   return { sast, sca };
 }
+
+/**
+ * High-level helper to gather ALL governance-related inputs that
+ * other evaluators expect:
+ *
+ *  - security: SAST + SCA severity summaries
+ *  - artifacts: SBOM/hash/signature integrity metadata
+ *
+ * This is a convenience wrapper so gate orchestration code can do:
+ *
+ *   const { security, artifacts } = gatherGovernanceInputs(policy);
+ *
+ * @param {object} policy        Effective merged policy (org+repo)
+ * @param {string} workspaceRoot CI workspace root (defaults to process.cwd())
+ * @param {object} env           Environment variables (defaults to process.env)
+ * @returns {{ security: {sast: object|null, sca: object|null}, artifacts: object }}
+ */
+export function gatherGovernanceInputs(
+  policy,
+  workspaceRoot = process.cwd(),
+  env = process.env
+) {
+  const security = gatherSecurityFindings(policy, workspaceRoot);
+  const artifacts = gatherArtifactIntegrity({
+    policy,
+    workspaceRoot,
+    env
+  });
+
+  return { security, artifacts };
+}
+
+

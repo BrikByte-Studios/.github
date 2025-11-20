@@ -27,6 +27,7 @@
 import fs from "node:fs";
 import { severityToRank, highestSeverityFromCounts } from "./security-severity.mjs";
 import { evaluateAdrGate } from "./eval-adr.mjs";
+import { evaluateArtifacts } from "./eval-artifacts.mjs";
 
 /**
  * Parse yyyy-mm-dd into a Date. Returns null if invalid.
@@ -232,6 +233,74 @@ export function evaluateSecurityAndAdr({
   const hasUnwaivedFailures = secFail || hasAdrUnwaivedFailure;
 
   return { decision: combinedDecision, hasUnwaivedFailures };
+}
+
+
+/**
+ * Full-stack evaluator: Security + ADR + Artifact Integrity.
+ *
+ * Use this in your main policy gate CLI to cover:
+ *  - SAST/SCA thresholds (PIPE-GOV-7.3.3)
+ *  - ADR/doc checks (PIPE-GOV-7.3.4)
+ *  - Artifact integrity (PIPE-GOV-7.3.5)
+ *
+ * Typical usage:
+ *
+ *   const { decision, hasUnwaivedFailures } = evaluateSecurityAdrAndArtifacts({
+ *     policy,
+ *     securityFindings,
+ *     adrContext,
+ *     artifactIntegrity,
+ *     branch: process.env.GITHUB_REF_NAME,
+ *     targetEnv: process.env.TARGET_ENV,
+ *     decision: existingDecision
+ *   });
+ *
+ * @param {object} params
+ * @param {object} params.policy             Effective merged policy
+ * @param {object} params.securityFindings   { sast, sca } from gatherSecurityFindings()
+ * @param {object} params.adrContext         Context for ADR gate (files changed, PR body, ADR metadata)
+ * @param {object} params.artifactIntegrity  Output from gatherArtifactIntegrity()
+ * @param {string} params.branch             Target branch name (e.g. "main", "release/v1.2.3")
+ * @param {string} [params.targetEnv]        Target environment (e.g. "prod", "staging")
+ * @param {object} [params.decision]         Existing decision object (optional)
+ * @returns {{ decision: object, hasUnwaivedFailures: boolean }}
+ */
+export function evaluateSecurityAdrAndArtifacts({
+  policy,
+  securityFindings,
+  adrContext,
+  artifactIntegrity,
+  branch,
+  targetEnv,
+  decision
+}) {
+  // 1) Security + ADR
+  const {
+    decision: afterSecAdr,
+    hasUnwaivedFailures: hasSecAdrFailures
+  } = evaluateSecurityAndAdr({
+    policy,
+    securityFindings,
+    adrContext,
+    decision
+  });
+
+  // 2) Artifact integrity gate (PIPE-GOV-7.3.5)
+  const {
+    decision: afterArtifacts,
+    hasUnwaivedFailures: hasArtifactFailures
+  } = evaluateArtifacts({
+    policy,
+    artifactIntegrity,
+    branch,
+    targetEnv,
+    decision: afterSecAdr
+  });
+
+  const hasUnwaivedFailures = hasSecAdrFailures || hasArtifactFailures;
+
+  return { decision: afterArtifacts, hasUnwaivedFailures };
 }
 
 /**

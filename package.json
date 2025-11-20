@@ -8,6 +8,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "gov:smoke": "npm run adr:test && npm run policy:test:all && npm run policy:reviews:test && npm run coverage:test && npm run policy:security:test && npm run policy:adr:test && npm run test:policy:artifacts:smoke",
     "adr:lint": "node scripts/adr/adr-lint.js --glob \"docs/adr/[0-9][0-9][0-9]-*.md\" --schema \"docs/adr/adr.schema.json\"",
     "adr:index": "node scripts/adr/adr-index-generate.js --glob \"docs/adr/[0-9][0-9][0-9]-*.md\" --output \"docs/adr/000-index.md\"",
     "adr:check": "npm run adr:lint && npm run adr:index",
@@ -21,7 +22,8 @@
       "node tests/policy/reviews-main-insufficient.js && node tests/policy/reviews-hotfix-missing-platform.js && node tests/policy/reviews-happy-path.js",
     "coverage:test": "node tests/policy/coverage.absolute-fail.js && node tests/policy/coverage.delta.js",
     "policy:security:test": "node tests/policy/security-eval.smoke.mjs",
-    "policy:adr:test": "node tests/policy/adr-checks.smoke.mjs"
+    "policy:adr:test": "node tests/policy/adr-checks.smoke.mjs",
+    "test:policy:artifacts:smoke": "node tests/policy/artifacts-integrity.smoke.mjs"
 
   },
   "dependencies": {
