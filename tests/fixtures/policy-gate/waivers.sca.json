@@ -1,0 +1,12 @@
+{
+  "waivers": [
+    {
+      "rule": "security.sca",
+      "scope": "temporary-relaxation",
+      "reason": "Dependency migration in progress",
+      "ttl": "2099-12-31",
+      "approver": "@platform-lead",
+      "evidence": "https://internal/wiki/waivers/sca-temp"
+    }
+  ]
+}

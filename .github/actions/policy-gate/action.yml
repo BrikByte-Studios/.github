@@ -1,0 +1,30 @@
+name: "BrikByte Policy Gate"
+description: "Aggregated governance decision engine (PIPE-GOV-8.1)"
+
+inputs:
+  policy_file:
+    description: "Effective policy file (JSON or YAML)"
+    required: true
+    default: "out/effective-policy.json"
+  inputs_file:
+    description: "Aggregated CI signals JSON (tests, coverage, security, ADR, integrity, meta)"
+    required: true
+    default: "out/inputs.json"
+  waivers_file:
+    description: "Optional waivers JSON (normalized per-rule waivers)"
+    required: false
+    default: "out/waivers.json"
+  output_file:
+    description: "Path to write decision.json"
+    required: false
+    default: "out/decision.json"
+
+outputs:
+  status:
+    description: "Overall decision: passed | passed_with_warnings | failed"
+  score:
+    description: "Overall numeric governance score (0–100)"
+
+runs:
+  using: "node20"
+  main: "dist/policy-gate/index.cjs"

@@ -1,0 +1,36 @@
+{
+  "policy_version": "1.0.0",
+  "rules": {
+    "tests.green": {
+      "severity": "block",
+      "requires_evidence": true
+    },
+    "coverage.min": {
+      "severity": "block",
+      "requires_evidence": true,
+      "threshold": 80
+    },
+    "security.sca": {
+      "severity": "block",
+      "requires_evidence": true,
+      "max_level": "no-critical"
+    },
+    "security.sast": {
+      "severity": "warn",
+      "requires_evidence": true,
+      "max_level": "no-high"
+    },
+    "adr.required_for_infra": {
+      "severity": "block",
+      "requires_evidence": true
+    },
+    "supplychain.signed": {
+      "severity": "block",
+      "requires_evidence": true
+    },
+    "integrity.sbom": {
+      "severity": "block",
+      "requires_evidence": true
+    }
+  }
+}

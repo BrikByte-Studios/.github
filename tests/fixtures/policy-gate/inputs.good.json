@@ -1,0 +1,50 @@
+{
+  "tests": {
+    "total": 120,
+    "failed": 0,
+    "status": "green",
+    "report_url": "https://ci.example.com/tests"
+  },
+  "coverage": {
+    "line": 86,
+    "branch": 81,
+    "report_url": "https://ci.example.com/coverage"
+  },
+  "security": {
+    "sca": {
+      "count": {
+        "critical": 0,
+        "high": 1,
+        "medium": 4,
+        "low": 2
+      },
+      "report_url": "https://ci.example.com/sca"
+    },
+    "sast": {
+      "count": {
+        "critical": 0,
+        "high": 0,
+        "medium": 3,
+        "low": 5
+      },
+      "report_url": "https://ci.example.com/sast"
+    }
+  },
+  "adr": {
+    "required": true,
+    "referenced": ["ADR-0003"],
+    "missing_required": false,
+    "details_url": "https://github.com/org/repo/pull/42"
+  },
+  "integrity": {
+    "signed_artifacts": true,
+    "sbom_present": true,
+    "integrity_report_url": "https://ci.example.com/integrity",
+    "sbom_url": "https://ci.example.com/sbom"
+  },
+  "meta": {
+    "branch": "main",
+    "target_env": "prod",
+    "pr_number": 42
+  }
+}
