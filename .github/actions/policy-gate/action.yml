@@ -22,9 +22,28 @@ inputs:
 outputs:
   status:
     description: "Overall decision: passed | passed_with_warnings | failed"
+    value: ${{ steps.extract.outputs.status }}
   score:
     description: "Overall numeric governance score (0–100)"
+    value: ${{ steps.extract.outputs.score }}
 
 runs:
-  using: "node20"
-  main: "dist/policy-gate/index.cjs"
+  using: "composite"
+  steps:
+    - name: Run policy gate engine
+      shell: bash
+      run: |
+        node scripts/policy/gate-engine.mjs \
+          --policy "${{ inputs.policy_file }}" \
+          --inputs "${{ inputs.inputs_file }}" \
+          --waivers "${{ inputs.waivers_file }}" \
+          --out "${{ inputs.output_file }}"
+
+    - name: Extract status/score from decision.json
+      id: extract
+      shell: bash
+      run: |
+        status=$(jq -r '.status' "${{ inputs.output_file }}")
+        score=$(jq -r '.score' "${{ inputs.output_file }}")
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+        echo "score=$score" >> "$GITHUB_OUTPUT"

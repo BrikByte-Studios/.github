@@ -31,6 +31,13 @@ jobs:
           waivers_file: out/waivers.json
           output_file: out/decision.json
 
+      - name: Fail on hard governance failure
+        if: steps.policy_gate.outputs.status == 'failed'
+        run: |
+          echo "Policy gate failed, see decision.json and governance summary for details."
+          exit 1
+
+
       - name: Render governance summary
         if: always()
         run: node scripts/policy/summary.mjs --decision out/decision.json --out out/summary.md
