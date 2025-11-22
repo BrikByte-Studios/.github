@@ -18,9 +18,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          # 🔸 If you *don’t* have a package-lock.json yet, remove this cache line
+          # or add `package-lock.json` and keep it.
           cache: npm
 
-      # (earlier steps: run tests, coverage, security, build out/effective-policy.json + out/inputs.json, etc.)
+      - name: Install governance dependencies
+        # Once you have a lockfile, prefer: npm ci
+        run: npm install
+
+      # 🔜 Earlier steps: run tests, coverage, security, and build:
+      # - out/effective-policy.json
+      # - out/inputs.json
+      # - out/waivers.json
+      # (You already have these wired elsewhere.)
 
       - name: Run BrikByte Policy Gate
         id: policy_gate
@@ -31,13 +41,7 @@ jobs:
           waivers_file: out/waivers.json
           output_file: out/decision.json
 
-      - name: Fail on hard governance failure
-        if: steps.policy_gate.outputs.status == 'failed'
-        run: |
-          echo "Policy gate failed, see decision.json and governance summary for details."
-          exit 1
-
-
+      # 8.2 summary must run even on failure, so keep `if: always()`
       - name: Render governance summary
         if: always()
         run: node scripts/policy/summary.mjs --decision out/decision.json --out out/summary.md
@@ -47,3 +51,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/policy/comment.mjs out/summary.md
+
+      # Finally, *after* we’ve rendered & posted UX, enforce failure
+      - name: Fail on hard governance failure
+        if: steps.policy_gate.outputs.status == 'failed'
+        run: |
+          echo "Policy gate failed, see decision.json and governance summary for details."
+          exit 1
