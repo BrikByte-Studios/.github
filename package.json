@@ -25,7 +25,7 @@
     "policy:adr:test": "node tests/policy/adr-checks.smoke.mjs",
     "test:policy:artifacts:smoke": "node tests/policy/artifacts-integrity.smoke.mjs",
     "gate:test": "npm run gate:unit && npm run gate:int",
-    "gate:unit": "node tests/policy-gate/gate-engine.unit.test.mjs",
+    "gate:unit": "node tests/policy-gate/gate-engine.unit.test.mjs && node --test tests/policy-gate/summary.test.mjs",
     "gate:int": "node tests/policy-gate/gate-engine.integration.test.mjs"
 
   },

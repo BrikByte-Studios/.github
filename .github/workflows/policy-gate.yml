@@ -1,0 +1,42 @@
+name: Policy Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main, release/*]
+
+jobs:
+  policy-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # (earlier steps: run tests, coverage, security, build out/effective-policy.json + out/inputs.json, etc.)
+
+      - name: Run BrikByte Policy Gate
+        id: policy_gate
+        uses: ./.github/actions/policy-gate
+        with:
+          policy_file: out/effective-policy.json
+          inputs_file: out/inputs.json
+          waivers_file: out/waivers.json
+          output_file: out/decision.json
+
+      - name: Render governance summary
+        if: always()
+        run: node scripts/policy/summary.mjs --decision out/decision.json --out out/summary.md
+
+      - name: Post PR governance summary
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/policy/comment.mjs out/summary.md

@@ -5,6 +5,12 @@
 
 ## By Status
 
+### Accepted
+
+| ID | Seq | Title | Date | Areas | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | 2025-11-22 | governance, policy-gate, ci-cd, devx | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
+
 ### Proposed
 
 | ID | Seq | Title | Date | Areas | File |
@@ -17,6 +23,30 @@
 | ADR-0006 | 6 | [Enforce ADR & documentation checks via policy gate (PIPE-GOV-7.3.4)](006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md) | 2025-11-19 | PIPE, GOV, ARCH | `006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md` |
 
 ## By Area
+
+### governance
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
+
+### policy-gate
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
+
+### ci-cd
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
+
+### devx
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
 
 ### PIPE
 

@@ -327,3 +327,244 @@ Meets requirements for:
 - AI-generated waiver recommendations
 - SBOM diffing & dependency graph drift detection
 - Infrastructure drift checks (Terraform plan scanning)
+
+---
+
+## 15. Human-Readable Governance Summary (PIPE-GOV-8.2)
+### Unified, Reviewer-Friendly Output for PRs, CI, and Audits
+
+The **Governance Summary** is the human-readable layer on top of `decision.json`.  
+It transforms machine outputs into clear, concise, actionable reports for:
+- Pull request reviewers
+- Release managers
+- Engineering and QA Leads
+- Security and Governance auditors
+
+It ensures that **every rule evaluation is understandable at a glance** and that required fixes are immediately visible.
+
+---
+
+### 15.1 Purpose
+
+PIPE-GOV-8.2 solves the problem of **opaque governance outputs** by producing:
+- A Markdown summary for pull requests
+- A console summary for CI logs
+- An optional HTML artifact for Governance Dashboards (v2)
+
+This brings transparency and developer-friendliness to the policy gate.
+
+Implemented in:
+```pgsql
+scripts/policy/summary.mjs
+```
+---
+
+### 15.2 Inputs
+
+The summary consumes:
+| Input File | Description |
+| --- | --- |
+| `decision.json` | Output from `gate-engine.mjs` |
+| `effective-policy.json` | Included for versioning & references |
+| `inputs.json` | Used for link hydration (coverage/test URLs) |
+| `waivers.json` | Used for waiver display block |
+
+
+All information is enriched but not re-computed.
+PIPE-GOV-8.2 is a renderer, not an evaluator.
+
+---
+
+### 15.3 Output Formats (8.2.1)
+#### 15.3.1 Markdown (Primary)
+
+Used for PR comments and CI summary:
+- Table of rule results
+- Overall governance status
+- Recommended fixes
+- Evidence links
+- Waivers applied
+- Missing evidence flag
+
+#### 15.3.2 Console Mode
+
+Printed automatically when run in terminal:
+```arduino
+npm run gate:summary
+```
+
+Color-coded using ANSI, for CI logs.
+
+#### 15.3.3 HTML Report (optional)
+
+Future extension for dashboards:
+```pgsql
+out/summary.html
+```
+---
+
+### 15.4 Required Summary Structure (8.2.5)
+
+Every summary MUST include the following sections:
+
+#### 1. Header
+
+Example:
+```markdown
+## Governance Summary (policy-gate)
+
+**Overall Status:** ❌ Failed  
+**Policy Version:** v1.0.0  
+**Target Env:** prod • **Branch:** release/2025.10.15 • **Score:** 62/100
+```
+
+#### 2. Rule Results Table (8.2.2)
+
+Columns:
+```text
+| Rule ID | Severity | Result | Waived | Details |
+```
+Rules marked `missing_evidence: true` MUST show a 🚫 or ⚠️ indicator.
+
+#### 3. Recommended Fixes (8.2.3)
+
+Auto-generated from rule remediation hints.
+
+Examples:
+- “Increase test coverage to ≥ 80%.”
+- “Upgrade libX to 1.2.4 to remove CVE-2025-XXXX.”
+
+If no fixes required:
+```pgsql
+No action required — all governance rules passed.
+```
+
+#### 4. Evidence & Links
+
+Includes:
+- Test reports
+- Coverage URL
+- SCA/SAST report
+- SBOM
+- ADR references
+- Gate run URL
+
+#### 5. Waivers Used (if present)
+
+Includes:
+- Waiver ID
+- Approver
+- TTL
+- Rule affected
+
+#### 6. Missing Evidence Block
+
+Shown only when `missing_evidence.length > 0`.
+
+Example:
+```arduino
+### Missing Evidence
+- coverage.min → Coverage artifact missing (CI run 789)
+```
+
+---
+
+#### 15.5 Summary Logic (8.2.2 & 8.2.3)
+#### 15.5.1 Rule Display Logic
+
+Each rule is rendered as:
+```php-template
+| <id> | <severity> | <emoji> Result | Waived? | <details> |
+```
+
+Emoji mapping:  
+| Result | Emoji |
+| --- | --- |
+| pass | ✅ |
+| warn | ⚠️ |
+| fail | ❌ |
+| missing_evidence | 🚫 |
+
+#### 15.5.2 Recommended Fix Logic
+
+Fixes are included when:
+- rule has `remediation_hint`
+- rule result is `fail` or `warn`
+- OR rule result is `fail` but waived → still included as advisory
+
+This ensures visibility even when waived.
+
+---
+
+### 15.6 PR Integration (8.2.4)
+
+PIPE-GOV-8.2 integrates directly into PRs using:
+```bash
+.github/workflows/policy-gate.yml
+```
+
+PR workflow example:
+```yaml
+- name: Render governance summary
+  if: always()
+  run: node scripts/policy/summary.mjs \
+       --decision out/decision.json \
+       --out out/summary.md
+
+- name: Post PR governance summary
+  if: always() && github.event_name == 'pull_request'
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: node scripts/policy/comment.mjs out/summary.md
+```
+
+Produces a beautifully formatted PR comment:
+- Overall score + status
+- Rule table
+- Evidence
+- Fixes
+
+---
+
+### 15.7 Test Coverage (8.2.1–8.2.5)
+
+PIPE-GOV-8.2 must include snapshot + assertion tests in:
+```pgsql
+tests/policy-gate/summary.test.mjs
+tests/policy-gate/summary.fixtures.mjs
+```
+
+Tests include:  
+| Test Case | Purpose |
+| --- | --- |
+| All-pass | Summary matches golden snapshot |
+| Waived fail + fail | Summary includes fixes & waiver block |
+| Missing evidence | Summary surfaces missing evidence section |
+| Rule table structure | Columns are correct |
+| Header metadata | Status, version, env, branch present |
+
+---
+
+### 15.8 `.audit/` Requirements
+
+Every summary rendered MUST produce:
+```pgsql
+.audit/YYYY-MM-DD/PIPE-GOV-8.2/
+  summary.md
+  summary.json   (optional normalized form)
+  context.json    (policy, inputs, waivers)
+  log.txt
+```
+
+Summary files must be **immutable** once produced.
+
+---
+
+### 15.9 Developer Usability Goals
+
+PIPE-GOV-8.2 prioritizes:
+- **Clarity** → reviewers know exactly what failed
+- **Actionability** → recommended fixes always shown
+- **Consistency** → every repo sees the same format
+- **Determinism** → snapshot tests ensure no drift
+- **Audit readiness** → markdown is human, JSON is machine-friendly
