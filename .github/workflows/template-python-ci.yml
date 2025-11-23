@@ -19,12 +19,14 @@ name: "Template: Python CI"
 on:
   # NOTE:
   #   This is a *reusable* workflow.
-  #   It is NOT intended to run directly on push/pull_request in the .github repo.
   #   Product/example repos should define their own triggers and call this via:
   #
   #   jobs:
   #     ci:
   #       uses: BrikByte-Studios/.github/.github/workflows/template-python-ci.yml@main
+  #       with:
+  #         python-version: "3.11"
+  #         project-path: "python-api-example"
   #
   workflow_call:
     inputs:
@@ -32,6 +34,11 @@ on:
         description: "Python version (must align with runtime matrix, e.g. 3.11)"
         required: false
         default: "3.11"
+        type: string
+      project-path:
+        description: "Relative path to the Python project root ('.' for repo root)"
+        required: false
+        default: "."
         type: string
 
 permissions:
@@ -41,6 +48,11 @@ jobs:
   build-and-test:
     name: "Python: Build & Test"
     runs-on: ubuntu-latest
+
+    # Default working directory for all `run:` steps in this job
+    defaults:
+      run:
+        working-directory: ${{ inputs.project-path }}
 
     env:
       PYTHON_VERSION: ${{ inputs.python-version || '3.11' }}
@@ -70,7 +82,7 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           else
-            echo "ℹ️ No requirements.txt found; skipping dependency installation."
+            echo "ℹ️ No requirements.txt found in $PWD; skipping dependency installation."
           fi
 
       # -----------------------------------------------------------------------
@@ -83,7 +95,7 @@ jobs:
             python -m pip install build
             python -m build
           else
-            echo "ℹ️ No pyproject.toml or setup.py found; skipping package build."
+            echo "ℹ️ No pyproject.toml or setup.py found in $PWD; skipping package build."
           fi
 
       # -----------------------------------------------------------------------
@@ -95,18 +107,19 @@ jobs:
           python -m pip install pytest
 
           # Detect tests:
-          # - any test_*.py in repo root
+          # - any test_*.py in project root
           # - any Python files inside a tests/ directory
           if compgen -G "test_*.py" > /dev/null || [ -d "tests" ]; then
-            echo "✅ Tests detected, running pytest..."
+            echo "✅ Tests detected in $PWD, running pytest..."
             pytest
           else
-            echo "ℹ️ No tests found (no test_*.py or tests/ directory); skipping pytest."
+            echo "ℹ️ No tests found in $PWD (no test_*.py or tests/ directory); skipping pytest."
           fi
 
       # -----------------------------------------------------------------------
       # Upload dist artifacts (if exist)
       #   - dist/ and build/ are common conventions in Python packaging.
+      #   - Paths are relative to `project-path` due to defaults.run.working-directory.
       # -----------------------------------------------------------------------
       - name: Upload package artifacts
         if: success()
@@ -114,6 +127,6 @@ jobs:
         with:
           name: python-dist
           path: |
-            dist
-            build
+            ${{ inputs.project-path }}/dist
+            ${{ inputs.project-path }}/build
           if-no-files-found: ignore
