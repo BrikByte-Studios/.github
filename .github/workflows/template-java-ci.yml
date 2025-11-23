@@ -23,12 +23,6 @@ on:
         required: false
         default: "17"
         type: string
-      distribution:
-        description: "JDK distribution"
-        required: false
-        default: "temurin"
-        type: string
-
 permissions:
   contents: read
 
@@ -46,7 +40,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: ${{ inputs.java-version }}
-          distribution: ${{ inputs.distribution }}
+          distribution: temurin
           cache: "maven"
 
       # Maven or Gradle detection

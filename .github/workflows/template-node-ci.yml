@@ -88,7 +88,7 @@ jobs:
       #    - dist/ is a common convention for Node.js builds.
       # -----------------------------------------------------------------------
       - name: Upload build artifacts
-        if: success() && exists('dist')
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: node-dist
