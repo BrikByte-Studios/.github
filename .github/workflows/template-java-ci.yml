@@ -23,6 +23,12 @@ on:
         required: false
         default: "17"
         type: string
+      distribution:
+        description: "JDK distribution"
+        required: false
+        default: "temurin"
+        type: string
+
 permissions:
   contents: read
 
@@ -30,6 +36,13 @@ jobs:
   build-and-test:
     name: "Java: Build & Test"
     runs-on: ubuntu-latest
+
+    # Ensure we *always* have a Java version value:
+    # - For workflow_call → uses the caller input or default "17"
+    # - For push/pull_request → inputs context is empty, so `|| '17'` kicks in
+    env:
+      JAVA_VERSION: ${{ inputs.java-version || '17' }}
+      JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
 
     steps:
       - name: Checkout repository
@@ -39,8 +52,8 @@ jobs:
         # uses: BrikByte-Studios/brik-pipe-actions/setup-java@v1
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ inputs.java-version }}
-          distribution: temurin
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
           cache: "maven"
 
       # Maven or Gradle detection
