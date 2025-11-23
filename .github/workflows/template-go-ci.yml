@@ -1,0 +1,61 @@
+# -----------------------------------------------------------------------------
+# [TEMPLATE] Baseline Go CI Workflow
+#
+# Supports:
+#   - Go 1.21–1.23 per runtime matrix (default 1.22)
+# -----------------------------------------------------------------------------
+name: "Template: Go CI"
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to use"
+        required: false
+        default: "1.22.x"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: "Go: Build & Test"
+    runs-on: ubuntu-latest
+
+    env:
+      GOFLAGS: "-mod=readonly"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        # uses: BrikByte-Studios/brik-pipe-actions/setup-go@v1
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Upload binary artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-binaries
+          path: |
+            ./bin
+            ./build
+          if-no-files-found: ignore

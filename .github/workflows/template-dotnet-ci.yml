@@ -1,0 +1,63 @@
+# -----------------------------------------------------------------------------
+# [TEMPLATE] Baseline .NET CI Workflow
+#
+# Supports:
+#   - .NET 6.0, 7.0, 8.0 (LTS lines per runtime matrix)
+# -----------------------------------------------------------------------------
+name: "Template: .NET CI"
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: ".NET SDK version to use (e.g., 8.0.x)"
+        required: false
+        default: "8.0.x"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: ".NET: Build & Test"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        # uses: BrikByte-Studios/brik-pipe-actions/setup-dotnet@v1
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --logger trx
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: "**/TestResult*.trx"
+          if-no-files-found: ignore
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-artifacts
+          path: "**/bin/Release/**"
+          if-no-files-found: ignore

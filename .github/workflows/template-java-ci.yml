@@ -1,0 +1,94 @@
+# -----------------------------------------------------------------------------
+# [TEMPLATE] Baseline Java CI Workflow
+#
+# WBS / Task:
+#   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
+#   - PIPE-CORE-1.1.2
+#   - PIPE-BUILD-RUNTIMES-INIT-001
+#
+# Purpose:
+#   Standardized Maven/Gradle-based CI pipeline for Java runtimes (17–21).
+# -----------------------------------------------------------------------------
+name: "Template: Java CI"
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java version (17 or 21, per runtime matrix)"
+        required: false
+        default: "17"
+        type: string
+      distribution:
+        description: "JDK distribution"
+        required: false
+        default: "temurin"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: "Java: Build & Test"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        # uses: BrikByte-Studios/brik-pipe-actions/setup-java@v1
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.distribution }}
+          cache: "maven"
+
+      # Maven or Gradle detection
+      - name: Detect build tool
+        id: detect
+        run: |
+          if [ -f "pom.xml" ]; then
+            echo "tool=maven" >> "$GITHUB_OUTPUT"
+          elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+            echo "tool=gradle" >> "$GITHUB_OUTPUT"
+          else
+            echo "No pom.xml or build.gradle found"
+            exit 1
+          fi
+
+      # Build
+      - name: Build
+        if: steps.detect.outputs.tool == 'maven'
+        run: mvn -B clean package
+
+      - name: Build (Gradle)
+        if: steps.detect.outputs.tool == 'gradle'
+        run: |
+          chmod +x ./gradlew || true
+          ./gradlew clean build
+
+      # Test (implicitly runs during build for both tools, but we keep explicit step)
+      - name: Test (Maven)
+        if: steps.detect.outputs.tool == 'maven'
+        run: mvn -B test
+
+      - name: Test (Gradle)
+        if: steps.detect.outputs.tool == 'gradle'
+        run: ./gradlew test
+
+      # Upload JAR artifacts
+      - name: Upload JARs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-artifacts
+          path: |
+            target/**/*.jar
+            build/libs/**/*.jar
+          if-no-files-found: ignore

@@ -1,0 +1,96 @@
+# -----------------------------------------------------------------------------
+# [TEMPLATE] Baseline Node.js CI Workflow
+#
+# WBS / Task:
+#   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
+#   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
+#   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
+#
+# Purpose:
+#   Standardized, reusable Node.js CI workflow for BrikByteOS Pipelines.
+#
+# Usage:
+#   - Can be used directly in a repo (push/pull_request triggers).
+#   - Or consumed via workflow_call from product/example repos:
+#
+#     jobs:
+#       ci:
+#         uses: BrikByte-Studios/.github/.github/workflows/template-node-ci.yml@main
+#
+# Notes:
+#   - Runtime versions and commands MUST match runtime-matrix.md / runtime-matrix.json.
+#   - This template focuses on build + test; deployments live in pipeline packs.
+# -----------------------------------------------------------------------------
+name: "Template: Node.js CI"
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version to use (must be allowed by Runtime Matrix)"
+        required: false
+        default: "20" # Align with Node 20 LTS in runtime matrix
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: "Node.js: Build & Test"
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1) Checkout repository
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2) Setup Node.js runtime
+      #    Prefer BrikByte composite action if available; fallback to official.
+      # -----------------------------------------------------------------------
+      - name: Setup Node.js
+        # uses: BrikByte-Studios/brik-pipe-actions/setup-node@v1
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      # -----------------------------------------------------------------------
+      # 3) Install dependencies
+      #    Uses standardized command from Runtime Matrix:
+      #    npm ci && npm run build
+      # -----------------------------------------------------------------------
+      - name: Install dependencies
+        run: npm ci
+
+      # -----------------------------------------------------------------------
+      # 4) Build
+      # -----------------------------------------------------------------------
+      - name: Build
+        run: npm run build
+
+      # -----------------------------------------------------------------------
+      # 5) Test
+      #    Default: npm test (can be npm run test if project uses that)
+      # -----------------------------------------------------------------------
+      - name: Test
+        run: npm test
+
+      # -----------------------------------------------------------------------
+      # 6) Upload artifacts (optional)
+      #    - dist/ is a common convention for Node.js builds.
+      # -----------------------------------------------------------------------
+      - name: Upload build artifacts
+        if: success() && exists('dist')
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-dist
+          path: dist
+          if-no-files-found: ignore
