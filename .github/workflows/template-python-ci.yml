@@ -64,7 +64,16 @@ jobs:
       - name: Run tests
         run: |
           python -m pip install pytest
-          pytest
+          
+          # Detect tests:
+          # - any test_*.py in repo root
+          # - any Python files inside a tests/ directory
+          if compgen -G "test_*.py" > /dev/null || [ -d "tests" ]; then
+            echo "✅ Tests detected, running pytest..."
+            pytest
+          else
+            echo "ℹ️ No tests found (no test_*.py or tests/ directory); skipping pytest."
+          fi
 
       # Upload dist artifacts (if exist)
       - name: Upload package artifacts
