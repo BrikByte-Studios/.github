@@ -3,7 +3,8 @@
 #
 # Repos:
 #   - Implemented in: BrikByte-Studios/.github
-#   - Consumed by: brik-pipe-examples/node-*, product repos via workflow_call
+#   - Consumed by: BrikByte-Studios/brik-pipe-examples (node-* examples)
+#     and product repos via workflow_call.
 #
 # WBS / Task:
 #   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
@@ -19,6 +20,7 @@
 #       uses: BrikByte-Studios/.github/.github/workflows/template-node-ci.yml@main
 #       with:
 #         node-version: "20"
+#         project-path: "node-api-example"   # <— folder with package.json
 #
 # Notes:
 #   - Runtime versions and commands MUST match runtime-matrix.md / runtime-matrix.json.
@@ -29,15 +31,18 @@ name: "Template: Node.js CI"
 on:
   # NOTE:
   #   This is a *reusable* workflow.
-  #   It is NOT intended to run directly on push/pull_request in the .github repo.
-  #   Product/example repos should define their own triggers and call this via
-  #   workflow_call (see usage example in brik-pipe-examples).
+  #   Product/example repos define triggers and call this via workflow_call.
   workflow_call:
     inputs:
       node-version:
         description: "Node.js version to use (must be allowed by Runtime Matrix)"
         required: false
         default: "20" # Align with Node 20 LTS in runtime matrix
+        type: string
+      project-path:
+        description: "Relative path to the Node.js project (folder containing package.json)"
+        required: false
+        default: "."
         type: string
 
 permissions:
@@ -50,6 +55,7 @@ jobs:
 
     env:
       NODE_VERSION: ${{ inputs.node-version || '20' }}
+      PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -60,12 +66,14 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 2) Verify Node project structure
-      #    - Fail early if package.json is missing (broken project).
+      #    - Fail early if package.json is missing in PROJECT_PATH.
       # -----------------------------------------------------------------------
       - name: Verify package.json exists
         run: |
-          if [ ! -f "package.json" ]; then
-            echo "❌ package.json not found. This Node CI template expects a Node project."
+          echo "📁 Project path: ${PROJECT_PATH}"
+          if [ ! -f "${PROJECT_PATH}/package.json" ]; then
+            echo "❌ package.json not found in ${PROJECT_PATH}."
+            echo "   This Node CI template expects a Node project at PROJECT_PATH."
             exit 1
           fi
 
@@ -80,22 +88,23 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+          cache-dependency-path: ${{ env.PROJECT_PATH }}/package-lock.json
 
       # -----------------------------------------------------------------------
       # 4) Install dependencies
       #    Standardized command from Runtime Matrix:
       #      npm ci
-      #    - Assumes lockfile exists; if not, npm ci will fail = misconfigured repo.
       # -----------------------------------------------------------------------
       - name: Install dependencies
+        working-directory: ${{ env.PROJECT_PATH }}
         run: npm ci
 
       # -----------------------------------------------------------------------
       # 5) Build
       #    Runtime matrix: npm run build
-      #    - Fail if script "build" is missing to surface bad project config.
       # -----------------------------------------------------------------------
       - name: Build
+        working-directory: ${{ env.PROJECT_PATH }}
         run: |
           if npm run | grep -q " build"; then
             npm run build
@@ -107,10 +116,10 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 6) Test
-      #    Default: npm test (common convention).
-      #    - If 'test' script is missing, fail to enforce baseline quality.
+      #    Default: npm test
       # -----------------------------------------------------------------------
       - name: Test
+        working-directory: ${{ env.PROJECT_PATH }}
         run: |
           if npm run | grep -q " test"; then
             npm test
@@ -122,13 +131,12 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 7) Upload artifacts (optional)
-      #    - dist/ is a common convention for Node.js builds.
-      #    - If dist/ is missing, we ignore (project may not emit build artifacts).
+      #    - dist/ under PROJECT_PATH is a common convention.
       # -----------------------------------------------------------------------
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: node-dist
-          path: dist
+          path: ${{ env.PROJECT_PATH }}/dist
           if-no-files-found: ignore
