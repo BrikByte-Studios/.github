@@ -1,6 +1,10 @@
 # -----------------------------------------------------------------------------
 # [TEMPLATE] Baseline Node.js CI Workflow
 #
+# Repos:
+#   - Implemented in: BrikByte-Studios/.github
+#   - Consumed by: brik-pipe-examples/node-*, product repos via workflow_call
+#
 # WBS / Task:
 #   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
 #   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
@@ -9,13 +13,12 @@
 # Purpose:
 #   Standardized, reusable Node.js CI workflow for BrikByteOS Pipelines.
 #
-# Usage:
-#   - Can be used directly in a repo (push/pull_request triggers).
-#   - Or consumed via workflow_call from product/example repos:
-#
-#     jobs:
-#       ci:
-#         uses: BrikByte-Studios/.github/.github/workflows/template-node-ci.yml@main
+# Usage (in consumer repos):
+#   jobs:
+#     ci:
+#       uses: BrikByte-Studios/.github/.github/workflows/template-node-ci.yml@main
+#       with:
+#         node-version: "20"
 #
 # Notes:
 #   - Runtime versions and commands MUST match runtime-matrix.md / runtime-matrix.json.
@@ -24,10 +27,11 @@
 name: "Template: Node.js CI"
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  # NOTE:
+  #   This is a *reusable* workflow.
+  #   It is NOT intended to run directly on push/pull_request in the .github repo.
+  #   Product/example repos should define their own triggers and call this via
+  #   workflow_call (see usage example in brik-pipe-examples).
   workflow_call:
     inputs:
       node-version:
@@ -44,6 +48,9 @@ jobs:
     name: "Node.js: Build & Test"
     runs-on: ubuntu-latest
 
+    env:
+      NODE_VERSION: ${{ inputs.node-version || '20' }}
+
     steps:
       # -----------------------------------------------------------------------
       # 1) Checkout repository
@@ -52,40 +59,71 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 2) Setup Node.js runtime
+      # 2) Verify Node project structure
+      #    - Fail early if package.json is missing (broken project).
+      # -----------------------------------------------------------------------
+      - name: Verify package.json exists
+        run: |
+          if [ ! -f "package.json" ]; then
+            echo "❌ package.json not found. This Node CI template expects a Node project."
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3) Setup Node.js runtime
       #    Prefer BrikByte composite action if available; fallback to official.
+      #    - Node 20 LTS primary, 18 allowed by runtime matrix.
       # -----------------------------------------------------------------------
       - name: Setup Node.js
         # uses: BrikByte-Studios/brik-pipe-actions/setup-node@v1
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       # -----------------------------------------------------------------------
-      # 3) Install dependencies
-      #    Uses standardized command from Runtime Matrix:
-      #    npm ci && npm run build
+      # 4) Install dependencies
+      #    Standardized command from Runtime Matrix:
+      #      npm ci
+      #    - Assumes lockfile exists; if not, npm ci will fail = misconfigured repo.
       # -----------------------------------------------------------------------
       - name: Install dependencies
         run: npm ci
 
       # -----------------------------------------------------------------------
-      # 4) Build
+      # 5) Build
+      #    Runtime matrix: npm run build
+      #    - Fail if script "build" is missing to surface bad project config.
       # -----------------------------------------------------------------------
       - name: Build
-        run: npm run build
+        run: |
+          if npm run | grep -q " build"; then
+            npm run build
+          else
+            echo "❌ npm script 'build' not found in package.json."
+            echo "   This template expects a 'build' script as per runtime matrix."
+            exit 1
+          fi
 
       # -----------------------------------------------------------------------
-      # 5) Test
-      #    Default: npm test (can be npm run test if project uses that)
+      # 6) Test
+      #    Default: npm test (common convention).
+      #    - If 'test' script is missing, fail to enforce baseline quality.
       # -----------------------------------------------------------------------
       - name: Test
-        run: npm test
+        run: |
+          if npm run | grep -q " test"; then
+            npm test
+          else
+            echo "❌ npm script 'test' not found in package.json."
+            echo "   This template expects a 'test' script as per runtime matrix."
+            exit 1
+          fi
 
       # -----------------------------------------------------------------------
-      # 6) Upload artifacts (optional)
+      # 7) Upload artifacts (optional)
       #    - dist/ is a common convention for Node.js builds.
+      #    - If dist/ is missing, we ignore (project may not emit build artifacts).
       # -----------------------------------------------------------------------
       - name: Upload build artifacts
         if: success()

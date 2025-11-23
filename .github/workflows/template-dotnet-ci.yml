@@ -1,20 +1,50 @@
 # -----------------------------------------------------------------------------
 # [TEMPLATE] Baseline .NET CI Workflow
 #
-# Supports:
-#   - .NET 6.0, 7.0, 8.0 (LTS lines per runtime matrix)
+# Repos:
+#   - Implemented in: BrikByte-Studios/.github
+#   - Consumed by: brik-pipe-examples/dotnet-*, product repos via workflow_call
+#
+# WBS / Task:
+#   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
+#   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
+#   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
+#
+# Purpose:
+#   Standardized, reusable .NET CI workflow for BrikByteOS Pipelines, aligned
+#   with the Runtime Matrix (.NET 6, 7, 8), performing:
+#     - dotnet restore
+#     - dotnet build --configuration Release --no-restore
+#     - dotnet test  --configuration Release --no-build --logger trx
+#
+# Usage (in consumer repos):
+#   name: ".NET Service CI"
+#   on:
+#     push:
+#       branches: [ main, master ]
+#     pull_request:
+#       branches: [ main, master ]
+#
+#   jobs:
+#     ci:
+#       uses: BrikByte-Studios/.github/.github/workflows/template-dotnet-ci.yml@main
+#       with:
+#         dotnet-version: "8.0.x"
+#
+# Notes:
+#   - This workflow is reusable-only (workflow_call). Consumer repos define
+#     their own push/pull_request triggers.
+#   - Runtime versions and commands MUST match runtime-matrix.md/json.
 # -----------------------------------------------------------------------------
 name: "Template: .NET CI"
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  # Reusable workflow only. Product/example repos call this via workflow_call
+  # and define their own triggers.
   workflow_call:
     inputs:
       dotnet-version:
-        description: ".NET SDK version to use (e.g., 8.0.x)"
+        description: ".NET SDK version to use (e.g., 8.0.x; must align with Runtime Matrix)"
         required: false
         default: "8.0.x"
         type: string
@@ -27,25 +57,62 @@ jobs:
     name: ".NET: Build & Test"
     runs-on: ubuntu-latest
 
+    env:
+      DOTNET_VERSION: ${{ inputs.dotnet-version || '8.0.x' }}
+
     steps:
+      # -----------------------------------------------------------------------
+      # 1) Checkout repository
+      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -----------------------------------------------------------------------
+      # 2) Verify .NET project/solution files exist
+      #    - Fail early if no *.sln or *.csproj files exist.
+      # -----------------------------------------------------------------------
+      - name: Verify .NET project files
+        run: |
+          if compgen -G "*.sln" > /dev/null || compgen -G "**/*.csproj" > /dev/null; then
+            echo "✅ .NET solution/project files detected."
+          else
+            echo "❌ No .sln or .csproj files found. This template expects a .NET project."
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3) Setup .NET SDK
+      # -----------------------------------------------------------------------
       - name: Setup .NET
         # uses: BrikByte-Studios/brik-pipe-actions/setup-dotnet@v1
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ inputs.dotnet-version }}
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      # -----------------------------------------------------------------------
+      # 4) Restore dependencies
+      #    - Standard command per Runtime Matrix: dotnet restore
+      # -----------------------------------------------------------------------
       - name: Restore dependencies
         run: dotnet restore
 
+      # -----------------------------------------------------------------------
+      # 5) Build
+      #    - Standard: Release configuration, no restore (already done).
+      # -----------------------------------------------------------------------
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
+      # -----------------------------------------------------------------------
+      # 6) Test
+      #    - Standard: Release configuration, no build; TRX logger for evidence.
+      # -----------------------------------------------------------------------
       - name: Test
         run: dotnet test --configuration Release --no-build --logger trx
 
+      # -----------------------------------------------------------------------
+      # 7) Upload test results (TRX)
+      # -----------------------------------------------------------------------
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,6 +121,10 @@ jobs:
           path: "**/TestResult*.trx"
           if-no-files-found: ignore
 
+      # -----------------------------------------------------------------------
+      # 8) Upload build artifacts
+      #    - Convention: any Release binaries under bin/Release.
+      # -----------------------------------------------------------------------
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4

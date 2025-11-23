@@ -1,21 +1,31 @@
 # -----------------------------------------------------------------------------
 # [TEMPLATE] Baseline Java CI Workflow
 #
+# Repos:
+#   - Implemented in: BrikByte-Studios/.github
+#   - Consumed by: brik-pipe-examples/java-*, product repos via workflow_call
+#
 # WBS / Task:
 #   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
-#   - PIPE-CORE-1.1.2
-#   - PIPE-BUILD-RUNTIMES-INIT-001
+#   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
+#   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
 #
 # Purpose:
-#   Standardized Maven/Gradle-based CI pipeline for Java runtimes (17–21).
+#   Standardized Maven/Gradle-based CI pipeline for Java runtimes (17–21),
+#   reusable across BrikByteOS projects via workflow_call.
 # -----------------------------------------------------------------------------
 name: "Template: Java CI"
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  # NOTE:
+  #   This is a *reusable* workflow.
+  #   It is NOT intended to run directly on push/pull_request in the .github repo.
+  #   Product/example repos should define their own triggers and call this via:
+  #
+  #   jobs:
+  #     ci:
+  #       uses: BrikByte-Studios/.github/.github/workflows/template-java-ci.yml@main
+  #
   workflow_call:
     inputs:
       java-version:
@@ -24,9 +34,14 @@ on:
         default: "17"
         type: string
       distribution:
-        description: "JDK distribution"
+        description: "JDK distribution (e.g. temurin)"
         required: false
         default: "temurin"
+        type: string
+      enable-cache:
+        description: "Enable Maven cache (requires pom.xml in caller repo)"
+        required: false
+        default: "true"
         type: string
 
 permissions:
@@ -37,26 +52,36 @@ jobs:
     name: "Java: Build & Test"
     runs-on: ubuntu-latest
 
-    # Ensure we *always* have a Java version value:
-    # - For workflow_call → uses the caller input or default "17"
-    # - For push/pull_request → inputs context is empty, so `|| '17'` kicks in
     env:
+      # Ensure we always have values:
       JAVA_VERSION: ${{ inputs.java-version || '17' }}
       JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
+      ENABLE_CACHE: ${{ inputs.enable-cache || 'true' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -----------------------------------------------------------------------
+      # Setup Java
+      #   - Uses runtime matrix defaults (Java 17, Temurin)
+      #   - Cache is *optional* and can be disabled by callers if it causes issues.
+      # -----------------------------------------------------------------------
       - name: Setup Java
         # uses: BrikByte-Studios/brik-pipe-actions/setup-java@v1
         uses: actions/setup-java@v4
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
-          cache: "maven"
+          # Only enable cache when ENABLE_CACHE == 'true'
+          # (Callers can pass enable-cache: 'false' if their repo has no pom.xml)
+          cache: ${{ env.ENABLE_CACHE == 'true' && 'maven' || '' }}
 
-      # Maven or Gradle detection
+      # -----------------------------------------------------------------------
+      # Detect build tool
+      #   - Maven (pom.xml)
+      #   - Gradle (build.gradle / build.gradle.kts)
+      # -----------------------------------------------------------------------
       - name: Detect build tool
         id: detect
         run: |
@@ -65,12 +90,15 @@ jobs:
           elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
             echo "tool=gradle" >> "$GITHUB_OUTPUT"
           else
-            echo "No pom.xml or build.gradle found"
+            echo "❌ No pom.xml or build.gradle found in repository root."
+            echo "   This reusable workflow expects a Java project in the caller repo."
             exit 1
           fi
 
+      # -----------------------------------------------------------------------
       # Build
-      - name: Build
+      # -----------------------------------------------------------------------
+      - name: Build (Maven)
         if: steps.detect.outputs.tool == 'maven'
         run: mvn -B clean package
 
@@ -80,7 +108,9 @@ jobs:
           chmod +x ./gradlew || true
           ./gradlew clean build
 
-      # Test (implicitly runs during build for both tools, but we keep explicit step)
+      # -----------------------------------------------------------------------
+      # Test (explicit, even though most builds already run tests)
+      # -----------------------------------------------------------------------
       - name: Test (Maven)
         if: steps.detect.outputs.tool == 'maven'
         run: mvn -B test
@@ -89,7 +119,9 @@ jobs:
         if: steps.detect.outputs.tool == 'gradle'
         run: ./gradlew test
 
-      # Upload JAR artifacts
+      # -----------------------------------------------------------------------
+      # Upload JAR artifacts (if present)
+      # -----------------------------------------------------------------------
       - name: Upload JARs
         if: success()
         uses: actions/upload-artifact@v4

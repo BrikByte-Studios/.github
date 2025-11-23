@@ -1,6 +1,10 @@
 # -----------------------------------------------------------------------------
 # [TEMPLATE] Baseline Python CI Workflow
 #
+# Repos:
+#   - Implemented in: BrikByte-Studios/.github
+#   - Consumed by: brik-pipe-examples/python-*, product repos via workflow_call
+#
 # WBS / Task:
 #   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
 #   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
@@ -8,14 +12,20 @@
 #
 # Purpose:
 #   Standardized, reusable Python CI workflow for BrikByteOS Pipelines.
+#   Intended to be invoked via workflow_call, not run directly in `.github`.
 # -----------------------------------------------------------------------------
 name: "Template: Python CI"
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  # NOTE:
+  #   This is a *reusable* workflow.
+  #   It is NOT intended to run directly on push/pull_request in the .github repo.
+  #   Product/example repos should define their own triggers and call this via:
+  #
+  #   jobs:
+  #     ci:
+  #       uses: BrikByte-Studios/.github/.github/workflows/template-python-ci.yml@main
+  #
   workflow_call:
     inputs:
       python-version:
@@ -32,39 +42,58 @@ jobs:
     name: "Python: Build & Test"
     runs-on: ubuntu-latest
 
+    env:
+      PYTHON_VERSION: ${{ inputs.python-version || '3.11' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -----------------------------------------------------------------------
       # Setup Python using runtime matrix (3.10–3.12, default 3.11)
+      # -----------------------------------------------------------------------
       - name: Setup Python
+        # If/when BrikByte-Studios/brik-pipe-actions/setup-python@v1 exists,
+        # switch the 'uses' line to the composite action to centralize logic.
         # uses: BrikByte-Studios/brik-pipe-actions/setup-python@v1
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ inputs.python-version }}
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
 
+      # -----------------------------------------------------------------------
       # Install dependencies (pip + requirements.txt per runtime matrix)
+      # -----------------------------------------------------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "ℹ️ No requirements.txt found; skipping dependency installation."
+          fi
 
+      # -----------------------------------------------------------------------
       # Optional: build distribution package (wheel/sdist)
+      #   - Matches runtime matrix guidance for packaging.
+      # -----------------------------------------------------------------------
       - name: Build package
         run: |
           if [ -f pyproject.toml ] || [ -f setup.py ]; then
             python -m pip install build
             python -m build
           else
-            echo "No build configuration found; skipping package build."
+            echo "ℹ️ No pyproject.toml or setup.py found; skipping package build."
           fi
 
+      # -----------------------------------------------------------------------
       # Test using pytest as per runtime matrix
+      #   - Avoid failures when there are no tests by detecting them first.
+      # -----------------------------------------------------------------------
       - name: Run tests
         run: |
           python -m pip install pytest
-          
+
           # Detect tests:
           # - any test_*.py in repo root
           # - any Python files inside a tests/ directory
@@ -75,7 +104,10 @@ jobs:
             echo "ℹ️ No tests found (no test_*.py or tests/ directory); skipping pytest."
           fi
 
+      # -----------------------------------------------------------------------
       # Upload dist artifacts (if exist)
+      #   - dist/ and build/ are common conventions in Python packaging.
+      # -----------------------------------------------------------------------
       - name: Upload package artifacts
         if: success()
         uses: actions/upload-artifact@v4

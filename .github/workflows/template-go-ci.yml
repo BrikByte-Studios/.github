@@ -1,20 +1,51 @@
 # -----------------------------------------------------------------------------
 # [TEMPLATE] Baseline Go CI Workflow
 #
-# Supports:
-#   - Go 1.21–1.23 per runtime matrix (default 1.22)
+# Repos:
+#   - Implemented in: BrikByte-Studios/.github
+#   - Consumed by: brik-pipe-examples/go-*, product repos via workflow_call
+#
+# WBS / Task:
+#   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
+#   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
+#   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
+#
+# Purpose:
+#   Standardized, reusable Go CI workflow for BrikByteOS Pipelines, aligned with
+#   the Runtime Matrix (Go 1.21–1.23; default 1.22.x), performing:
+#     - go mod download
+#     - go build ./...
+#     - go test ./...
+#
+# Usage (in consumer repos):
+#   name: "Go Service CI"
+#   on:
+#     push:
+#       branches: [ main, master ]
+#     pull_request:
+#       branches: [ main, master ]
+#
+#   jobs:
+#     ci:
+#       uses: BrikByte-Studios/.github/.github/workflows/template-go-ci.yml@main
+#       with:
+#         go-version: "1.22.x"
+#
+# Notes:
+#   - This workflow is reusable-only (workflow_call). Consumer repos define their
+#     own triggers and call this as a job.
+#   - Runtime versions and commands MUST match runtime-matrix.md/json.
 # -----------------------------------------------------------------------------
 name: "Template: Go CI"
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  # Reusable workflow only — this file lives in BrikByte-Studios/.github.
+  # Product/example repos should call this via workflow_call and define
+  # their own push/pull_request triggers.
   workflow_call:
     inputs:
       go-version:
-        description: "Go version to use"
+        description: "Go version to use (must align with Runtime Matrix, e.g. 1.22.x)"
         required: false
         default: "1.22.x"
         type: string
@@ -28,28 +59,68 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      # Enforce immutable module graph resolution inside CI
       GOFLAGS: "-mod=readonly"
+      GO_VERSION: ${{ inputs.go-version || '1.22.x' }}
 
     steps:
+      # -----------------------------------------------------------------------
+      # 1) Checkout repository
+      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -----------------------------------------------------------------------
+      # 2) Verify Go module presence
+      #    - Fail early if go.mod is missing (not a Go module repo).
+      # -----------------------------------------------------------------------
+      - name: Verify go.mod exists
+        run: |
+          if [ ! -f "go.mod" ]; then
+            echo "❌ go.mod not found. This Go CI template expects a Go module."
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3) Setup Go
+      #    - Align with Runtime Matrix (1.21–1.23, default 1.22.x).
+      #    - Prefer composite action in brik-pipe-actions if/when available.
+      # -----------------------------------------------------------------------
       - name: Setup Go
         # uses: BrikByte-Studios/brik-pipe-actions/setup-go@v1
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ inputs.go-version }}
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # -----------------------------------------------------------------------
+      # 4) Download dependencies
+      #    - Standard command from Runtime Matrix: go mod download
+      # -----------------------------------------------------------------------
       - name: Download dependencies
         run: go mod download
 
+      # -----------------------------------------------------------------------
+      # 5) Build
+      #    - Standard command from Runtime Matrix: go build ./...
+      # -----------------------------------------------------------------------
       - name: Build
         run: go build ./...
 
+      # -----------------------------------------------------------------------
+      # 6) Test
+      #    - Standard command from Runtime Matrix: go test ./...
+      # -----------------------------------------------------------------------
       - name: Test
         run: go test ./...
 
+      # -----------------------------------------------------------------------
+      # 7) Upload binary artifacts (optional)
+      #    - Convention:
+      #        ./bin   → common for custom build scripts
+      #        ./build → alternative build output directory
+      #    - If these folders don't exist, artifacts are simply ignored.
+      # -----------------------------------------------------------------------
       - name: Upload binary artifacts
         if: success()
         uses: actions/upload-artifact@v4
