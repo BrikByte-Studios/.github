@@ -135,15 +135,14 @@ jobs:
           python -m pip install pytest
           pytest
 
-      # Upload dist artifacts (if any are present)
+      # Upload dist artifacts (if exist)
       - name: Upload package artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: python-dist
           path: |
-            dist/
-            build/
+            dist
+            build
           if-no-files-found: ignore
-
 
