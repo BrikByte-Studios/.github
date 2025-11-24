@@ -20,11 +20,12 @@
 #       uses: BrikByte-Studios/.github/.github/workflows/template-node-ci.yml@main
 #       with:
 #         node-version: "20"
-#         project-path: "node-api-example"   # <— folder with package.json
+#         project-path: "node-api-example"   # <— folder with package.json + Makefile
 #
 # Notes:
 #   - Runtime versions and commands MUST match runtime-matrix.md / runtime-matrix.json.
 #   - This template focuses on build + test; deployments live in pipeline packs.
+#   - All build/test logic is delegated to `make ci` in the target repo.
 # -----------------------------------------------------------------------------
 name: "Template: Node.js CI"
 
@@ -40,7 +41,7 @@ on:
         default: "20" # Align with Node 20 LTS in runtime matrix
         type: string
       project-path:
-        description: "Relative path to the Node.js project (folder containing package.json)"
+        description: "Relative path to the Node.js project (folder containing package.json + Makefile)"
         required: false
         default: "."
         type: string
@@ -66,14 +67,22 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 2) Verify Node project structure
-      #    - Fail early if package.json is missing in PROJECT_PATH.
+      #    - Fail early if package.json or Makefile is missing in PROJECT_PATH.
       # -----------------------------------------------------------------------
-      - name: Verify package.json exists
+      - name: Verify project layout (package.json + Makefile)
         run: |
           echo "📁 Project path: ${PROJECT_PATH}"
+
           if [ ! -f "${PROJECT_PATH}/package.json" ]; then
             echo "❌ package.json not found in ${PROJECT_PATH}."
             echo "   This Node CI template expects a Node project at PROJECT_PATH."
+            exit 1
+          fi
+
+          if [ ! -f "${PROJECT_PATH}/Makefile" ]; then
+            echo "❌ Makefile not found in ${PROJECT_PATH}."
+            echo "   This template expects a Makefile exposing 'make ci' as per"
+            echo "   PIPE-BUILD-CONVENTIONS-CONFIG-003."
             exit 1
           fi
 
@@ -91,46 +100,18 @@ jobs:
           cache-dependency-path: ${{ env.PROJECT_PATH }}/package-lock.json
 
       # -----------------------------------------------------------------------
-      # 4) Install dependencies
-      #    Standardized command from Runtime Matrix:
-      #      npm ci
+      # 4) Run canonical CI pipeline via Make
+      #    - Delegates all build/test logic to repo-level conventions:
+      #        make ci  → clean + install + build + test (see Makefile)
       # -----------------------------------------------------------------------
-      - name: Install dependencies
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: npm ci
-
-      # -----------------------------------------------------------------------
-      # 5) Build
-      #    Runtime matrix: npm run build
-      # -----------------------------------------------------------------------
-      - name: Build
+      - name: Run Node CI via Make
         working-directory: ${{ env.PROJECT_PATH }}
         run: |
-          if npm run | grep -q " build"; then
-            npm run build
-          else
-            echo "❌ npm script 'build' not found in package.json."
-            echo "   This template expects a 'build' script as per runtime matrix."
-            exit 1
-          fi
+          echo "🚦 Running Node CI via 'make ci'..."
+          make ci
 
       # -----------------------------------------------------------------------
-      # 6) Test
-      #    Default: npm test
-      # -----------------------------------------------------------------------
-      - name: Test
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: |
-          if npm run | grep -q " test"; then
-            npm test
-          else
-            echo "❌ npm script 'test' not found in package.json."
-            echo "   This template expects a 'test' script as per runtime matrix."
-            exit 1
-          fi
-
-      # -----------------------------------------------------------------------
-      # 7) Upload artifacts (optional)
+      # 5) Upload build artifacts (optional)
       #    - dist/ under PROJECT_PATH is a common convention.
       # -----------------------------------------------------------------------
       - name: Upload build artifacts

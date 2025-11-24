@@ -3,18 +3,46 @@
 #
 # Repos:
 #   - Implemented in: BrikByte-Studios/.github
-#   - Consumed by: brik-pipe-examples/dotnet-*, product repos via workflow_call
+#   - Consumed by: brik-pipe-examples/dotnet-* and product repos via workflow_call
 #
-# WBS / Task:
+# WBS / Tasks:
 #   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
+#   - [TASK] PIPE-BUILD-CONVENTIONS-CONFIG-003
 #   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
 #   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
 #
 # Purpose:
-#   Reusable .NET build + test workflow based on Runtime Matrix:
-#     - dotnet restore
-#     - dotnet build  (Release)
-#     - dotnet test   (Release, TRX output)
+#   Reusable .NET build + test workflow aligned with:
+#     - Runtime Matrix (.NET 6/7/8)
+#     - Build Conventions (canonical Make targets)
+#
+#   Delegates to repo-level Makefile:
+#     - make build   → dotnet build (Release)
+#     - make test    → dotnet test (Release, TRX output)
+#     - make ci      → CI-safe build + test combo
+#
+# Usage (in consumer repo):
+#
+#   name: ".NET Service CI"
+#   on:
+#     push:
+#       branches: [ main, master ]
+#     pull_request:
+#       branches: [ main, master ]
+#
+#   jobs:
+#     ci:
+#       uses: BrikByte-Studios/.github/.github/workflows/template-dotnet-ci.yml@main
+#       with:
+#         dotnet-version: "8.0.x"
+#         project-path: "dotnet-api-example"   # folder with .sln/.csproj + Makefile
+#
+# Notes:
+#   - Expects:
+#       • .sln and/or .csproj in project-path
+#       • Makefile exposing `make build`, `make test`, `make ci`
+#         as per PIPE-BUILD-CONVENTIONS-CONFIG-003.
+#   - Runtime versions and commands MUST match runtime-matrix.md/json.
 # -----------------------------------------------------------------------------
 name: "Template: .NET CI"
 
@@ -45,41 +73,73 @@ jobs:
       PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
+      # -----------------------------------------------------------------------
       # 1) Checkout caller repo
+      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) Debug + cd into project
-      - name: Switch to project path
+      # -----------------------------------------------------------------------
+      # 2) Verify .NET project layout
+      #    - PROJECT_PATH exists
+      #    - .sln or .csproj present
+      #    - Makefile present (with build/test/ci targets).
+      # -----------------------------------------------------------------------
+      - name: Verify .NET project layout
         run: |
-          echo "➡️ Working directory before cd:"
-          pwd
-          echo "📂 Listing repo root:"
-          ls -R .
-          echo "➡️ Switching to project path: $PROJECT_PATH"
-          cd "$PROJECT_PATH"
-          echo "📂 Listing project path:"
-          ls -R .
-        shell: bash
+          echo "📁 Project path: ${PROJECT_PATH}"
 
-      # All following steps run from PROJECT_PATH
+          if [ ! -d "${PROJECT_PATH}" ]; then
+            echo "❌ PROJECT_PATH '${PROJECT_PATH}' does not exist."
+            exit 1
+          fi
+
+          cd "${PROJECT_PATH}"
+
+          if compgen -G "*.sln" > /dev/null || compgen -G "**/*.csproj" > /dev/null; then
+            echo "✅ .NET solution/project files detected."
+          else
+            echo "❌ No .sln or .csproj files found in ${PWD}."
+            echo "   This template expects a .NET project in PROJECT_PATH."
+            exit 1
+          fi
+
+          if [ ! -f "Makefile" ]; then
+            echo "❌ Makefile not found in ${PWD}."
+            echo "   This template expects a Makefile exposing 'make ci' as per"
+            echo "   PIPE-BUILD-CONVENTIONS-CONFIG-003."
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3) Setup .NET SDK
+      # -----------------------------------------------------------------------
       - name: Setup .NET
+        # When a BrikByte composite exists, switch to:
+        # uses: BrikByte-Studios/brik-pipe-actions/setup-dotnet@v1
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore dependencies
+      # -----------------------------------------------------------------------
+      # 4) Run canonical CI pipeline via Make
+      #    - Delegates to Makefile in PROJECT_PATH:
+      #        make ci  → should internally run:
+      #          - dotnet restore
+      #          - dotnet build  (Release, no-restore)
+      #          - dotnet test   (Release, no-build, TRX logger)
+      #      matching Runtime Matrix + build conventions.
+      # -----------------------------------------------------------------------
+      - name: Run .NET CI via Make
         working-directory: ${{ env.PROJECT_PATH }}
-        run: dotnet restore
+        run: |
+          echo "🚦 Running .NET CI via 'make ci' in ${PWD}..."
+          make ci
 
-      - name: Build
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: dotnet build --configuration Release --no-restore
-
-      - name: Test
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: dotnet test --configuration Release --no-build --logger trx
-
+      # -----------------------------------------------------------------------
+      # 5) Upload test results (TRX)
+      #    - Convention: any TestResult*.trx under PROJECT_PATH.
+      # -----------------------------------------------------------------------
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -88,6 +148,10 @@ jobs:
           path: ${{ env.PROJECT_PATH }}/**/TestResult*.trx
           if-no-files-found: ignore
 
+      # -----------------------------------------------------------------------
+      # 6) Upload build artifacts
+      #    - Convention: Release binaries under bin/Release.
+      # -----------------------------------------------------------------------
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4

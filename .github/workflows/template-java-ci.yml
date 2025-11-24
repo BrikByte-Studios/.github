@@ -3,18 +3,27 @@
 #
 # Repos:
 #   - Implemented in: BrikByte-Studios/.github
-#   - Consumed by: brik-pipe-examples/java-*, product repos via workflow_call
+#   - Consumed by: brik-pipe-examples/java-* and product repos via workflow_call
 #
-# WBS / Task:
+# WBS / Tasks:
 #   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
+#   - [TASK] PIPE-BUILD-CONVENTIONS-CONFIG-003
 #   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
 #   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
 #
 # Purpose:
-#   Standardized Maven/Gradle-based CI pipeline for Java runtimes (17–21),
-#   reusable across BrikByteOS projects via workflow_call.
+#   Standardized, reusable Java CI workflow (Maven/Gradle) for BrikByteOS
+#   Pipelines, delegating build/test to canonical `make ci` in the target
+#   project so local dev and CI use the same entrypoint.
 #
 # Usage (in consumer repo):
+#
+#   name: "CI — Java API Example"
+#   on:
+#     push:
+#       branches: [ main, master ]
+#     pull_request:
+#       branches: [ main, master ]
 #
 #   jobs:
 #     ci:
@@ -22,20 +31,19 @@
 #       with:
 #         java-version: "17"
 #         distribution: "temurin"
-#         project-path: "java-api-example"   # or "." if workflow lives at repo root
+#         project-path: "java-api-example"   # or "." if project at repo root
+#
+# Notes:
+#   - Expects a Java project in `project-path` with:
+#       - pom.xml OR build.gradle/build.gradle.kts
+#       - Makefile exposing `make build`, `make test`, `make ci`
+#     as per PIPE-BUILD-CONVENTIONS-CONFIG-003.
+#   - Runtime versions and build/test commands MUST align with the Runtime Matrix.
 # -----------------------------------------------------------------------------
 name: "Template: Java CI"
 
 on:
-  # NOTE:
-  #   This is a *reusable* workflow.
-  #   It is NOT intended to run directly on push/pull_request in the .github repo.
-  #   Product/example repos should define their own triggers and call this via:
-  #
-  #   jobs:
-  #     ci:
-  #       uses: BrikByte-Studios/.github/.github/workflows/template-java-ci.yml@main
-  #
+  # Reusable workflow only — not intended to run directly in BrikByte-Studios/.github.
   workflow_call:
     inputs:
       java-version:
@@ -68,89 +76,87 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Ensure we always have values:
       JAVA_VERSION: ${{ inputs.java-version || '17' }}
       JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
       ENABLE_CACHE: ${{ inputs.enable-cache || 'true' }}
       PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
+      # -----------------------------------------------------------------------
+      # 1) Checkout repository
+      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # Setup Java
-      #   - Uses runtime matrix defaults (Java 17, Temurin)
-      #   - Cache is *optional* and can be disabled by callers if it causes issues.
+      # 2) Verify Java project layout in PROJECT_PATH
+      #    - Checks:
+      #       • Makefile present (for make build/test/ci)
+      #       • pom.xml OR build.gradle/build.gradle.kts present
+      # -----------------------------------------------------------------------
+      - name: Verify Java project layout
+        run: |
+          echo "📁 Project path: ${PROJECT_PATH}"
+
+          if [ ! -d "${PROJECT_PATH}" ]; then
+            echo "❌ PROJECT_PATH '${PROJECT_PATH}' does not exist."
+            exit 1
+          fi
+
+          if [ ! -f "${PROJECT_PATH}/Makefile" ]; then
+            echo "❌ Makefile not found in ${PROJECT_PATH}."
+            echo "   This template expects a Makefile exposing 'make ci' as per"
+            echo "   PIPE-BUILD-CONVENTIONS-CONFIG-003."
+            exit 1
+          fi
+
+          if [ -f "${PROJECT_PATH}/pom.xml" ]; then
+            echo "✅ Detected Maven project (pom.xml) in ${PROJECT_PATH}."
+          elif [ -f "${PROJECT_PATH}/build.gradle" ] || [ -f "${PROJECT_PATH}/build.gradle.kts" ]; then
+            echo "✅ Detected Gradle project in ${PROJECT_PATH}."
+          else
+            echo "❌ No pom.xml or build.gradle(.kts) found in ${PROJECT_PATH}."
+            echo "   This reusable workflow expects a Java project at PROJECT_PATH."
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3) Setup Java
+      #    - Uses runtime matrix defaults (Java 17, Temurin).
+      #    - Cache is *optional* and primarily tuned for Maven.
       # -----------------------------------------------------------------------
       - name: Setup Java
-        # If/when BrikByte-Studios/brik-pipe-actions/setup-java@v1 exists,
-        # replace this with the composite action to centralise Java setup.
+        # When available, replace with:
         # uses: BrikByte-Studios/brik-pipe-actions/setup-java@v1
         uses: actions/setup-java@v4
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
-          # Only enable cache when ENABLE_CACHE == 'true'
+          # Only enable Maven cache when ENABLE_CACHE == 'true'.
           cache: ${{ env.ENABLE_CACHE == 'true' && 'maven' || '' }}
 
       # -----------------------------------------------------------------------
-      # Detect build tool
-      #   - Maven (pom.xml)
-      #   - Gradle (build.gradle / build.gradle.kts)
-      #   - Runs in PROJECT_PATH so monorepos are supported.
+      # 4) Run canonical CI pipeline via Make
+      #    - Delegates build + test to repo-level conventions:
+      #        make ci → (clean + build + test), as defined in Makefile.
+      #    - This keeps workflow thin and enforces same commands in CI and local dev.
       # -----------------------------------------------------------------------
-      - name: Detect build tool
-        id: detect
+      - name: Run Java CI via Make
         working-directory: ${{ env.PROJECT_PATH }}
         run: |
-          if [ -f "pom.xml" ]; then
-            echo "tool=maven" >> "$GITHUB_OUTPUT"
-          elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-            echo "tool=gradle" >> "$GITHUB_OUTPUT"
-          else
-            echo "❌ No pom.xml or build.gradle found in $PWD."
-            echo "   This reusable workflow expects a Java project in PROJECT_PATH."
-            exit 1
-          fi
+          echo "🚦 Running Java CI via 'make ci' in ${PWD}..."
+          make ci
 
       # -----------------------------------------------------------------------
-      # Build
-      # -----------------------------------------------------------------------
-      - name: Build (Maven)
-        if: steps.detect.outputs.tool == 'maven'
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: mvn -B clean package
-
-      - name: Build (Gradle)
-        if: steps.detect.outputs.tool == 'gradle'
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: |
-          chmod +x ./gradlew || true
-          ./gradlew clean build
-
-      # -----------------------------------------------------------------------
-      # Test (explicit, even though most builds already run tests)
-      # -----------------------------------------------------------------------
-      - name: Test (Maven)
-        if: steps.detect.outputs.tool == 'maven'
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: mvn -B test
-
-      - name: Test (Gradle)
-        if: steps.detect.outputs.tool == 'gradle'
-        working-directory: ${{ env.PROJECT_PATH }}
-        run: ./gradlew test
-
-      # -----------------------------------------------------------------------
-      # Upload JAR artifacts (if present)
+      # 5) Upload JAR artifacts (if present)
+      #    - Supports Maven (target/**/*.jar) and Gradle (build/libs/**/*.jar)
+      #      relative to PROJECT_PATH.
       # -----------------------------------------------------------------------
       - name: Upload JARs
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: java-artifacts
-          # Note: paths are relative to PROJECT_PATH
           path: |
             ${{ env.PROJECT_PATH }}/target/**/*.jar
             ${{ env.PROJECT_PATH }}/build/libs/**/*.jar
