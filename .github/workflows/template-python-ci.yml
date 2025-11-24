@@ -121,6 +121,9 @@ jobs:
       - name: Run Python CI via Make
         working-directory: ${{ env.PROJECT_PATH }}
         run: |
+          # Ensure the project root is importable as a package location
+          export PYTHONPATH="$PWD:$PYTHONPATH"
+          
           echo "🚦 Running Python CI via 'make ci' in ${PWD}..."
           make ci
 
