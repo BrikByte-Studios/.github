@@ -39,15 +39,17 @@
 name: "Template: Go CI"
 
 on:
-  # Reusable workflow only — this file lives in BrikByte-Studios/.github.
-  # Product/example repos should call this via workflow_call and define
-  # their own push/pull_request triggers.
   workflow_call:
     inputs:
       go-version:
-        description: "Go version to use (must align with Runtime Matrix, e.g. 1.22.x)"
+        description: "Go version (must align with Runtime Matrix, e.g. 1.22.x)"
         required: false
         default: "1.22.x"
+        type: string
+      project-path:
+        description: "Path to the Go project folder containing go.mod"
+        required: false
+        default: "."
         type: string
 
 permissions:
@@ -59,9 +61,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Enforce immutable module graph resolution inside CI
       GOFLAGS: "-mod=readonly"
       GO_VERSION: ${{ inputs.go-version || '1.22.x' }}
+      PROJECT_PATH: ${{ inputs['project-path'] }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -71,55 +73,49 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 2) Verify Go module presence
-      #    - Fail early if go.mod is missing (not a Go module repo).
+      # 2) Verify go.mod
       # -----------------------------------------------------------------------
       - name: Verify go.mod exists
         run: |
-          if [ ! -f "go.mod" ]; then
-            echo "❌ go.mod not found. This Go CI template expects a Go module."
+          if [ ! -f "$PROJECT_PATH/go.mod" ]; then
+            echo "❌ go.mod not found at $PROJECT_PATH"
+            echo "   This reusable Go CI template expects a valid module path."
             exit 1
           fi
 
       # -----------------------------------------------------------------------
       # 3) Setup Go
-      #    - Align with Runtime Matrix (1.21–1.23, default 1.22.x).
-      #    - Prefer composite action in brik-pipe-actions if/when available.
       # -----------------------------------------------------------------------
       - name: Setup Go
-        # uses: BrikByte-Studios/brik-pipe-actions/setup-go@v1
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+          cache-dependency-path: ${{ env.PROJECT_PATH }}/go.sum
 
       # -----------------------------------------------------------------------
       # 4) Download dependencies
-      #    - Standard command from Runtime Matrix: go mod download
       # -----------------------------------------------------------------------
       - name: Download dependencies
         run: go mod download
+        working-directory: ${{ env.PROJECT_PATH }}
 
       # -----------------------------------------------------------------------
       # 5) Build
-      #    - Standard command from Runtime Matrix: go build ./...
       # -----------------------------------------------------------------------
       - name: Build
         run: go build ./...
+        working-directory: ${{ env.PROJECT_PATH }}
 
       # -----------------------------------------------------------------------
       # 6) Test
-      #    - Standard command from Runtime Matrix: go test ./...
       # -----------------------------------------------------------------------
       - name: Test
         run: go test ./...
+        working-directory: ${{ env.PROJECT_PATH }}
 
       # -----------------------------------------------------------------------
-      # 7) Upload binary artifacts (optional)
-      #    - Convention:
-      #        ./bin   → common for custom build scripts
-      #        ./build → alternative build output directory
-      #    - If these folders don't exist, artifacts are simply ignored.
+      # 7) Upload binaries (if present)
       # -----------------------------------------------------------------------
       - name: Upload binary artifacts
         if: success()
@@ -127,6 +123,7 @@ jobs:
         with:
           name: go-binaries
           path: |
-            ./bin
-            ./build
+            ${{ env.PROJECT_PATH }}/bin
+            ${{ env.PROJECT_PATH }}/build
           if-no-files-found: ignore
+
