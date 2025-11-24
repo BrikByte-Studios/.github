@@ -11,42 +11,26 @@
 #   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
 #
 # Purpose:
-#   Standardized, reusable .NET CI workflow for BrikByteOS Pipelines, aligned
-#   with the Runtime Matrix (.NET 6, 7, 8), performing:
+#   Reusable .NET build + test workflow based on Runtime Matrix:
 #     - dotnet restore
-#     - dotnet build --configuration Release --no-restore
-#     - dotnet test  --configuration Release --no-build --logger trx
-#
-# Usage (in consumer repos):
-#   name: ".NET Service CI"
-#   on:
-#     push:
-#       branches: [ main, master ]
-#     pull_request:
-#       branches: [ main, master ]
-#
-#   jobs:
-#     ci:
-#       uses: BrikByte-Studios/.github/.github/workflows/template-dotnet-ci.yml@main
-#       with:
-#         dotnet-version: "8.0.x"
-#
-# Notes:
-#   - This workflow is reusable-only (workflow_call). Consumer repos define
-#     their own push/pull_request triggers.
-#   - Runtime versions and commands MUST match runtime-matrix.md/json.
+#     - dotnet build  (Release)
+#     - dotnet test   (Release, TRX output)
 # -----------------------------------------------------------------------------
 name: "Template: .NET CI"
 
 on:
-  # Reusable workflow only. Product/example repos call this via workflow_call
-  # and define their own triggers.
   workflow_call:
     inputs:
       dotnet-version:
-        description: ".NET SDK version to use (e.g., 8.0.x; must align with Runtime Matrix)"
+        description: ".NET SDK version (e.g. 8.0.x)"
         required: false
         default: "8.0.x"
+        type: string
+
+      project-path:
+        description: "Relative path to the .NET project root"
+        required: false
+        default: "."
         type: string
 
 permissions:
@@ -59,76 +43,84 @@ jobs:
 
     env:
       DOTNET_VERSION: ${{ inputs.dotnet-version || '8.0.x' }}
+      PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
       # 1) Checkout repository
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -----------------------------------------------------------------------
-      # 2) Verify .NET project/solution files exist
-      #    - Fail early if no *.sln or *.csproj files exist.
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
+      # 2) Move to project path
+      # ---------------------------------------------------------------------
+      - name: Move into project directory
+        run: |
+          echo "➡️ Switching to project path: $PROJECT_PATH"
+          cd "$PROJECT_PATH"
+        working-directory: ${{ env.PROJECT_PATH }}
+
+      # ---------------------------------------------------------------------
+      # 3) Verify .NET project exists
+      # ---------------------------------------------------------------------
       - name: Verify .NET project files
         run: |
+          cd "$PROJECT_PATH"
           if compgen -G "*.sln" > /dev/null || compgen -G "**/*.csproj" > /dev/null; then
-            echo "✅ .NET solution/project files detected."
+            echo "✅ .NET project files detected."
           else
-            echo "❌ No .sln or .csproj files found. This template expects a .NET project."
+            echo "❌ No .sln or .csproj files found under: $PROJECT_PATH"
             exit 1
           fi
 
-      # -----------------------------------------------------------------------
-      # 3) Setup .NET SDK
-      # -----------------------------------------------------------------------
-      - name: Setup .NET
-        # uses: BrikByte-Studios/brik-pipe-actions/setup-dotnet@v1
+      # ---------------------------------------------------------------------
+      # 4) Setup .NET runtime
+      # ---------------------------------------------------------------------
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # -----------------------------------------------------------------------
-      # 4) Restore dependencies
-      #    - Standard command per Runtime Matrix: dotnet restore
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
+      # 5) Restore dependencies
+      # ---------------------------------------------------------------------
       - name: Restore dependencies
         run: dotnet restore
+        working-directory: ${{ env.PROJECT_PATH }}
 
-      # -----------------------------------------------------------------------
-      # 5) Build
-      #    - Standard: Release configuration, no restore (already done).
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
+      # 6) Build
+      # ---------------------------------------------------------------------
       - name: Build
         run: dotnet build --configuration Release --no-restore
+        working-directory: ${{ env.PROJECT_PATH }}
 
-      # -----------------------------------------------------------------------
-      # 6) Test
-      #    - Standard: Release configuration, no build; TRX logger for evidence.
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
+      # 7) Test
+      # ---------------------------------------------------------------------
       - name: Test
         run: dotnet test --configuration Release --no-build --logger trx
+        working-directory: ${{ env.PROJECT_PATH }}
 
-      # -----------------------------------------------------------------------
-      # 7) Upload test results (TRX)
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
+      # 8) Upload test results
+      # ---------------------------------------------------------------------
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-test-results
-          path: "**/TestResult*.trx"
+          path: "${{ env.PROJECT_PATH }}/**/TestResult*.trx"
           if-no-files-found: ignore
 
-      # -----------------------------------------------------------------------
-      # 8) Upload build artifacts
-      #    - Convention: any Release binaries under bin/Release.
-      # -----------------------------------------------------------------------
+      # ---------------------------------------------------------------------
+      # 9) Upload build artifacts
+      # ---------------------------------------------------------------------
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-artifacts
-          path: "**/bin/Release/**"
+          path: "${{ env.PROJECT_PATH }}/**/bin/Release/**"
           if-no-files-found: ignore
