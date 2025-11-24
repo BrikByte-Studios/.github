@@ -22,13 +22,12 @@ on:
   workflow_call:
     inputs:
       dotnet-version:
-        description: ".NET SDK version (e.g. 8.0.x)"
+        description: ".NET SDK version to use (e.g., 8.0.x; must align with Runtime Matrix)"
         required: false
         default: "8.0.x"
         type: string
-
       project-path:
-        description: "Relative path to the .NET project root"
+        description: "Relative path to the .NET project root (e.g., dotnet-api-example)"
         required: false
         default: "."
         type: string
@@ -46,81 +45,53 @@ jobs:
       PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
-      # ---------------------------------------------------------------------
-      # 1) Checkout repository
-      # ---------------------------------------------------------------------
+      # 1) Checkout caller repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------------------
-      # 2) Move to project path
-      # ---------------------------------------------------------------------
-      - name: Move into project directory
+      # 2) Debug + cd into project
+      - name: Switch to project path
         run: |
+          echo "➡️ Working directory before cd:"
+          pwd
+          echo "📂 Listing repo root:"
+          ls -R .
           echo "➡️ Switching to project path: $PROJECT_PATH"
           cd "$PROJECT_PATH"
-        working-directory: ${{ env.PROJECT_PATH }}
+          echo "📂 Listing project path:"
+          ls -R .
+        shell: bash
 
-      # ---------------------------------------------------------------------
-      # 3) Verify .NET project exists
-      # ---------------------------------------------------------------------
-      - name: Verify .NET project files
-        run: |
-          cd "$PROJECT_PATH"
-          if compgen -G "*.sln" > /dev/null || compgen -G "**/*.csproj" > /dev/null; then
-            echo "✅ .NET project files detected."
-          else
-            echo "❌ No .sln or .csproj files found under: $PROJECT_PATH"
-            exit 1
-          fi
-
-      # ---------------------------------------------------------------------
-      # 4) Setup .NET runtime
-      # ---------------------------------------------------------------------
-      - name: Setup .NET SDK
+      # All following steps run from PROJECT_PATH
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # ---------------------------------------------------------------------
-      # 5) Restore dependencies
-      # ---------------------------------------------------------------------
       - name: Restore dependencies
+        working-directory: ${{ env.PROJECT_PATH }}
         run: dotnet restore
-        working-directory: ${{ env.PROJECT_PATH }}
 
-      # ---------------------------------------------------------------------
-      # 6) Build
-      # ---------------------------------------------------------------------
       - name: Build
+        working-directory: ${{ env.PROJECT_PATH }}
         run: dotnet build --configuration Release --no-restore
-        working-directory: ${{ env.PROJECT_PATH }}
 
-      # ---------------------------------------------------------------------
-      # 7) Test
-      # ---------------------------------------------------------------------
       - name: Test
-        run: dotnet test --configuration Release --no-build --logger trx
         working-directory: ${{ env.PROJECT_PATH }}
+        run: dotnet test --configuration Release --no-build --logger trx
 
-      # ---------------------------------------------------------------------
-      # 8) Upload test results
-      # ---------------------------------------------------------------------
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-test-results
-          path: "${{ env.PROJECT_PATH }}/**/TestResult*.trx"
+          path: ${{ env.PROJECT_PATH }}/**/TestResult*.trx
           if-no-files-found: ignore
 
-      # ---------------------------------------------------------------------
-      # 9) Upload build artifacts
-      # ---------------------------------------------------------------------
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-artifacts
-          path: "${{ env.PROJECT_PATH }}/**/bin/Release/**"
+          path: ${{ env.PROJECT_PATH }}/**/bin/Release/**
           if-no-files-found: ignore
