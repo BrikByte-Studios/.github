@@ -42,8 +42,6 @@ links:
 
 ## 1. Context
 
-## 1. Context
-
 BrikByte’s governance model (PIPE-GOV-7.x / 8.x) centralizes policy evaluation in a single **policy gate** (PIPE-GOV-8.1). The gate produces a machine-readable `decision.json` that aggregates:
 
 - Test and coverage signals  

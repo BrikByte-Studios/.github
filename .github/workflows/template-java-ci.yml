@@ -13,6 +13,16 @@
 # Purpose:
 #   Standardized Maven/Gradle-based CI pipeline for Java runtimes (17–21),
 #   reusable across BrikByteOS projects via workflow_call.
+#
+# Usage (in consumer repo):
+#
+#   jobs:
+#     ci:
+#       uses: BrikByte-Studios/.github/.github/workflows/template-java-ci.yml@main
+#       with:
+#         java-version: "17"
+#         distribution: "temurin"
+#         project-path: "java-api-example"   # or "." if workflow lives at repo root
 # -----------------------------------------------------------------------------
 name: "Template: Java CI"
 
@@ -43,6 +53,11 @@ on:
         required: false
         default: "true"
         type: string
+      project-path:
+        description: "Relative path to the Java project ('.' or 'subdir')"
+        required: false
+        default: "."
+        type: string
 
 permissions:
   contents: read
@@ -57,6 +72,7 @@ jobs:
       JAVA_VERSION: ${{ inputs.java-version || '17' }}
       JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
       ENABLE_CACHE: ${{ inputs.enable-cache || 'true' }}
+      PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
       - name: Checkout repository
@@ -68,30 +84,33 @@ jobs:
       #   - Cache is *optional* and can be disabled by callers if it causes issues.
       # -----------------------------------------------------------------------
       - name: Setup Java
+        # If/when BrikByte-Studios/brik-pipe-actions/setup-java@v1 exists,
+        # replace this with the composite action to centralise Java setup.
         # uses: BrikByte-Studios/brik-pipe-actions/setup-java@v1
         uses: actions/setup-java@v4
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
           # Only enable cache when ENABLE_CACHE == 'true'
-          # (Callers can pass enable-cache: 'false' if their repo has no pom.xml)
           cache: ${{ env.ENABLE_CACHE == 'true' && 'maven' || '' }}
 
       # -----------------------------------------------------------------------
       # Detect build tool
       #   - Maven (pom.xml)
       #   - Gradle (build.gradle / build.gradle.kts)
+      #   - Runs in PROJECT_PATH so monorepos are supported.
       # -----------------------------------------------------------------------
       - name: Detect build tool
         id: detect
+        working-directory: ${{ env.PROJECT_PATH }}
         run: |
           if [ -f "pom.xml" ]; then
             echo "tool=maven" >> "$GITHUB_OUTPUT"
           elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
             echo "tool=gradle" >> "$GITHUB_OUTPUT"
           else
-            echo "❌ No pom.xml or build.gradle found in repository root."
-            echo "   This reusable workflow expects a Java project in the caller repo."
+            echo "❌ No pom.xml or build.gradle found in $PWD."
+            echo "   This reusable workflow expects a Java project in PROJECT_PATH."
             exit 1
           fi
 
@@ -100,10 +119,12 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Build (Maven)
         if: steps.detect.outputs.tool == 'maven'
+        working-directory: ${{ env.PROJECT_PATH }}
         run: mvn -B clean package
 
       - name: Build (Gradle)
         if: steps.detect.outputs.tool == 'gradle'
+        working-directory: ${{ env.PROJECT_PATH }}
         run: |
           chmod +x ./gradlew || true
           ./gradlew clean build
@@ -113,10 +134,12 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Test (Maven)
         if: steps.detect.outputs.tool == 'maven'
+        working-directory: ${{ env.PROJECT_PATH }}
         run: mvn -B test
 
       - name: Test (Gradle)
         if: steps.detect.outputs.tool == 'gradle'
+        working-directory: ${{ env.PROJECT_PATH }}
         run: ./gradlew test
 
       # -----------------------------------------------------------------------
@@ -127,7 +150,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: java-artifacts
+          # Note: paths are relative to PROJECT_PATH
           path: |
-            target/**/*.jar
-            build/libs/**/*.jar
+            ${{ env.PROJECT_PATH }}/target/**/*.jar
+            ${{ env.PROJECT_PATH }}/build/libs/**/*.jar
           if-no-files-found: ignore
