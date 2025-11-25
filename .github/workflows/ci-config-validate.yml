@@ -1,0 +1,86 @@
+# .github/workflows/ci-config-validate.yml
+#
+# PIPE-BUILD-SCHEMA-TEST-004 — Add Schema Validation for Per-Language Pipeline Config
+#
+# Purpose:
+#   - Validate all brikpipe.build.yml configs against the central schema.
+#   - Block merges when configurations are incorrect or unsafe.
+#
+name: "Config: Validate brikpipe.build.yml"
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-build-config:
+    name: "Validate Build Config Schema"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install validator dependencies
+        run: |
+          if [ -f "package.json" ]; then
+            npm ci
+          else
+            echo "ℹ️ No package.json found at repo root; creating minimal package.json for validator..."
+            cat << 'EOF' > package.json
+            {
+              "name": "brikbyte-github-meta",
+              "private": true,
+              "type": "module",
+              "dependencies": {
+                "ajv": "^8.17.0",
+                "ajv-formats": "^3.0.1",
+                "yaml": "^2.6.0"
+              }
+            }
+            EOF
+            npm install
+          fi
+
+      - name: Find brikpipe.build.yml files
+        id: find_configs
+        run: |
+          echo "🔎 Searching for brikpipe.build.yml files..."
+          CONFIG_FILES=$(find . -name "brikpipe.build.yml" -type f || true)
+
+          if [ -z "$CONFIG_FILES" ]; then
+            echo "ℹ️ No brikpipe.build.yml files found. Nothing to validate."
+            echo "configs=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "📄 Found configs:"
+          echo "$CONFIG_FILES"
+
+          # Join files into a JSON-encoded, newline-separated list for the matrix
+          CONFIG_FILES_JSON=$(printf '%s\n' $CONFIG_FILES | jq -R . | jq -s .)
+          echo "configs=$CONFIG_FILES_JSON" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Validate configs
+        if: steps.find_configs.outputs.configs != ''
+        run: |
+          echo "🔧 Validating configs listed by previous step..."
+          echo '${{ steps.find_configs.outputs.configs }}' | jq -c '.[]' | while read -r file; do
+            CONFIG_PATH=$(echo "$file" | jq -r '.')
+            echo "----------------------------------------"
+            echo "Validating: $CONFIG_PATH"
+            node .github/scripts/validate-build-config.mjs \
+              --file "$CONFIG_PATH" \
+              --schema ".github/schemas/brikpipe-build.schema.json"
+          done

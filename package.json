@@ -2,6 +2,7 @@
   "name": "@brikbyte-studios/github-governance",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "BrikByte Studios org-level governance tools (.github) — ADR validation, index generation, and shared CI utilities.",
   "license": "MIT",
   "engines": {
