@@ -3,7 +3,7 @@
 # PIPE-BUILD-SCHEMA-TEST-004 — Add Schema Validation for Per-Language Pipeline Config
 #
 # Purpose:
-#   - Validate all brikpipe.build.yml configs against the central schema.
+#   - Validate brikpipe.build.yml configs against the central schema (in BrikByte-Studios/.github).
 #   - Block merges when configurations are incorrect or unsafe.
 #
 name: "Config: Validate brikpipe.build.yml"
@@ -23,7 +23,7 @@ on:
         default: "brikpipe.build.yml"
         type: string
       schema-file:
-        description: "Relative path (from repo root) to the JSON schema"
+        description: "Path to the JSON schema *inside* the meta repo (.brik-meta)"
         required: false
         default: ".github/schemas/brikpipe-build.schema.json"
         type: string
@@ -46,11 +46,19 @@ jobs:
     env:
       PROJECT_PATH: ${{ inputs.project-path || '.' }}
       CONFIG_FILE:  ${{ inputs.config-file || '' }}
+      # This is a path *inside* the meta repo; we will prefix with .brik-meta/
       SCHEMA_FILE:  ${{ inputs.schema-file || '.github/schemas/brikpipe-build.schema.json' }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout caller repository
         uses: actions/checkout@v4
+
+      # Checkout governance/meta repo that contains validator + schema
+      - name: Checkout BrikByte .github meta repo
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          path: .brik-meta
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -73,8 +81,6 @@ jobs:
             ajv-formats@^3.0.1 \
             yaml@^2.6.0
 
-
-
       # -------------------------------------------------------------------
       # Mode 1: Single-file validation (reusable workflow typical case)
       #   - Triggered when CONFIG_FILE is set (workflow_call with inputs)
@@ -94,9 +100,10 @@ jobs:
             exit 1
           fi
 
-          node .github/scripts/validate-build-config.mjs \
+          # Validator + schema are in the meta repo (.brik-meta)
+          node .brik-meta/.github/scripts/validate-build-config.mjs \
             --file "$CONFIG_PATH" \
-            --schema "$SCHEMA_FILE"
+            --schema ".brik-meta/${SCHEMA_FILE}"
 
       # -------------------------------------------------------------------
       # Mode 2: Scan & validate all configs (governance repo mode)
@@ -107,7 +114,8 @@ jobs:
         if: env.CONFIG_FILE == ''
         run: |
           echo "🔎 Searching for brikpipe.build.yml files from repo root..."
-          CONFIG_FILES=$(find . -name "brikpipe.build.yml" -type f || true)
+          # Avoid scanning the meta repo clone
+          CONFIG_FILES=$(find . -path "./.brik-meta" -prune -o -name "brikpipe.build.yml" -type f -print || true)
 
           if [ -z "$CONFIG_FILES" ]; then
             echo "ℹ️ No brikpipe.build.yml files found. Nothing to validate."
@@ -130,7 +138,7 @@ jobs:
             CONFIG_PATH=$(echo "$file" | jq -r '.')
             echo "----------------------------------------"
             echo "Validating: $CONFIG_PATH"
-            node .github/scripts/validate-build-config.mjs \
+            node .brik-meta/.github/scripts/validate-build-config.mjs \
               --file "$CONFIG_PATH" \
-              --schema "$SCHEMA_FILE"
+              --schema ".brik-meta/${SCHEMA_FILE}"
           done
