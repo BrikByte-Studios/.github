@@ -4,11 +4,32 @@
 #
 # Purpose:
 #   - Validate all brikpipe.build.yml configs against the central schema.
-#   - Block merges when configurations are incorrect or unsafe..
+#   - Block merges when configurations are incorrect or unsafe.
 #
 name: "Config: Validate brikpipe.build.yml"
 
 on:
+  # ✅ Reusable workflow mode (called from other repos / workflows)
+  workflow_call:
+    inputs:
+      project-path:
+        description: "Relative path to the project root (where brikpipe.build.yml lives)"
+        required: false
+        default: "."
+        type: string
+      config-file:
+        description: "Relative path (from project-path) to the build config file"
+        required: false
+        default: "brikpipe.build.yml"
+        type: string
+      schema-file:
+        description: "Relative path (from repo root) to the JSON schema"
+        required: false
+        default: ".github/schemas/brikpipe-build.schema.json"
+        type: string
+
+  # Native mode in the governance repo (.github)
+  #    - Scans the repo for ALL brikpipe.build.yml files
   push:
     branches: [main, master]
   pull_request:
@@ -22,6 +43,11 @@ jobs:
     name: "Validate Build Config Schema"
     runs-on: ubuntu-latest
 
+    env:
+      PROJECT_PATH: ${{ inputs.project-path || '.' }}
+      CONFIG_FILE:  ${{ inputs.config-file || '' }}
+      SCHEMA_FILE:  ${{ inputs.schema-file || '.github/schemas/brikpipe-build.schema.json' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,11 +60,38 @@ jobs:
       - name: Install validator dependencies
         run: bash .github/scripts/install-validator-deps.sh
 
+      # -------------------------------------------------------------------
+      # Mode 1: Single-file validation (reusable workflow typical case)
+      #   - Triggered when CONFIG_FILE is set (workflow_call with inputs)
+      # -------------------------------------------------------------------
+      - name: Validate single config (workflow_call mode)
+        if: env.CONFIG_FILE != ''
+        run: |
+          echo "🔧 Validating single config via workflow_call..."
+          echo "  PROJECT_PATH = ${PROJECT_PATH}"
+          echo "  CONFIG_FILE  = ${CONFIG_FILE}"
+          echo "  SCHEMA_FILE  = ${SCHEMA_FILE}"
 
+          CONFIG_PATH="${PROJECT_PATH}/${CONFIG_FILE}"
+
+          if [ ! -f "$CONFIG_PATH" ]; then
+            echo "❌ Config file not found at: $CONFIG_PATH"
+            exit 1
+          fi
+
+          node .github/scripts/validate-build-config.mjs \
+            --file "$CONFIG_PATH" \
+            --schema "$SCHEMA_FILE"
+
+      # -------------------------------------------------------------------
+      # Mode 2: Scan & validate all configs (governance repo mode)
+      #   - Triggered when CONFIG_FILE is empty (push / PR with no inputs)
+      # -------------------------------------------------------------------
       - name: Find brikpipe.build.yml files
         id: find_configs
+        if: env.CONFIG_FILE == ''
         run: |
-          echo "🔎 Searching for brikpipe.build.yml files..."
+          echo "🔎 Searching for brikpipe.build.yml files from repo root..."
           CONFIG_FILES=$(find . -name "brikpipe.build.yml" -type f || true)
 
           if [ -z "$CONFIG_FILES" ]; then
@@ -50,20 +103,19 @@ jobs:
           echo "📄 Found configs:"
           echo "$CONFIG_FILES"
 
-          # Join files into a JSON-encoded, newline-separated list for the matrix
+          # Encode as JSON array for downstream step
           CONFIG_FILES_JSON=$(printf '%s\n' $CONFIG_FILES | jq -R . | jq -s .)
           echo "configs=$CONFIG_FILES_JSON" >> "$GITHUB_OUTPUT"
-        shell: bash
 
-      - name: Validate configs
-        if: steps.find_configs.outputs.configs != ''
+      - name: Validate all discovered configs
+        if: env.CONFIG_FILE == '' && steps.find_configs.outputs.configs != ''
         run: |
-          echo "🔧 Validating configs listed by previous step..."
+          echo "🔧 Validating discovered configs..."
           echo '${{ steps.find_configs.outputs.configs }}' | jq -c '.[]' | while read -r file; do
             CONFIG_PATH=$(echo "$file" | jq -r '.')
             echo "----------------------------------------"
             echo "Validating: $CONFIG_PATH"
             node .github/scripts/validate-build-config.mjs \
               --file "$CONFIG_PATH" \
-              --schema ".github/schemas/brikpipe-build.schema.json"
+              --schema "$SCHEMA_FILE"
           done
