@@ -64,6 +64,7 @@ jobs:
       # -------------------------------------------------------------------
       - name: Install validator dependencies
         run: |
+        
           if [ ! -f package.json ]; then
             echo "ℹ️ No package.json found at repo root; creating minimal one for validator..."
             cat > package.json << 'EOF'
