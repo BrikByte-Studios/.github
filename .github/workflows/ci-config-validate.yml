@@ -4,7 +4,7 @@
 #
 # Purpose:
 #   - Validate all brikpipe.build.yml configs against the central schema.
-#   - Block merges when configurations are incorrect or unsafe.
+#   - Block merges when configurations are incorrect or unsafe..
 #
 name: "Config: Validate brikpipe.build.yml"
 
