@@ -32,25 +32,8 @@ jobs:
           node-version: "20"
 
       - name: Install validator dependencies
-        run: |
-          if [ -f "package.json" ]; then
-            npm ci
-          else
-            echo "ℹ️ No package.json found at repo root; creating minimal package.json for validator..."
-            cat << 'EOF' > package.json
-            {
-              "name": "brikbyte-github-meta",
-              "private": true,
-              "type": "module",
-              "dependencies": {
-                "ajv": "^8.17.0",
-                "ajv-formats": "^3.0.1",
-                "yaml": "^2.6.0"
-              }
-            }
-            EOF
-            npm install
-          fi
+        run: bash .github/scripts/install-validator-deps.sh
+
 
       - name: Find brikpipe.build.yml files
         id: find_configs
