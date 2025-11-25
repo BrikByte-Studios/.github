@@ -58,7 +58,24 @@ jobs:
           node-version: "20"
 
       - name: Install validator dependencies
-        run: bash .github/scripts/install-validator-deps.sh
+        run: |
+          if [ ! -f package.json ]; then
+            echo "ℹ️ No package.json found at repo root; creating minimal one for validator..."
+            cat > package.json << 'EOF'
+            {
+              "name": "brikpipe-config-validator",
+              "private": true,
+              "type": "module",
+              "dependencies": {
+                "ajv": "^8.17.0",
+                "ajv-formats": "^3.0.1",
+                "yaml": "^2.6.0"
+              }
+            }
+            EOF
+          fi
+
+          npm install
 
       # -------------------------------------------------------------------
       # Mode 1: Single-file validation (reusable workflow typical case)
