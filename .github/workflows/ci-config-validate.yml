@@ -9,7 +9,7 @@
 name: "Config: Validate brikpipe.build.yml"
 
 on:
-  # ✅ Reusable workflow mode (called from other repos / workflows)
+  # Reusable workflow mode (called from other repos / workflows)
   workflow_call:
     inputs:
       project-path:
@@ -29,7 +29,7 @@ on:
         type: string
 
   # Native mode in the governance repo (.github)
-  #    - Scans the repo for ALL brikpipe.build.yml files
+  #   - Scans the repo for ALL brikpipe.build.yml files
   push:
     branches: [main, master]
   pull_request:
@@ -57,22 +57,27 @@ jobs:
         with:
           node-version: "20"
 
+      # -------------------------------------------------------------------
+      # Install local validator deps (ajv, ajv-formats, yaml)
+      #   - Safe even if package.json already exists
+      #   - Heredoc must be left-aligned (no indent!)
+      # -------------------------------------------------------------------
       - name: Install validator dependencies
         run: |
           if [ ! -f package.json ]; then
             echo "ℹ️ No package.json found at repo root; creating minimal one for validator..."
             cat > package.json << 'EOF'
-            {
-              "name": "brikpipe-config-validator",
-              "private": true,
-              "type": "module",
-              "dependencies": {
-                "ajv": "^8.17.0",
-                "ajv-formats": "^3.0.1",
-                "yaml": "^2.6.0"
-              }
-            }
-            EOF
+{
+  "name": "brikpipe-config-validator",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ajv": "^8.17.0",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.6.0"
+  }
+}
+EOF
           fi
 
           npm install
