@@ -10,8 +10,8 @@ body:
       value: |
         Thanks for proposing a feature for BrikByte Studios 👋
 
-        This form is designed to capture **product intent**, **business impact**, 
-        and **technical context** so we can evaluate, prioritize, 
+        This form is designed to capture **product intent**, **business impact**,
+        and **technical context** so we can evaluate, prioritize,
         and implement the request effectively.
 
         > 🔐 **Note:** Do not include secrets, credentials, or personal information.
@@ -257,8 +257,8 @@ body:
     attributes:
       label: "Considerations / Mitigations"
       description: |
-        "List mitigation strategies, fallbacks, 
-        or safeguards to reduce the likelihood 
+        "List mitigation strategies, fallbacks,
+        or safeguards to reduce the likelihood
         or impact of identified risks."
       placeholder: |
         - Mitigation 1: (e.g., Use feature flag to avoid impacting production users)
