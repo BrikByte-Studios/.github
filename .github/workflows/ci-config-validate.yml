@@ -66,8 +66,9 @@ jobs:
           node-version: "20"
 
       # -------------------------------------------------------------------
-      # Install local validator deps (ajv, ajv-formats, yaml)
+      # Install validator deps (ajv, ajv-formats, yaml, brik-pipe-cli)
       #   - Safe even if package.json already exists
+      #   - Assumes brik-pipe-cli is published / resolvable by npm
       # -------------------------------------------------------------------
       - name: Install validator dependencies
         run: |
@@ -79,7 +80,8 @@ jobs:
           npm install \
             ajv@^8.17.0 \
             ajv-formats@^3.0.1 \
-            yaml@^2.6.0
+            yaml@^2.6.0 \
+            brik-pipe-cli@latest
 
       # -------------------------------------------------------------------
       # Mode 1: Single-file validation (reusable workflow typical case)
@@ -93,16 +95,10 @@ jobs:
           echo "  CONFIG_FILE  = ${CONFIG_FILE}"
           echo "  SCHEMA_FILE  = ${SCHEMA_FILE}"
 
-          CONFIG_PATH="${PROJECT_PATH}/${CONFIG_FILE}"
-
-          if [ ! -f "$CONFIG_PATH" ]; then
-            echo "❌ Config file not found at: $CONFIG_PATH"
-            exit 1
-          fi
-
-          # Validator + schema are in the meta repo (.brik-meta)
-          node .brik-meta/.github/scripts/validate-build-config.mjs \
-            --file "$CONFIG_PATH" \
+          # npx will use the locally-installed brik-pipe-cli (node_modules/.bin)
+          npx brik-pipe-cli validate build-config \
+            --cwd "${PROJECT_PATH}" \
+            --file "${CONFIG_FILE}" \
             --schema ".brik-meta/${SCHEMA_FILE}"
 
       # -------------------------------------------------------------------
@@ -133,12 +129,13 @@ jobs:
       - name: Validate all discovered configs
         if: env.CONFIG_FILE == '' && steps.find_configs.outputs.configs != ''
         run: |
-          echo "🔧 Validating discovered configs..."
+          echo "🔧 Validating discovered configs with brik-pipe-cli..."
           echo '${{ steps.find_configs.outputs.configs }}' | jq -c '.[]' | while read -r file; do
             CONFIG_PATH=$(echo "$file" | jq -r '.')
             echo "----------------------------------------"
             echo "Validating: $CONFIG_PATH"
-            node .brik-meta/.github/scripts/validate-build-config.mjs \
+
+            npx brik-pipe-cli validate build-config \
               --file "$CONFIG_PATH" \
               --schema ".brik-meta/${SCHEMA_FILE}"
           done
