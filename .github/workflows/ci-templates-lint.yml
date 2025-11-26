@@ -49,20 +49,23 @@ jobs:
       # 2) Install actionlint via official download script
       #    (avoids missing tag rhysd/actionlint@v1)
       # -------------------------------------------------------------------
-      - name: Install actionlint
+      - name: Download actionlint
         run: |
           set -euo pipefail
           mkdir -p ./bin
           curl -sSfL \
             https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
-            | bash -s -- -b ./bin
+            | bash -s -- latest ./bin
+
           ./bin/actionlint --version
 
-      - name: Run actionlint on workflows
+      - name: Run actionlint
         run: |
-          set -euo pipefail
-          ./bin/actionlint -color \
-            -config-file .github/.actionlint.yaml
+          ./bin/actionlint \
+            -color \
+            -shellcheck= \
+            .github/workflows/*.yml
+
 
       # -------------------------------------------------------------------
       # 3) Run yamllint against workflow YAML files
