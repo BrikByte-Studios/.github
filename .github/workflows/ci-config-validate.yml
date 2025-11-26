@@ -49,8 +49,8 @@ jobs:
       #   - CONFIG_FILE  = ''  (so we go into scan-all mode)
       #   - SCHEMA_FILE  = '.github/schemas/brikpipe-build.schema.json'
       PROJECT_PATH: ${{ inputs.project-path || '.' }}
-      CONFIG_FILE:  ${{ inputs.config-file || '' }}
-      SCHEMA_FILE:  ${{ inputs.schema-file || '.github/schemas/brikpipe-build.schema.json' }}
+      CONFIG_FILE: ${{ inputs.config-file || '' }}
+      SCHEMA_FILE: ${{ inputs.schema-file || '.github/schemas/brikpipe-build.schema.json' }}
 
     steps:
       - name: Checkout caller repository

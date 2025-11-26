@@ -34,7 +34,11 @@ jobs:
       - name: ADR index up-to-date
         run: |
           npm run adr:index
-          git diff --exit-code || (echo "ADR index is stale. Run 'npm run adr:index' locally and commit the change." && exit 1)
+          git diff --exit-code || (
+            echo "ADR index is stale. Run 'npm run adr:index' locally and commit the change. " \
+            "Ensure ADR documentation is indexed before merge."
+            exit 1
+          )
 
       - name: ADR smoke tests
         run: npm run adr:test

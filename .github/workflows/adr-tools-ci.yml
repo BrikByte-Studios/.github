@@ -28,7 +28,7 @@ on:
       - "package-lock.json"
       - ".github/workflows/adr-tools-ci.yml"
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - "scripts/adr/**"
       - "docs/adr/**"

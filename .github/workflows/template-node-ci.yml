@@ -38,7 +38,7 @@ on:
       node-version:
         description: "Node.js version to use (must be allowed by Runtime Matrix)"
         required: false
-        default: "20" # Align with Node 20 LTS in runtime matrix
+        default: "20"  # Align with Node 20 LTS in runtime matrix
         type: string
       project-path:
         description: "Relative path to the Node.js project (folder containing package.json + Makefile)"

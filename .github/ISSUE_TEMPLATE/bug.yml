@@ -8,10 +8,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug!  
+        Thanks for reporting a bug!
         Please fill in as much detail as possible so the team can reproduce and fix it quickly.
 
-        > 🔐 **Note:** Remove or mask any sensitive data (keys, tokens, personal information, etc.) from logs and screenshots.
+        > 🔐 **Note:** Remove or mask any sensitive data (keys, tokens,
+        > personal information, etc.) from logs and screenshots.
 
   # --- High-level summary & impact ---
   - type: textarea
@@ -189,7 +190,9 @@ body:
     id: logs
     attributes:
       label: "Logs & Diagnostics (sanitized)"
-      description: "Relevant application logs, stack traces, network errors, or console output. Remove any secrets or personal data."
+      description: | 
+        "Relevant application logs, stack traces, network errors, or console output.
+         Remove any secrets or personal data."
       render: shell
       placeholder: |
         [Server logs]
