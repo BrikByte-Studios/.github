@@ -58,8 +58,6 @@ jobs:
       AUDIT_FILE: .audit/selftest-${{ matrix.runtime }}-${{ github.run_id }}.json
 
     steps:
-      - name: Checkout .github repo
-        uses: actions/checkout@v4
       # -------------------------------------------------------------------
       # 1) Checkout the examples repo
       #
@@ -70,7 +68,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.EXAMPLES_REPO }}
-          path: examples
           # Keep default: repo checked out into $GITHUB_WORKSPACE
 
       # -------------------------------------------------------------------
