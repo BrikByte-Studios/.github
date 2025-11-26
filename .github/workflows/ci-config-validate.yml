@@ -1,141 +1,70 @@
-# .github/workflows/ci-config-validate.yml
-#
-# PIPE-BUILD-SCHEMA-TEST-004 — Add Schema Validation for Per-Language Pipeline Config
-#
-# Purpose:
-#   - Validate brikpipe.build.yml configs against the central schema (in BrikByte-Studios/.github).
-#   - Block merges when configurations are incorrect or unsafe.
-#
+# PIPE-BUILD-SCHEMA-TEST-004 — Per-Language Build Config Validation
+# VALID NOW — because brik-pipe-cli is published 🎉
+
 name: "Config: Validate brikpipe.build.yml"
 
 on:
-  # Reusable workflow mode (called from other repos / workflows)
   workflow_call:
     inputs:
       project-path:
-        description: "Relative path to the project root (where brikpipe.build.yml lives)"
-        required: false
+        description: "Path where brikpipe.build.yml lives"
         default: "."
         type: string
+
       config-file:
-        description: "Relative path (from project-path) to the build config file"
-        required: false
+        description: "Config to validate"
         default: "brikpipe.build.yml"
         type: string
+
       schema-file:
-        description: "Path to the JSON schema *inside* the meta repo (.brik-meta)"
-        required: false
+        description: "Schema path inside meta repo"
         default: ".github/schemas/brikpipe-build.schema.json"
         type: string
 
-  # Native mode in the governance repo (.github)
-  #   - Scans the repo for ALL brikpipe.build.yml files
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
 
 permissions:
   contents: read
 
 jobs:
-  validate-build-config:
-    name: "Validate Build Config Schema"
+  validate:
     runs-on: ubuntu-latest
 
     env:
-      PROJECT_PATH: ${{ inputs.project-path || '.' }}
-      CONFIG_FILE:  ${{ inputs.config-file || '' }}
-      # This is a path *inside* the meta repo; we will prefix with .brik-meta/
-      SCHEMA_FILE:  ${{ inputs.schema-file || '.github/schemas/brikpipe-build.schema.json' }}
+      PROJECT_PATH: ${{ inputs.project-path }}
+      CONFIG_FILE:  ${{ inputs.config-file }}
+      SCHEMA_FILE:  ${{ inputs.schema-file }}
 
     steps:
-      - name: Checkout caller repository
-        uses: actions/checkout@v4
+      # Repo with actual project config
+      - uses: actions/checkout@v4
 
-      # Checkout governance/meta repo that contains validator + schema
-      - name: Checkout BrikByte .github meta repo
+      # Meta-repo containing canonical schema
+      - name: Checkout BrikByte governance repo
         uses: actions/checkout@v4
         with:
           repository: BrikByte-Studios/.github
           path: .brik-meta
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
 
-      # -------------------------------------------------------------------
-      # Install validator deps (ajv, ajv-formats, yaml, brik-pipe-cli)
-      #   - Safe even if package.json already exists
-      #   - Assumes brik-pipe-cli is published / resolvable by npm
-      # -------------------------------------------------------------------
-      - name: Install validator dependencies
+      # ---- NEW — Valid because CLI is published 🎉 ----
+      - name: Install CLI validator
         run: |
-          if [ ! -f package.json ]; then
-            echo "ℹ️ No package.json found at repo root; creating minimal one for validator..."
-            npm init -y >/dev/null 2>&1
-          fi
+          npm init -y --silent
+          npm install brik-pipe-cli@latest
 
-          npm install \
-            ajv@^8.17.0 \
-            ajv-formats@^3.0.1 \
-            yaml@^2.6.0 \
-            brik-pipe-cli@latest
-
-      # -------------------------------------------------------------------
-      # Mode 1: Single-file validation (reusable workflow typical case)
-      #   - Triggered when CONFIG_FILE is set (workflow_call with inputs)
-      # -------------------------------------------------------------------
-      - name: Validate single config (workflow_call mode)
-        if: env.CONFIG_FILE != ''
+      # ---- Workflow_call direct validation mode ----
+      - name: Validate config using CLI
         run: |
-          echo "🔧 Validating single config via workflow_call..."
-          echo "  PROJECT_PATH = ${PROJECT_PATH}"
-          echo "  CONFIG_FILE  = ${CONFIG_FILE}"
-          echo "  SCHEMA_FILE  = ${SCHEMA_FILE}"
-
-          # npx will use the locally-installed brik-pipe-cli (node_modules/.bin)
+          echo "🧪 Running brikpipe config validation..."
           npx brik-pipe-cli validate build-config \
             --cwd "${PROJECT_PATH}" \
             --file "${CONFIG_FILE}" \
             --schema ".brik-meta/${SCHEMA_FILE}"
-
-      # -------------------------------------------------------------------
-      # Mode 2: Scan & validate all configs (governance repo mode)
-      #   - Triggered when CONFIG_FILE is empty (push / PR with no inputs)
-      # -------------------------------------------------------------------
-      - name: Find brikpipe.build.yml files
-        id: find_configs
-        if: env.CONFIG_FILE == ''
-        run: |
-          echo "🔎 Searching for brikpipe.build.yml files from repo root..."
-          # Avoid scanning the meta repo clone
-          CONFIG_FILES=$(find . -path "./.brik-meta" -prune -o -name "brikpipe.build.yml" -type f -print || true)
-
-          if [ -z "$CONFIG_FILES" ]; then
-            echo "ℹ️ No brikpipe.build.yml files found. Nothing to validate."
-            echo "configs=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "📄 Found configs:"
-          echo "$CONFIG_FILES"
-
-          # Encode as JSON array for downstream step
-          CONFIG_FILES_JSON=$(printf '%s\n' $CONFIG_FILES | jq -R . | jq -s .)
-          echo "configs=$CONFIG_FILES_JSON" >> "$GITHUB_OUTPUT"
-
-      - name: Validate all discovered configs
-        if: env.CONFIG_FILE == '' && steps.find_configs.outputs.configs != ''
-        run: |
-          echo "🔧 Validating discovered configs with brik-pipe-cli..."
-          echo '${{ steps.find_configs.outputs.configs }}' | jq -c '.[]' | while read -r file; do
-            CONFIG_PATH=$(echo "$file" | jq -r '.')
-            echo "----------------------------------------"
-            echo "Validating: $CONFIG_PATH"
-
-            npx brik-pipe-cli validate build-config \
-              --file "$CONFIG_PATH" \
-              --schema ".brik-meta/${SCHEMA_FILE}"
-          done
