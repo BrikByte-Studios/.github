@@ -10,7 +10,8 @@ body:
       value: |
         Thanks for creating a task for BrikByte Studios 👋
 
-        This template is designed for **small to medium work items** that implement a feature, fix, refactor, or platform improvement.
+        This template is designed for **small to medium work items** 
+        that implement a feature, fix, refactor, or platform improvement.
         Use it when the work is **well-defined, actionable, and deliverable within a sprint**.
 
         > 🔐 **Note:** Do not include secrets, credentials, or personal information.
@@ -146,7 +147,9 @@ body:
     id: objective
     attributes:
       label: "Objective"
-      description: "Describe the purpose and intended outcome of this task. Focus on the result, not the implementation details."
+      description: |
+        "Describe the purpose and intended outcome of this task. 
+        Focus on the result, not the implementation details."
       placeholder: |
         - What should be true once this task is completed?
         - What problem does this task solve?
@@ -200,7 +203,9 @@ body:
     id: technical_notes
     attributes:
       label: "Technical Notes / Proposed Approach"
-      description: "High-level implementation notes, options, or constraints. Not a full design, but enough to orient the implementer."
+      description: |
+        "High-level implementation notes, options, or constraints. 
+        Not a full design, but enough to orient the implementer."
       placeholder: |
         - Implementation outline:
         - Affected modules / files:
@@ -251,7 +256,10 @@ body:
     id: considerations_mitigations
     attributes:
       label: "Considerations / Mitigations"
-      description: "List mitigation strategies, safeguards, and fallbacks to reduce the likelihood or impact of the identified risks."
+      description: |
+        "List mitigation strategies, safeguards, 
+        and fallbacks to reduce the likelihood 
+        or impact of the identified risks."
       placeholder: |
         - Mitigation 1: (e.g., hide behind feature flag; dark launch before full rollout)
         - Mitigation 2: (e.g., add extra logging / metrics to observe behaviour)

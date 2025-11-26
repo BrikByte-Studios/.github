@@ -1,5 +1,7 @@
 name: "📘 RFC — Request for Comments"
-description: "Propose a significant design, architectural change, platform capability, or organizational process improvement."
+description: |
+  "Propose a significant design, architectural change, platform capability,
+  or organizational process improvement."
 title: "[RFC] <short summary>"
 labels:
   - "type:rfc"
@@ -14,12 +16,12 @@ body:
         # 📘 Request for Comments (RFC)
 
         RFCs are used for:
-        - Architecture changes or new architectural patterns  
-        - Platform-wide initiatives (BrikByteOS, pipelines, SREOps, QAOps, etc.)  
-        - Major product or system changes  
-        - Infrastructure, CI/CD, security, or observability redesigns  
-        - Governance changes that require broad consensus  
-        - Any change that will result in an ADR once approved  
+        - Architecture changes or new architectural patterns
+        - Platform-wide initiatives (BrikByteOS, pipelines, SREOps, QAOps, etc.)
+        - Major product or system changes
+        - Infrastructure, CI/CD, security, or observability redesigns 
+        - Governance changes that require broad consensus
+        - Any change that will result in an ADR once approved
 
         This template captures **motivation, context, options, risks, governance, and traceability**.
 

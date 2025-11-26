@@ -17,7 +17,8 @@ body:
         - Business impact
         - Enough detail for engineering / product to act
 
-        > 🔐 **Note:** Do not paste secrets, credentials, or sensitive personal information. Mask any such data before submission.
+        > 🔐 **Note:** Do not paste secrets, credentials,
+        > or sensitive personal information. Mask any such data before submission.
 
   # --- Requester & Customer Info ---
   - type: input
@@ -150,7 +151,9 @@ body:
     id: description
     attributes:
       label: "Full Description (Customer’s Words, if possible)"
-      description: "Paste or paraphrase the customer’s description. Highlight their exact wording for key parts, if helpful."
+      description: |
+        "Paste or paraphrase the customer’s description.
+        Highlight their exact wording for key parts, if helpful."
       placeholder: |
         - What the customer reports:
         - Additional clarifications from support:

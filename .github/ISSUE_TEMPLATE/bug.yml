@@ -190,7 +190,7 @@ body:
     id: logs
     attributes:
       label: "Logs & Diagnostics (sanitized)"
-      description: | 
+      description: |
         "Relevant application logs, stack traces, network errors, or console output.
          Remove any secrets or personal data."
       render: shell
