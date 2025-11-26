@@ -46,26 +46,18 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------------------------
-      # 2) Install actionlint via official download script
-      #    (avoids missing tag rhysd/actionlint@v1)
+      # 2) Run actionlint (GitHub workflow linter)
+      #
+      # We use the official action that bundles actionlint and shellcheck.
+      # Docs: https://github.com/rhysd/actionlint
       # -------------------------------------------------------------------
-      - name: Download actionlint
-        run: |
-          set -euo pipefail
-          mkdir -p ./bin
-          curl -sSfL \
-            https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
-            | bash -s -- latest ./bin
-
-          ./bin/actionlint --version
-
-      - name: Run actionlint
-        run: |
-          ./bin/actionlint \
-            -color \
-            -shellcheck= \
-            .github/workflows/*.yml
-
+      - name: Lint with actionlint
+        uses: rhysd/actionlint@v1
+        with:
+          # Optional: use the config file we defined.
+          # actionlint automatically finds `.github/.actionlint.yaml`, but we
+          # keep this explicit for clarity.
+          config_file: .github/.actionlint.yaml
 
       # -------------------------------------------------------------------
       # 3) Run yamllint against workflow YAML files
@@ -74,14 +66,14 @@ jobs:
       # -------------------------------------------------------------------
       - name: Install yamllint
         run: |
-          set -euo pipefail
-          python3 -m pip install --upgrade pip
-          python3 -m pip install yamllint
+          python -m pip install --upgrade pip
+          pip install yamllint
 
-      - name: Run yamllint on YAML files
+      - name: Lint YAML files with yamllint
         run: |
-          set -euo pipefail
-          yamllint \
-            -c .github/.yamllint.yaml \
+          echo "📂 YAML files to lint:"
+          find .github -name "*.yml" -o -name "*.yaml" | sort || true
+
+          yamllint -c .github/.yamllint.yaml \
             .github/workflows \
             .github
