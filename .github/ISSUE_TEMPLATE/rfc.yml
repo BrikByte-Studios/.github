@@ -19,7 +19,7 @@ body:
         - Architecture changes or new architectural patterns
         - Platform-wide initiatives (BrikByteOS, pipelines, SREOps, QAOps, etc.)
         - Major product or system changes
-        - Infrastructure, CI/CD, security, or observability redesigns 
+        - Infrastructure, CI/CD, security, or observability redesigns
         - Governance changes that require broad consensus
         - Any change that will result in an ADR once approved
 

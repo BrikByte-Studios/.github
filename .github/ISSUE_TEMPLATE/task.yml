@@ -10,7 +10,7 @@ body:
       value: |
         Thanks for creating a task for BrikByte Studios 👋
 
-        This template is designed for **small to medium work items** 
+        This template is designed for **small to medium work items**
         that implement a feature, fix, refactor, or platform improvement.
         Use it when the work is **well-defined, actionable, and deliverable within a sprint**.
 
@@ -148,7 +148,7 @@ body:
     attributes:
       label: "Objective"
       description: |
-        "Describe the purpose and intended outcome of this task. 
+        "Describe the purpose and intended outcome of this task.
         Focus on the result, not the implementation details."
       placeholder: |
         - What should be true once this task is completed?
@@ -204,7 +204,7 @@ body:
     attributes:
       label: "Technical Notes / Proposed Approach"
       description: |
-        "High-level implementation notes, options, or constraints. 
+        "High-level implementation notes, options, or constraints.
         Not a full design, but enough to orient the implementer."
       placeholder: |
         - Implementation outline:
@@ -257,8 +257,8 @@ body:
     attributes:
       label: "Considerations / Mitigations"
       description: |
-        "List mitigation strategies, safeguards, 
-        and fallbacks to reduce the likelihood 
+        "List mitigation strategies, safeguards,
+        and fallbacks to reduce the likelihood
         or impact of the identified risks."
       placeholder: |
         - Mitigation 1: (e.g., hide behind feature flag; dark launch before full rollout)

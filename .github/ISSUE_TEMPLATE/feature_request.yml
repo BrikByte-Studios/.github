@@ -10,7 +10,9 @@ body:
       value: |
         Thanks for proposing a feature for BrikByte Studios 👋
 
-        This form is designed to capture **product intent**, **business impact**, and **technical context** so we can evaluate, prioritize, and implement the request effectively.
+        This form is designed to capture **product intent**, **business impact**, 
+        and **technical context** so we can evaluate, prioritize, 
+        and implement the request effectively.
 
         > 🔐 **Note:** Do not include secrets, credentials, or personal information.
 
@@ -43,7 +45,9 @@ body:
     id: product_area
     attributes:
       label: "Product / Repo / Area"
-      description: "Which product, repository, or module does this feature relate to? Use BrikByte taxonomy where possible."
+      description: |
+        "Which product, repository, or module does this feature relate to?
+        Use BrikByte taxonomy where possible."
       placeholder: "e.g., CargoPulse Web • proj/cargopulse • area:shipments"
     validations:
       required: true
@@ -64,7 +68,9 @@ body:
     id: problem_statement
     attributes:
       label: "Problem / Opportunity"
-      description: "Describe the problem this feature solves, or the opportunity it unlocks. Focus on the pain, not the solution."
+      description: |
+        "Describe the problem this feature solves, or the opportunity it unlocks.
+        Focus on the pain, not the solution."
       placeholder: |
         - Current situation:
         - Pain / friction:
@@ -94,7 +100,9 @@ body:
     id: business_value
     attributes:
       label: "Business Value & Outcomes"
-      description: "Why should we build this? Describe expected impact on revenue, cost, risk, NPS, activation, retention, etc."
+      description: |
+        "Why should we build this? Describe expected impact on revenue,
+        cost, risk, NPS, activation, retention, etc."
       placeholder: |
         - Business drivers:
         - Impact (e.g., increase activation, reduce support tickets):
@@ -156,7 +164,9 @@ body:
     id: requirements_ids
     attributes:
       label: "Requirements / RTM / ADR Links (if known)"
-      description: "If this relates to existing requirements or decisions, list them. If not, leave blank and they will be created later."
+      description: |
+        "If this relates to existing requirements or decisions, list them.
+        If not, leave blank and they will be created later."
       placeholder: |
         - New REQ to create: REQ-CARGOPULSE-PAYMENTS-XXX
         - Related RTM row(s):
@@ -181,7 +191,9 @@ body:
     id: design_ideas
     attributes:
       label: "Design Notes / Proposed Approach (optional)"
-      description: "Any proposed UX, API shapes, data models, or technical ideas. This is not binding, but helps kickstart solutioning."
+      description: |
+        "Any proposed UX, API shapes, data models, or technical ideas.
+        This is not binding, but helps kickstart solutioning."
       placeholder: |
         - UX sketch (description or link to Figma):
         - API changes:
@@ -244,7 +256,10 @@ body:
     id: considerations_mitigations
     attributes:
       label: "Considerations / Mitigations"
-      description: "List mitigation strategies, fallbacks, or safeguards to reduce the likelihood or impact of identified risks."
+      description: |
+        "List mitigation strategies, fallbacks, 
+        or safeguards to reduce the likelihood 
+        or impact of identified risks."
       placeholder: |
         - Mitigation 1: (e.g., Use feature flag to avoid impacting production users)
         - Mitigation 2: (e.g., Implement rate limiting to reduce load risk)
