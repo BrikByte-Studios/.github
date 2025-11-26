@@ -95,10 +95,13 @@ jobs:
           echo "  SCHEMA_FILE  = ${SCHEMA_FILE}"
 
           echo "🧪 Running brikpipe config validation..."
+          # From inside PROJECT_PATH (e.g. node-api-example),
+          # the meta repo lives at ../.brik-meta
           npx brik-pipe-cli validate build-config \
             --cwd "${PROJECT_PATH}" \
             --file "${CONFIG_FILE}" \
-            --schema ".brik-meta/${SCHEMA_FILE}"
+            --schema "../.brik-meta/${SCHEMA_FILE}"
+
 
       # -------------------------------------------------------------------
       # Mode 2: Scan & validate all configs (governance repo mode)
