@@ -48,16 +48,22 @@ jobs:
       # -------------------------------------------------------------------
       # 2) Run actionlint (GitHub workflow linter)
       #
-      # We use the official action that bundles actionlint and shellcheck.
-      # Docs: https://github.com/rhysd/actionlint
       # -------------------------------------------------------------------
-      - name: Lint with actionlint
-        uses: rhysd/actionlint@v1
-        with:
-          # Optional: use the config file we defined.
-          # actionlint automatically finds `.github/.actionlint.yaml`, but we
-          # keep this explicit for clarity.
-          config_file: .github/.actionlint.yaml
+      - name: Download actionlint
+        run: |
+          set -euo pipefail
+          mkdir -p ./bin
+          curl -sSfL \
+            https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
+            | bash -s -- latest ./bin
+
+          ./bin/actionlint --version
+
+      - name: Run actionlint on workflows
+        run: |
+          set -euo pipefail
+          ./bin/actionlint -color \
+            -config-file .github/.actionlint.yaml
 
       # -------------------------------------------------------------------
       # 3) Run yamllint against workflow YAML files
