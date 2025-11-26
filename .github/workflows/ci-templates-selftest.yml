@@ -55,8 +55,11 @@ jobs:
       JAVA_PROJECT: java-api-example
       GO_PROJECT: go-api-example
       DOTNET_PROJECT: dotnet-api-example
+      AUDIT_FILE: .audit/selftest-${{ matrix.runtime }}-${{ github.run_id }}.json
 
     steps:
+      - name: Checkout .github repo
+        uses: actions/checkout@v4
       # -------------------------------------------------------------------
       # 1) Checkout the examples repo
       #
@@ -67,6 +70,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.EXAMPLES_REPO }}
+          path: examples
           # Keep default: repo checked out into $GITHUB_WORKSPACE
 
       # -------------------------------------------------------------------
@@ -169,30 +173,27 @@ jobs:
       #
       # This can be consumed later or mirrored into .audit/ if desired.
       # -------------------------------------------------------------------
-      - name: Write self-test summary JSON
+      - name: Write self-test audit summary
+        # This step actually creates the file.
         run: |
+          set -euo pipefail
           mkdir -p .audit
-          SUMMARY_FILE=".audit/selftest-${{ matrix.runtime }}-${GITHUB_RUN_ID}.json"
 
-          cat > "$SUMMARY_FILE" << 'EOF'
+          cat << 'EOF' > "${AUDIT_FILE}"
           {
-            "doc_id": "PIPE-BUILD-TEMPLATES-TEST-006",
             "runtime": "${{ matrix.runtime }}",
-            "examples_repo": "${{ env.EXAMPLES_REPO }}",
-            "project_path": "${{ steps.project.outputs.path }}",
-            "github_run_id": "${GITHUB_RUN_ID}",
-            "github_run_attempt": "${GITHUB_RUN_ATTEMPT}",
-            "github_sha": "${GITHUB_SHA}",
-            "timestamp_utc": "${{ github.run_started_at }}"
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "repo": "${{ github.repository }}",
+            "sha": "${{ github.sha }}",
+            "status": "success"
           }
           EOF
 
-          echo "🧾 Wrote summary to: $SUMMARY_FILE"
-
-      - name: Upload self-test summary artifact
-        if: always()
+      - name: Upload self-test audit summary
         uses: actions/upload-artifact@v4
         with:
-          name: "ci-templates-selftest-${{ matrix.runtime }}-${{ github.run_id }}"
-          path: ".audit/selftest-${{ matrix.runtime }}-${GITHUB_RUN_ID}.json"
+          name: ci-templates-selftest-${{ matrix.runtime }}-${{ github.run_id }}
+          # ✅ Use the same env var here, no ${...} shell syntax
+          path: ${{ env.AUDIT_FILE }}
           if-no-files-found: error
