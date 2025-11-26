@@ -10,6 +10,7 @@
 | ID | Seq | Title | Date | Areas | File |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | 2025-11-22 | governance, policy-gate, ci-cd, devx | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
+| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | 2025-11-26 | containers, ci-cd, security, platform | `008-container-build-strategy-docker-vs-kaniko.md` |
 
 ### Proposed
 
@@ -24,6 +25,31 @@
 
 ## By Area
 
+### containers
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | Accepted | 2025-11-26 | `008-container-build-strategy-docker-vs-kaniko.md` |
+
+### ci-cd
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
+| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | Accepted | 2025-11-26 | `008-container-build-strategy-docker-vs-kaniko.md` |
+
+### security
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | Accepted | 2025-11-26 | `008-container-build-strategy-docker-vs-kaniko.md` |
+
+### platform
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | Accepted | 2025-11-26 | `008-container-build-strategy-docker-vs-kaniko.md` |
+
 ### governance
 
 | ID | Seq | Title | Status | Date | File |
@@ -31,12 +57,6 @@
 | ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
 
 ### policy-gate
-
-| ID | Seq | Title | Status | Date | File |
-| --- | --- | --- | --- | --- | --- |
-| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
-
-### ci-cd
 
 | ID | Seq | Title | Status | Date | File |
 | --- | --- | --- | --- | --- | --- |
