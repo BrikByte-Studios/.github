@@ -1,0 +1,48 @@
+# PIPE-BUILD-TEMPLATES-TEST-006
+#
+# Central YAML style + sanity rules for:
+#   - .github/workflows/*.yml
+#   - Other YAML config files under .github/
+#
+# Goals:
+#   - Catch indentation & basic schema issues
+#   - Enforce a clean, readable style without being overly strict
+#
+# Docs:
+#   - https://yamllint.readthedocs.io/en/stable/configuration.html
+
+extends: default
+
+rules:
+  # Enforce 2 spaces for indentation (common in GitHub workflows).
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+
+  # Reasonable max line length while allowing URLs / long commands.
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # Trailing spaces are usually errors.
+  trailing-spaces:
+    level: error
+
+  # Require document start for top-level YAML files (optional, we keep it relaxed).
+  document-start:
+    present: false
+
+  # Allow empty lines where it improves readability.
+  empty-lines:
+    max: 2
+    max-start: 1
+    max-end: 1
+
+  # Be lenient on truthy values for workflow `on:` keys etc.
+  truthy:
+    allowed-values: ["true", "false", "on", "off", "yes", "no"]
+    check-keys: false
+
+# You can restrict linting to specific paths if needed.
+# Here we keep it broad and filter via the workflow.

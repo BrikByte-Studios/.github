@@ -1,0 +1,79 @@
+# PIPE-BUILD-TEMPLATES-TEST-006 — Add automated tests and linters for build workflow templates
+#
+# Purpose:
+#   - Lint ALL GitHub workflows in this meta repo using:
+#       * actionlint  (workflow semantics + shell snippets)
+#       * yamllint   (YAML style + basic structure)
+#   - Fail fast on:
+#       * Syntax errors in templates
+#       * Common YAML issues
+#
+# Scope:
+#   - This runs ONLY in BrikByte-Studios/.github.
+#   - Intended as a REQUIRED CHECK on PRs to main.
+#
+name: "CI Templates: Lint"
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - ".github/workflows/**"
+      - ".github/.actionlint.yaml"
+      - ".github/.yamllint.yaml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - ".github/workflows/**"
+      - ".github/.actionlint.yaml"
+      - ".github/.yamllint.yaml"
+  # Allow manual re-runs when tweaking rules.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-templates:
+    name: "Lint workflow templates (actionlint + yamllint)"
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------------------------------------------------
+      # 1) Checkout meta repo
+      # -------------------------------------------------------------------
+      - name: Checkout .github meta repo
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------------------
+      # 2) Run actionlint (GitHub workflow linter)
+      #
+      # We use the official action that bundles actionlint and shellcheck.
+      # Docs: https://github.com/rhysd/actionlint
+      # -------------------------------------------------------------------
+      - name: Lint with actionlint
+        uses: rhysd/actionlint@v1
+        with:
+          # Optional: use the config file we defined.
+          # actionlint automatically finds `.github/.actionlint.yaml`, but we
+          # keep this explicit for clarity.
+          config_file: .github/.actionlint.yaml
+
+      # -------------------------------------------------------------------
+      # 3) Run yamllint against workflow YAML files
+      #
+      # This complements actionlint by enforcing basic YAML style rules.
+      # -------------------------------------------------------------------
+      - name: Install yamllint
+        run: |
+          python -m pip install --upgrade pip
+          pip install yamllint
+
+      - name: Lint YAML files with yamllint
+        run: |
+          echo "📂 YAML files to lint:"
+          find .github -name "*.yml" -o -name "*.yaml" | sort || true
+
+          yamllint -c .github/.yamllint.yaml \
+            .github/workflows \
+            .github

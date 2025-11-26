@@ -1,0 +1,38 @@
+# PIPE-BUILD-TEMPLATES-TEST-006
+#
+# Central configuration for actionlint across the BrikByte-Studios/.github repo.
+#
+# Goals:
+#   - Lint all workflow files in .github/workflows/
+#   - Enable shellcheck where possible
+#   - Allow common reusable-workflow patterns used by BrikByteOS templates
+#
+# Docs:
+#   - https://github.com/rhysd/actionlint
+#
+# NOTE:
+#   Keep this config intentionally small; add rules/ignores only when needed.
+
+# Glob patterns for workflows (default is usually fine, but we document intent).
+# This is mostly informative; actionlint auto-discovers under .github/workflows.
+# If you ever reorganize, adjust these.
+workflows:
+  - ".github/workflows/*.yml"
+  - ".github/workflows/*.yaml"
+
+# Enable shellcheck for bash snippets where shellcheck is available.
+# actionlint will attempt to run `shellcheck` if present.
+shellcheck:
+  enable: true
+
+# Allow using expressions in 'uses:' (for advanced reusable workflows, if needed).
+# Try to keep this minimal; only relax rules when you know what you're doing.
+expr:
+  # Example: allow matrix expressions inside `uses:` for experimental patterns.
+  # Set to true only if you actually use such patterns.
+  allow_in_uses: false
+
+# You can add additional ignore rules here if you hit false-positives.
+# Example:
+# ignore:
+#   - "SC2086"   # If you intentionally use unquoted variables in a shell script
