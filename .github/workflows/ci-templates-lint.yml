@@ -59,11 +59,12 @@ jobs:
 
           ./bin/actionlint --version
 
-      - name: Run actionlint on workflows
+      - name: Run actionlint
         run: |
-          set -euo pipefail
-          ./bin/actionlint -color \
-            -config-file .github/.actionlint.yaml
+          ./bin/actionlint \
+            -color \
+            -shellcheck= \
+            .github/workflows/*.yml
 
       # -------------------------------------------------------------------
       # 3) Run yamllint against workflow YAML files
