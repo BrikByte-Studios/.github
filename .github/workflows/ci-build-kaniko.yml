@@ -45,7 +45,7 @@ on:
       tags:
         description: >
           Desired image tags.
-          - Recommended: comma-separated (e.g. "v1.0.0,sha-${{ github.sha }}")
+          - Recommended: comma-separated, e.g. "v1.0.0,sha-<GITHUB_SHA>"
           - Also supports newline-separated list.
           These will be combined with `image_name` to produce full destinations:
             <image_name>:<tag>
@@ -72,8 +72,9 @@ on:
       REGISTRY_TOKEN:
         description: >
           Token used to authenticate to the target registry.
-          For GHCR you can often map this from secrets.GITHUB_TOKEN:
-            REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          For GHCR, the caller workflow can pass its GITHUB_TOKEN secret,
+          for example:
+            REGISTRY_TOKEN: (caller workflow maps its secrets.GITHUB_TOKEN here)
         required: true
 
 jobs:
