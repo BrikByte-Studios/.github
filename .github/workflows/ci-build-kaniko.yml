@@ -45,7 +45,7 @@ on:
       tags:
         description: >
           Desired image tags.
-          - Recommended: comma-separated, e.g. "v1.0.0,sha-<GITHUB_SHA>"
+          - Recommended: comma-separated, e.g. "v1.0.0,sha-${GITHUB_SHA}"
           - Also supports newline-separated list.
           These will be combined with `image_name` to produce full destinations:
             <image_name>:<tag>
@@ -125,7 +125,7 @@ jobs:
           echo "Normalized tags (with \\n escapes):"
           printf '%s\n' "$tags_with_escapes"
 
-          # Emit as multiline output for downstream `with: tags`.
+          # Emit as multiline output.
           {
             echo "tags<<EOF"
             # -e is required so that '\n' becomes real newlines.
@@ -134,7 +134,47 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # -------------------------------------------------------------------
-      # 3) Login to the container registry using docker/login-action
+      # 3) Build full image destinations (image_name:tag)
+      #
+      #    - Combines the base image_name with each tag.
+      #    - Output:
+      #        steps.prepare-destinations.outputs.tags
+      #      is a multiline list of full destinations, e.g.:
+      #        ghcr.io/org/app:v1.0.0
+      #        ghcr.io/org/app:sha-abc123
+      # -------------------------------------------------------------------
+      - name: "Build full image destinations for Kaniko"
+        id: prepare-destinations
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          image_name="${{ inputs.image_name }}"
+          echo "Base image name: ${image_name}"
+
+          echo "Raw tags to convert:"
+          printf '%s\n' "${{ steps.prepare-tags.outputs.tags }}"
+
+          full_destinations=""
+          while IFS= read -r tag; do
+            # Skip empty lines just in case
+            if [ -z "$tag" ]; then
+              continue
+            fi
+            full="${image_name}:${tag}"
+            echo " -> ${full}"
+            full_destinations="${full_destinations}${full}\n"
+          done <<< "${{ steps.prepare-tags.outputs.tags }}"
+
+          {
+            echo "tags<<EOF"
+            # Convert '\n' to real newlines
+            echo -e "$full_destinations"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # -------------------------------------------------------------------
+      # 4) Login to the container registry using docker/login-action
       #
       #    - Default registry: ghcr.io
       #    - Username: GitHub actor (works for GHCR with GITHUB_TOKEN)
@@ -151,16 +191,16 @@ jobs:
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       # -------------------------------------------------------------------
-      # 4) Kaniko build & push
+      # 5) Kaniko build & push
       #
       #    Implementation:
       #      - Uses int128/kaniko-action (wrapper around Kaniko executor).
       #      - Builds the image from the given context + Dockerfile.
-      #      - Pushes image_name:<tag> for each tag in the list.
+      #      - Pushes <image_name>:<tag> for each tag in the list.
       #
       #    Notes:
       #      - `context` and `file` are relative to the repo root.
-      #      - `tags` must be newline-separated; we pass the prepared value.
+      #      - `tags` must be full destinations; we pass prepared values.
       #      - `build-args` is optional; can be an empty string.
       #
       #    Output:
@@ -170,32 +210,23 @@ jobs:
         id: kaniko
         uses: int128/kaniko-action@v1
         with:
-          # 👇 This is the critical bit: base image name (incl. registry + repo)
-          # Example: ghcr.io/brikbyte-studios/example-node-api
-          image: ${{ inputs.image_name }}
-
-          # Where Kaniko should look for Docker context (source tree)
+          # Build context and Dockerfile
           context: ${{ inputs.context }}
-
-          # Dockerfile path (inside context or repo)
           file: ${{ inputs.dockerfile }}
 
-          # True = push image to remote registry
+          # Push image to the registry
           push: true
 
-          # Multiline list of tags (e.g. v1.0.0, sha-<short-sha>)
-          # The action will turn this into:
-          #   --destination <image>:v1.0.0
-          #   --destination <image>:sha-<sha>
+          # Full image destinations (image_name:tag)
           tags: |
-            ${{ steps.prepare-tags.outputs.tags }}
+            ${{ steps.prepare-destinations.outputs.tags }}
 
           # Optional build arguments (may be empty)
           build-args: |
             ${{ inputs.build_args }}
 
       # -------------------------------------------------------------------
-      # 5) Post-build summary + SBOM placeholder
+      # 6) Post-build summary + SBOM placeholder
       #
       #    - Writes a short human-readable summary to the job summary.
       #    - Exposes a clear TODO hook for later SBOM & manifest integration.
@@ -210,12 +241,11 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image Name: \`${{ inputs.image_name }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Registry: \`${{ inputs.registry }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Tags:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tags (logical tags passed by caller):" >> "$GITHUB_STEP_SUMMARY"
           while IFS= read -r tag; do
             [ -n "$tag" ] && echo "  - \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
           done <<< "${{ steps.prepare-tags.outputs.tags }}"
 
-          # If the Kaniko step ran, expose the digest for downstream consumers.
           if [ -n "${{ steps.kaniko.outputs.digest }}" ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- Image Digest: \`${{ steps.kaniko.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
@@ -226,10 +256,3 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Future work: generate SBOM and upload as artifact." >> "$GITHUB_STEP_SUMMARY"
           echo "- Future work: persist image digest in .audit bundle." >> "$GITHUB_STEP_SUMMARY"
-
-          # Placeholder for future SBOM step:
-          #   e.g., run syft or cosign to generate SBOM/signature.
-          #
-          #   Example (pseudo-code):
-          #     syft ${{ inputs.image_name }}@${{ steps.kaniko.outputs.digest }} -o json > sbom.json
-          #     upload-artifact: sbom.json
