@@ -1,0 +1,67 @@
+# BrikByteOS Canonical .NET API Dockerfile Template
+# Task: PIPE-CONTAINER-DOCKER-BUILD-002
+
+# syntax=docker/dockerfile:1.7
+
+##
+## 1) Build Stage
+##
+ARG DOTNET_VERSION=8.0
+ARG APP_VERSION=dev
+ARG GIT_COMMIT=local
+ARG APP_DIR=/src
+
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS builder
+
+WORKDIR ${APP_DIR}
+
+# Copy solution and project files for restore layer
+COPY *.sln ./
+COPY src/ ./src/
+COPY tests/ ./tests/
+
+# Restore dependencies
+RUN dotnet restore
+
+# Build (Release)
+RUN dotnet build --configuration Release --no-restore
+
+# Publish trimmed app
+RUN dotnet publish src/*.csproj \
+      --configuration Release \
+      --no-restore \
+      --output /app/publish
+
+##
+## 2) Runtime Stage
+##
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
+
+ARG APP_VERSION=dev
+ARG GIT_COMMIT=local
+
+# Create non-root user & group
+RUN useradd --create-home --shell /sbin/nologin appuser
+
+WORKDIR /app
+
+COPY --from=builder /app/publish .
+
+# Standard OCI labels
+LABEL org.opencontainers.image.title="BrikByte .NET Service" \
+      org.opencontainers.image.description="Canonical ASP.NET Core runtime image for BrikByteOS services" \
+      org.opencontainers.image.source="https://github.com/BrikByte-Studios/<service-repo>" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}" \
+      org.opencontainers.image.licenses="MIT"
+
+USER appuser
+
+# ASP.NET default port (configurable)
+EXPOSE 8080
+
+# HEALTHCHECK placeholder
+# HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+#   CMD curl -f http://127.0.0.1:8080/health || exit 1
+
+ENTRYPOINT ["dotnet", "BrikByte.DotNetApiExample.dll"]
