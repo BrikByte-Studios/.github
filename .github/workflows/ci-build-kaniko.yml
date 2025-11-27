@@ -170,27 +170,29 @@ jobs:
         id: kaniko
         uses: int128/kaniko-action@v1
         with:
+          # 👇 This is the critical bit: base image name (incl. registry + repo)
+          # Example: ghcr.io/brikbyte-studios/example-node-api
+          image: ${{ inputs.image_name }}
+
           # Where Kaniko should look for Docker context (source tree)
           context: ${{ inputs.context }}
 
-          # Dockerfile path (inside context)
+          # Dockerfile path (inside context or repo)
           file: ${{ inputs.dockerfile }}
 
           # True = push image to remote registry
           push: true
 
           # Multiline list of tags (e.g. v1.0.0, sha-<short-sha>)
+          # The action will turn this into:
+          #   --destination <image>:v1.0.0
+          #   --destination <image>:sha-<sha>
           tags: |
             ${{ steps.prepare-tags.outputs.tags }}
 
           # Optional build arguments (may be empty)
           build-args: |
             ${{ inputs.build_args }}
-
-          # IMPORTANT:
-          # We rely on docker/login-action above to create ~/.docker/config.json.
-          # int128/kaniko-action will mount this config into the Kaniko executor,
-          # enabling it to authenticate to the registry.
 
       # -------------------------------------------------------------------
       # 5) Post-build summary + SBOM placeholder
