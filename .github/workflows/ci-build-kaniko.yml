@@ -111,13 +111,25 @@ jobs:
 
     steps:
       # -------------------------------------------------------------------
-      # 1) Checkout the current repo so Kaniko can see Dockerfile + context
+      # 1) Checkout the current repo so Kaniko + governance scripts
+      #    can see Dockerfile, context, and .github scripts.
       # -------------------------------------------------------------------
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
       # -------------------------------------------------------------------
-      # 2) Normalize tags into a newline-separated list.
+      # 2) Ensure Node is available for governance scripts
+      #
+      #    - Required for .github/scripts/check-image-tags.mjs
+      #    - Node 20 is the baseline runtime for governance tooling.
+      # -------------------------------------------------------------------
+      - name: "Setup Node.js (for governance scripts)"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # -------------------------------------------------------------------
+      # 3) Normalize tags into a newline-separated list.
       #
       #    Input examples:
       #      "v1.0.0,sha-abc123"
@@ -155,7 +167,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # -------------------------------------------------------------------
-      # 3) Build full image destinations (image_name:tag).
+      # 4) Build full image destinations (image_name:tag).
       #
       #    Input  (prepare-tags):
       #      v1.0.0
@@ -195,7 +207,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # -------------------------------------------------------------------
-      # 4) Compute cache repository.
+      # 5) Compute cache repository.
       #
       #    - If caller passes cache_repo input:
       #        use that directly.
@@ -227,7 +239,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # -------------------------------------------------------------------
-      # 5) Login to the container registry using docker/login-action
+      # 6) Login to the container registry using docker/login-action
       #
       #    - Default registry: ghcr.io
       #    - Username: REGISTRY_USERNAME secret if provided, else github.actor
@@ -245,7 +257,7 @@ jobs:
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       # -------------------------------------------------------------------
-      # 6) Kaniko build & push (with caching).
+      # 7) Kaniko build & push (with caching).
       #
       #    - Uses int128/kaniko-action (wrapper around Kaniko executor).
       #    - Builds image from context + Dockerfile.
@@ -281,10 +293,95 @@ jobs:
             ${{ inputs.build_args }}
 
       # -------------------------------------------------------------------
-      # 7) Post-build summary + SBOM placeholder.
+      # 8) Persist built image + tags to JSON for policy checks
       #
-      #    - Writes a short summary to the job summary.
-      #    - Exposes a hook for future SBOM & manifest integration.
+      #    File: out/image-tags.json
+      #    Shape:
+      #      {
+      #        "image": "<image-name>",
+      #        "tags": ["vX.Y.Z", "sha-...", "latest?"]
+      #      }
+      #
+      #    This is the input for .github/scripts/check-image-tags.mjs and
+      #    optional policy-gate integration (e.g. PIPE-GOV-8.x).
+      # -------------------------------------------------------------------
+      - name: "Write image tags manifest for policy checks"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p out
+
+          # TAG_LIST is the multiline list from prepare-tags step, e.g.:
+          #   v0.1.0
+          #   sha-<sha>
+          #   latest
+          #
+          # We'll convert this into a JSON array using a small Python helper.
+          tags_json=$(python - << 'PYCODE'
+          import json, os
+          raw = os.environ.get("TAG_LIST", "")
+          tags = [t.strip() for t in raw.splitlines() if t.strip()]
+          print(json.dumps(tags))
+          PYCODE
+          )
+
+          cat > out/image-tags.json <<EOF
+          {
+            "image": "${{ inputs.image_name }}",
+            "tags": $tags_json
+          }
+          EOF
+
+          echo "Wrote out/image-tags.json:"
+          cat out/image-tags.json
+        env:
+          TAG_LIST: "${{ steps.prepare-tags.outputs.tags }}"
+
+      # -------------------------------------------------------------------
+      # 9) Enforce image tag policy (SHA + SemVer)
+      #
+      #    - Uses .github/scripts/check-image-tags.mjs
+      #    - Fails the job if required tags are missing.
+      # -------------------------------------------------------------------
+      - name: "Check container image tagging policy (SHA + SemVer)"
+        run: |
+          node .github/scripts/check-image-tags.mjs --config out/image-tags.json
+
+      # -------------------------------------------------------------------
+      # 10) (Optional) Emit tagging rule result stub for policy-gate
+      #
+      #     - Writes out/policy-images-tagging.json
+      #     - Can be merged into out/decision.json by a later gate step.
+      # -------------------------------------------------------------------
+      - name: "Write images.tagging rule stub (policy-gate integration)"
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          status="pass"
+          if [[ "${{ job.status }}" != "success" ]]; then
+            status="fail"
+          fi
+
+          mkdir -p out
+          cat > out/policy-images-tagging.json <<EOF
+          {
+            "rule": "images.tagging",
+            "status": "${status}",
+            "image": "${{ inputs.image_name }}"
+          }
+          EOF
+
+          echo "Wrote out/policy-images-tagging.json:"
+          cat out/policy-images-tagging.json
+
+      # -------------------------------------------------------------------
+      # 11) Post-build summary + SBOM placeholder.
+      #
+      #     - Writes a short summary to the job summary.
+      #     - Exposes a hook for future SBOM & manifest integration.
       # -------------------------------------------------------------------
       - name: "Summarize Kaniko build & SBOM hook (TODO)"
         if: always()
