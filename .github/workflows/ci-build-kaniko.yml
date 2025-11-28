@@ -2,7 +2,7 @@
 #
 # Purpose:
 #   - Build and push container images using Kaniko (daemonless) from CI.
-#   - Standardize image naming, tagging, and error handling across repos.
+#   - Standardize image naming, tagging, authentication, and caching.
 #   - Provide a stable foundation for downstream deploy workflows and
 #     supply-chain governance (SBOM/signing later).
 #
@@ -10,13 +10,12 @@
 #   - Exposed as a reusable workflow via `workflow_call`.
 #   - Accepts configurable image name, Dockerfile path, context, and tags.
 #   - Supports additional build args for runtime-specific builds.
+#   - Supports registry authentication + Kaniko image caching.
 #   - Assumes GHCR by default but can be adapted to other registries.
-#   - Uses int128/kaniko-action under the hood (Kaniko wrapper).
 #
 # NOTE:
 #   - Tags can be passed either as comma-separated ("v1.0.0,sha-abc123")
-#     or as newline-separated list. This workflow normalizes both
-#     into the multiline format required by the Kaniko action.
+#     or as newline-separated list. This workflow normalizes both.
 
 name: "CI — Kaniko Build & Push (Reusable)"
 
@@ -29,6 +28,7 @@ on:
           This should NOT include the tag; tags are provided via `tags` input.
         required: true
         type: string
+
       dockerfile:
         description: >
           Path to the Dockerfile relative to the repo root.
@@ -36,12 +36,14 @@ on:
         required: false
         default: ./Dockerfile
         type: string
+
       context:
         description: >
           Build context path (directory) to send to Kaniko.
         required: false
         default: .
         type: string
+
       tags:
         description: >
           Desired image tags.
@@ -51,6 +53,7 @@ on:
             <image_name>:<tag>
         required: true
         type: string
+
       build_args:
         description: >
           Optional Docker build arguments (multiline string).
@@ -60,6 +63,7 @@ on:
         required: false
         default: ""
         type: string
+
       registry:
         description: >
           Registry hostname for login. Default is ghcr.io.
@@ -68,14 +72,37 @@ on:
         required: false
         default: ghcr.io
         type: string
+
+      cache_enabled:
+        description: >
+          Whether Kaniko caching should be enabled.
+          When true, Kaniko will re-use previously built layers.
+        required: false
+        default: true
+        type: boolean
+
+      cache_repo:
+        description: >
+          Optional explicit cache repository.
+          If empty, a default of "<image_name>-cache" will be used.
+          Example:
+            ghcr.io/brikbyte-studios/cache/example-node-api
+        required: false
+        default: ""
+        type: string
+
     secrets:
       REGISTRY_TOKEN:
         description: >
           Token used to authenticate to the target registry.
-          For GHCR, the caller workflow can pass its GITHUB_TOKEN secret,
-          for example:
-            REGISTRY_TOKEN: (caller workflow maps its secrets.GITHUB_TOKEN here)
+          For GHCR, the caller workflow can map its secrets.GITHUB_TOKEN
+          or a PAT with "packages: write" scope.
         required: true
+      REGISTRY_USERNAME:
+        description: >
+          Optional username for the registry.
+          If omitted, github.actor will be used (suitable for GHCR).
+        required: false
 
 jobs:
   kaniko-build-and-push:
@@ -90,18 +117,15 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------------------------
-      # 2) Normalize tags into a newline-separated list
+      # 2) Normalize tags into a newline-separated list.
       #
-      #    - If the caller passed "v1.0.0,sha-abc123",
-      #      we convert to:
-      #         v1.0.0
-      #         sha-abc123
+      #    Input examples:
+      #      "v1.0.0,sha-abc123"
+      #      "v1.0.0\nsha-abc123"
       #
-      #    - If the caller passed a multiline list already,
-      #      the transformation still works safely.
-      #
-      #    Output:
-      #      steps.prepare-tags.outputs.tags  -> multiline list of tags
+      #    Output (steps.prepare-tags.outputs.tags):
+      #      v1.0.0
+      #      sha-abc123
       # -------------------------------------------------------------------
       - name: "Prepare tag list for Kaniko"
         id: prepare-tags
@@ -109,14 +133,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Raw input from workflow_call.
           raw_tags="${{ inputs.tags }}"
 
           echo "Raw tags input:"
           printf '%s\n' "$raw_tags"
 
           # Strip spaces to make comma-separated input more robust.
-          # (Newlines are preserved.)
           tags_no_spaces="${raw_tags// /}"
 
           # Replace commas with literal '\n' sequences.
@@ -125,23 +147,23 @@ jobs:
           echo "Normalized tags (with \\n escapes):"
           printf '%s\n' "$tags_with_escapes"
 
-          # Emit as multiline output.
           {
             echo "tags<<EOF"
-            # -e is required so that '\n' becomes real newlines.
+            # -e so '\n' becomes actual newlines.
             echo -e "$tags_with_escapes"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
       # -------------------------------------------------------------------
-      # 3) Build full image destinations (image_name:tag)
+      # 3) Build full image destinations (image_name:tag).
       #
-      #    - Combines the base image_name with each tag.
-      #    - Output:
-      #        steps.prepare-destinations.outputs.tags
-      #      is a multiline list of full destinations, e.g.:
-      #        ghcr.io/org/app:v1.0.0
-      #        ghcr.io/org/app:sha-abc123
+      #    Input  (prepare-tags):
+      #      v1.0.0
+      #      sha-abc123
+      #
+      #    Output (prepare-destinations.outputs.tags):
+      #      ghcr.io/org/app:v1.0.0
+      #      ghcr.io/org/app:sha-abc123
       # -------------------------------------------------------------------
       - name: "Build full image destinations for Kaniko"
         id: prepare-destinations
@@ -168,40 +190,67 @@ jobs:
 
           {
             echo "tags<<EOF"
-            # Convert '\n' to real newlines
             echo -e "$full_destinations"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
       # -------------------------------------------------------------------
-      # 4) Login to the container registry using docker/login-action
+      # 4) Compute cache repository.
+      #
+      #    - If caller passes cache_repo input:
+      #        use that directly.
+      #    - Else:
+      #        derive "<image_name>-cache" as the default cache repo.
+      #
+      #    Output:
+      #      steps.prepare-cache.outputs.cache_repo
+      # -------------------------------------------------------------------
+      - name: "Prepare cache repository"
+        id: prepare-cache
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          image_name="${{ inputs.image_name }}"
+          explicit_cache="${{ inputs.cache_repo }}"
+
+          if [ -n "$explicit_cache" ]; then
+            cache_repo="$explicit_cache"
+            echo "Using explicit cache repo: $cache_repo"
+          else
+            cache_repo="${image_name}-cache"
+            echo "Using derived cache repo: $cache_repo"
+          fi
+
+          {
+            echo "cache_repo=$cache_repo"
+          } >> "$GITHUB_OUTPUT"
+
+      # -------------------------------------------------------------------
+      # 5) Login to the container registry using docker/login-action
       #
       #    - Default registry: ghcr.io
-      #    - Username: GitHub actor (works for GHCR with GITHUB_TOKEN)
-      #    - Password: REGISTRY_TOKEN secret passed by caller.
+      #    - Username: REGISTRY_USERNAME secret if provided, else github.actor
+      #    - Password: REGISTRY_TOKEN secret
       #
-      #    For non-GHCR registries:
-      #      - Ensure REGISTRY_TOKEN is a valid credential for the actor.
+      #    SECURITY:
+      #      - Do NOT echo tokens or usernames.
+      #      - docker/login-action masks secrets automatically.
       # -------------------------------------------------------------------
       - name: "Login to container registry"
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ github.actor }}
+          username: ${{ secrets.REGISTRY_USERNAME != '' && secrets.REGISTRY_USERNAME || github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       # -------------------------------------------------------------------
-      # 5) Kaniko build & push
+      # 6) Kaniko build & push (with caching).
       #
-      #    Implementation:
-      #      - Uses int128/kaniko-action (wrapper around Kaniko executor).
-      #      - Builds the image from the given context + Dockerfile.
-      #      - Pushes <image_name>:<tag> for each tag in the list.
-      #
-      #    Notes:
-      #      - `context` and `file` are relative to the repo root.
-      #      - `tags` must be full destinations; we pass prepared values.
-      #      - `build-args` is optional; can be an empty string.
+      #    - Uses int128/kaniko-action (wrapper around Kaniko executor).
+      #    - Builds image from context + Dockerfile.
+      #    - Pushes <image_name>:<tag> for each tag.
+      #    - Enables caching when cache_enabled is true.
       #
       #    Output:
       #      steps.kaniko.outputs.digest -> image digest (sha256:...)
@@ -221,15 +270,21 @@ jobs:
           tags: |
             ${{ steps.prepare-destinations.outputs.tags }}
 
+          # Enable/disable cache
+          cache: ${{ inputs.cache_enabled }}
+
+          # Cache repository: explicit or derived "<image_name>-cache"
+          cache-repository: ${{ steps.prepare-cache.outputs.cache_repo }}
+
           # Optional build arguments (may be empty)
           build-args: |
             ${{ inputs.build_args }}
 
       # -------------------------------------------------------------------
-      # 6) Post-build summary + SBOM placeholder
+      # 7) Post-build summary + SBOM placeholder.
       #
-      #    - Writes a short human-readable summary to the job summary.
-      #    - Exposes a clear TODO hook for later SBOM & manifest integration.
+      #    - Writes a short summary to the job summary.
+      #    - Exposes a hook for future SBOM & manifest integration.
       # -------------------------------------------------------------------
       - name: "Summarize Kaniko build & SBOM hook (TODO)"
         if: always()
@@ -241,7 +296,9 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image Name: \`${{ inputs.image_name }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Registry: \`${{ inputs.registry }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Tags (logical tags passed by caller):" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cache Enabled: \`${{ inputs.cache_enabled }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cache Repo: \`${{ steps.prepare-cache.outputs.cache_repo }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Logical Tags (as passed by caller):" >> "$GITHUB_STEP_SUMMARY"
           while IFS= read -r tag; do
             [ -n "$tag" ] && echo "  - \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
           done <<< "${{ steps.prepare-tags.outputs.tags }}"
