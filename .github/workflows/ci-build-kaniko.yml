@@ -111,11 +111,26 @@ jobs:
 
     steps:
       # -------------------------------------------------------------------
-      # 1) Checkout the current repo so Kaniko + governance scripts
-      #    can see Dockerfile, context, and .github scripts.
+      # 1) Checkout caller repo (service code + Dockerfile + context)
       # -------------------------------------------------------------------
-      - name: "Checkout repository"
+      - name: "Checkout caller repository"
         uses: actions/checkout@v4
+
+      # -------------------------------------------------------------------
+      # 1b) Checkout governance repo for shared scripts (e.g. tag policy)
+      #
+      #     - Clones BrikByte-Studios/.github into a subfolder
+      #       so we can run:
+      #         node .brikbyte-org-gov/.github/scripts/check-image-tags.mjs
+      #
+      #     - Keeps governance logic centralized instead of copying
+      #       scripts into every service repo.
+      # -------------------------------------------------------------------
+      - name: "Checkout governance scripts (BrikByte-Studios/.github)"
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          path: .brikbyte-org-gov
 
       # -------------------------------------------------------------------
       # 2) Ensure Node is available for governance scripts
@@ -346,7 +361,8 @@ jobs:
       # -------------------------------------------------------------------
       - name: "Check container image tagging policy (SHA + SemVer)"
         run: |
-          node .github/scripts/check-image-tags.mjs --config out/image-tags.json
+          node .brikbyte-org-gov/.github/scripts/check-image-tags.mjs --config out/image-tags.json
+
 
       # -------------------------------------------------------------------
       # 10) (Optional) Emit tagging rule result stub for policy-gate
