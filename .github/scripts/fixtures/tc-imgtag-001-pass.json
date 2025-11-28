@@ -1,0 +1,7 @@
+{
+  "image": "ghcr.io/brikbyte-studios/example-app",
+  "tags": [
+    "v1.0.0",
+    "sha-0f9b9113"
+  ]
+}
