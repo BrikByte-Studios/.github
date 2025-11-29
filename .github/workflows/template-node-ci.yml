@@ -108,41 +108,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # -----------------------------------------------------------------------
-      # 3.1 Optional — Cache Cleanup & Forced Refresh
-      #
-      # Implements:
-      #   [TASK] PIPE-CACHE-STRATEGY-CONFIG-004 — Cache fallback & recovery
-      #
-      # Behavior:
-      #   - Only runs when FORCE_CACHE_REFRESH == 'true'.
-      #   - Calls .github/scripts/cache-clean.sh (if present) to delete:
-      #       • ~/.npm
-      #       • PROJECT_PATH/node_modules
-      #   - Safe to run multiple times (script must be idempotent).
-      # -----------------------------------------------------------------------
-      - name: "(Optional) Force Node cache cleanup"
-        if: ${{ env.FORCE_CACHE_REFRESH == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "🧹 FORCE CACHE REFRESH ENABLED — cleaning Node caches..."
-
-          NPM_CACHE="${HOME}/.npm"
-          NODE_MODULES="${PROJECT_PATH}/node_modules"
-
-          echo "   npm cache     : ${NPM_CACHE}"
-          echo "   node_modules  : ${NODE_MODULES}"
-
-          if [ ! -f ".github/scripts/cache-clean.sh" ]; then
-            echo "::warning::cache-clean.sh not found at .github/scripts/cache-clean.sh — skipping forced Node cache cleanup."
-          else
-            bash .github/scripts/cache-clean.sh "${NPM_CACHE}" "${NODE_MODULES}"
-          fi
-
-          echo "✅ Node cache cleanup step completed."
-
-      # -----------------------------------------------------------------------
       # 4) Cache Node dependencies (npm / Yarn / pnpm)
       #
       #    BrikByteOS composite action:
@@ -166,6 +131,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           project-path: ${{ env.PROJECT_PATH }}
+
+      # -----------------------------------------------------------------------
+      # 4.1 Optional — Cache Cleanup & Forced Refresh (PIPE-CACHE-STRATEGY-CONFIG-004)
+      # -----------------------------------------------------------------------
+      - name: "(Optional) Force Node cache cleanup"
+        if: ${{ env.FORCE_CACHE_REFRESH == 'true' }}
+        uses: BrikByte-Studios/.github/.github/actions/cache-clean@main
+        with:
+          paths: |
+            ${HOME}/.npm
+            ${{ env.PROJECT_PATH }}/node_modules
 
       # -----------------------------------------------------------------------
       # 5) Run canonical CI pipeline via Make

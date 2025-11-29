@@ -163,30 +163,15 @@ jobs:
           project-path: ${{ env.PROJECT_PATH }}
 
       # -----------------------------------------------------------------------
-      # 4.1 Optional — Cache Fallback & Forced Refresh Hook
-      #
-      #   Implements platform-wide cache strategy from:
-      #     [TASK] PIPE-CACHE-STRATEGY-CONFIG-004
-      #
-      #   Behavior:
-      #     - When FORCE_CACHE_REFRESH == 'true':
-      #         • Runs .github/scripts/cache-clean.sh
-      #         • Targets typical JVM cache locations:
-      #             - ~/.m2/repository    (Maven)
-      #             - ~/.gradle/caches   (Gradle)
-      #     - Safe to run multiple times (idempotent).
-      #     - Does NOT run by default; must be opted-in via workflow_call input.
+      # 4.1 Optional — JVM Cache Cleanup & Refresh
       # -----------------------------------------------------------------------
       - name: "(Optional) Force JVM cache cleanup"
         if: ${{ env.FORCE_CACHE_REFRESH == 'true' }}
-        shell: bash
-        run: |
-          echo "🧹 FORCE CACHE REFRESH ENABLED — cleaning JVM caches..."
-          echo "   Target paths:"
-          echo "     - ${HOME}/.m2/repository"
-          echo "     - ${HOME}/.gradle/caches"
-          bash .github/scripts/cache-clean.sh "${HOME}/.m2/repository" "${HOME}/.gradle/caches"
-          echo "✅ JVM cache cleanup completed."
+        uses: BrikByte-Studios/.github/.github/actions/cache-clean@main
+        with:
+          paths: |
+            ${HOME}/.m2/repository
+            ${HOME}/.gradle/caches
 
       # -----------------------------------------------------------------------
       # 5) Run canonical CI pipeline via Make

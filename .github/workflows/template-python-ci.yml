@@ -147,30 +147,15 @@ jobs:
           project-path: ${{ env.PROJECT_PATH }}
 
       # -----------------------------------------------------------------------
-      # 4.1 Optional — Cache Fallback & Forced Refresh Hook
-      #
-      #   Implements the platform-wide cache strategy from:
-      #     [TASK] PIPE-CACHE-STRATEGY-CONFIG-004
-      #
-      #   Behavior:
-      #     - When FORCE_CACHE_REFRESH == 'true':
-      #         • Runs .github/scripts/cache-clean.sh
-      #         • Targets typical Python cache locations:
-      #             - ~/.cache/pip
-      #             - PROJECT_PATH/.venv  (Poetry in-project virtualenv)
-      #     - Safe to run multiple times (script is idempotent).
-      #     - Does NOT run by default; must be opted-in via workflow_call input.
+      # 4.1 Optional — Python Cache Cleanup & Refresh
       # -----------------------------------------------------------------------
       - name: "(Optional) Force Python cache cleanup"
         if: ${{ env.FORCE_CACHE_REFRESH == 'true' }}
-        shell: bash
-        run: |
-          echo "🧹 FORCE CACHE REFRESH ENABLED — cleaning Python caches..."
-          echo "   Target paths:"
-          echo "     - ${HOME}/.cache/pip"
-          echo "     - ${PROJECT_PATH}/.venv"
-          bash .github/scripts/cache-clean.sh "${HOME}/.cache/pip" "${PROJECT_PATH}/.venv"
-          echo "✅ Python cache cleanup completed."
+        uses: BrikByte-Studios/.github/.github/actions/cache-clean@main
+        with:
+          paths: |
+            ${HOME}/.cache/pip
+            ${{ env.PROJECT_PATH }}/.venv
 
       # -----------------------------------------------------------------------
       # 5) Run canonical CI pipeline via Make
