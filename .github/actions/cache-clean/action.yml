@@ -51,11 +51,13 @@ runs:
         echo "[CACHE-CLEAN/ACTION] Invoked with paths:"
         printf '%s\n' "${CACHE_PATHS}"
 
-        if [ ! -f ".github/scripts/cache-clean.sh" ]; then
-          echo "::warning::cache-clean.sh not found at .github/scripts/cache-clean.sh in BrikByte-Studios/.github — skipping cleanup."
+        SCRIPT_PATH="${GITHUB_ACTION_PATH}/cache-clean.sh"
+
+        if [ ! -f "${SCRIPT_PATH}" ]; then
+          echo "::warning::cache-clean.sh not found at ${SCRIPT_PATH} — skipping cleanup."
           exit 0
         fi
 
-        echo "[CACHE-CLEAN/ACTION] Executing .github/scripts/cache-clean.sh ..."
-        bash .github/scripts/cache-clean.sh
+        echo "[CACHE-CLEAN/ACTION] Executing ${SCRIPT_PATH} ..."
+        bash "${SCRIPT_PATH}"
         echo "[CACHE-CLEAN/ACTION] cache-clean.sh completed."
