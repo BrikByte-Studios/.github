@@ -1,113 +1,75 @@
-# ======================================================================
-# BrikByteOS — .NET / NuGet Dependency Cache (dotnet restore)
-# ----------------------------------------------------------------------
-# TASK:
-#   PIPE-CACHE-DOTNET-BUILD-00X — Implement .NET dependency cache
+# ==============================================================================
+# BrikByteOS — .NET Dependency Cache (NuGet)
 #
-# PURPOSE:
-#   Provide a reusable composite action that:
-#     - Caches NuGet packages used by .NET builds.
-#     - Targets standard NuGet cache locations:
-#         • Linux/macOS: ~/.nuget/packages
-#         • (Optionally) shared NuGet HTTP cache dirs.
-#     - Cache key includes:
-#         • OS (runner.os)
-#         • dotnet-version (.NET SDK)
-#         • Hash of project/solution files:
-#             - *.sln
-#             - *.csproj / *.fsproj / *.vbproj
-#             - Directory.Packages.props / nuget.config (if present)
+# Action: BrikByte-Studios/.github/.github/actions/cache-dotnet-deps
 #
-# USAGE EXAMPLE (consumer workflow):
+# Purpose:
+#   - Detects .NET project/solution under a given project-path.
+#   - If found, caches:
+#       • Global NuGet packages: ~/.nuget/packages
+#       (optionally extend to tools in future: ~/.dotnet/tools)
+#   - Cache key includes:
+#       • runner.os
+#       • dotnet-version
+#       • hash of *.sln / *.csproj / *.fsproj / *.vbproj
 #
-#   env:
-#     DOTNET_VERSION: "8.0.x"
+# Usage (in a workflow):
 #
-#   jobs:
-#     build:
-#       runs-on: ubuntu-latest
-#       steps:
-#         - uses: actions/checkout@v4
+#   - name: "Cache .NET dependencies & NuGet artifacts"
+#     uses: BrikByte-Studios/.github/.github/actions/cache-dotnet-deps@main
+#     with:
+#       dotnet-version: "8.0.x"
+#       project-path: "dotnet-api-example"
 #
-#         - name: "Setup .NET"
-#           uses: actions/setup-dotnet@v4
-#           with:
-#             dotnet-version: ${{ env.DOTNET_VERSION }}
-#
-#         - name: "Cache .NET / NuGet dependencies"
-#           uses: BrikByte-Studios/.github/.github/actions/cache-dotnet-deps@main
-#           with:
-#             dotnet-version: ${{ env.DOTNET_VERSION }}
-#             project-path: dotnet-api-example
-#
-#         - name: "Restore, build, test"
-#           working-directory: dotnet-api-example
-#           run: |
-#             dotnet restore
-#             dotnet build --configuration Release
-#             dotnet test --configuration Release
-#
-# NOTES:
-#   - Designed for SDK-style projects with dotnet CLI + NuGet.
-#   - For monorepos, 'project-path' points to the root containing the .sln
-#     and/or primary .csproj.
-#   - No secrets are required; this only uses actions/cache.
-# ======================================================================
+# ==============================================================================
 
-name: "Cache .NET / NuGet Dependencies"
+name: "Cache .NET Dependencies (NuGet)"
 description: >
-  BrikByteOS composite action to cache .NET NuGet packages using
-  dotnet-version– and project file–aware cache keys.
+  BrikByteOS composite action to cache .NET NuGet dependencies based on
+  dotnet version + project/solution lock graph (sln/csproj/fsproj/vbproj).
 
 inputs:
   dotnet-version:
-    description: >
-      .NET SDK version used in CI (e.g. 7.0.x, 8.0.x). Must match the
-      version configured via actions/setup-dotnet for safe cache reuse.
+    description: ".NET SDK version used in CI (e.g., 6.0.x, 7.0.x, 8.0.x). Used in cache key."
     required: true
-
   project-path:
     description: >
-      Relative path to the .NET project/solution root (where *.sln or
-      primary *.csproj live). Defaults to '.' for single-project repos.
+      Relative path to the .NET project/solution folder (where .sln/.csproj live).
+      Defaults to the repository root if not provided.
     required: false
     default: "."
-
-outputs:
-  cache-path:
-    description: "NuGet cache path(s) that were cached (comma-separated)."
-    value: ${{ steps.cache-dotnet.outputs.cache-paths }}
 
 runs:
   using: "composite"
   steps:
-    # -------------------------------------------------------------------
-    # 1) Detect .NET project structure and NuGet cache paths
-    #
-    #    - Validates presence of:
-    #        • <project-path>/*.sln OR
-    #        • <project-path>/*.csproj / *.fsproj / *.vbproj
-    #    - If none found → we emit a notice + skip caching.
-    #
-    #    - Cache paths (Linux/macOS runners):
-    #        • NuGet global packages: ~/.nuget/packages
-    #        • (Optional) HTTP cache dirs can be added later if needed.
-    # -------------------------------------------------------------------
-    - name: "Detect .NET project & NuGet cache"
+    # -------------------------------------------------------------------------
+    # 1) Detect .NET project/solution & compute cache paths
+    # -------------------------------------------------------------------------
+    - name: "Detect .NET project/solution"
       id: detect
       shell: bash
+      env:
+        PROJECT_PATH_INPUT: ${{ inputs.project-path }}
       run: |
         set -euo pipefail
 
-        PROJECT_PATH="${{ inputs.project-path }}"
+        PROJECT_PATH="${PROJECT_PATH_INPUT:-.}"
         echo "🔍 Inspecting .NET project at: ${PROJECT_PATH}"
 
+        if [ ! -d "${PROJECT_PATH}" ]; then
+          echo "::notice::.NET cache: PROJECT_PATH '${PROJECT_PATH}' does not exist. Skipping cache."
+          echo "has-project=false"        >> "$GITHUB_OUTPUT"
+          echo "nuget-cache-paths="       >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Allow empty globs instead of literal patterns.
         shopt -s nullglob
 
         sln_files=( "${PROJECT_PATH}"/*.sln )
         csproj_files=( "${PROJECT_PATH}"/*.csproj )
         fsproj_files=( "${PROJECT_PATH}"/*.fsproj )
-        vbproj_files( "${PROJECT_PATH}"/*.vbproj )
+        vbproj_files=( "${PROJECT_PATH}"/*.vbproj )
 
         has_solution="false"
         has_project="false"
@@ -129,31 +91,29 @@ runs:
 
         echo "✅ .NET project files detected under '${PROJECT_PATH}'."
         echo "   Solutions: ${sln_files[*]:-<none>}"
-        echo "   Projects : ${csproj_files[*]:-<none>} ${fsproj_files[*]:-} ${vbproj_files[*]:-}"
+        echo "   Projects : ${csproj_files[*]:-<none>} ${fsproj_files[*]:-<none>} ${vbproj_files[*]:-<none>}"
 
-        # Global NuGet package cache (standard for Linux/macOS):
+        # Global NuGet package cache (standard on GitHub-hosted runners).
         NUGET_GLOBAL_PACKAGES="${HOME}/.nuget/packages"
-
         echo "📦 NuGet global packages cache: ${NUGET_GLOBAL_PACKAGES}"
 
         echo "has-project=true"                    >> "$GITHUB_OUTPUT"
         echo "nuget-cache-paths=${NUGET_GLOBAL_PACKAGES}" >> "$GITHUB_OUTPUT"
 
-    # -------------------------------------------------------------------
-    # 2) Cache NuGet packages with actions/cache@v4
+    # -------------------------------------------------------------------------
+    # 2) Cache NuGet global packages using actions/cache@v4
     #
-    #    - Only runs if we have a valid .NET project (has-project=true).
+    #    Key components:
+    #      - runner.os
+    #      - dotnet-version
+    #      - hash of sln/csproj/fsproj/vbproj (+ optional Directory.Packages.props)
     #
-    #    - Key components:
-    #        • dotnet-<os>-<dotnet-version>-<hash(project files)>
-    #
-    #    - Project file hash includes:
-    #        • *.sln / *.csproj / *.fsproj / *.vbproj
-    #        • Directory.Packages.props (central package management)
-    #        • nuget.config
-    # -------------------------------------------------------------------
-    - name: "Cache NuGet dependencies"
-      id: cache-dotnet
+    #    This ensures:
+    #      - Different .NET SDK versions do not share caches.
+    #      - Dependency graph changes (project changes) invalidate cache.
+    # -------------------------------------------------------------------------
+    - name: "Cache NuGet packages"
+      id: cache-nuget
       if: ${{ steps.detect.outputs.has-project == 'true' }}
       uses: actions/cache@v4
       with:
@@ -165,31 +125,23 @@ runs:
               '**/*.csproj',
               '**/*.fsproj',
               '**/*.vbproj',
-              '**/Directory.Packages.props',
-              '**/nuget.config'
+              '**/Directory.Packages.props'
             )
           }}
         restore-keys: |
           dotnet-${{ runner.os }}-${{ inputs.dotnet-version }}-
 
-    # -------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # 3) Log cache result for observability
-    # -------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     - name: "Summarize .NET cache result"
       if: ${{ steps.detect.outputs.has-project == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
 
-        CACHE_HIT="${{ steps.cache-dotnet.outputs.cache-hit }}"
-        NUGET_PATHS="${{ steps.detect.outputs.nuget-cache-paths }}"
-
-        if [ "${CACHE_HIT}" = "true" ]; then
-          echo "✅ .NET / NuGet cache HIT for dotnet-version=${{ inputs.dotnet-version }}."
+        if [ "${{ steps.cache-nuget.outputs.cache-hit }}" = "true" ]; then
+          echo "✅ .NET NuGet cache HIT (dotnet=${{ inputs.dotnet-version }})"
         else
-          echo "ℹ️ .NET / NuGet cache MISS for dotnet-version=${{ inputs.dotnet-version }} — new cache will be created."
+          echo "ℹ️ .NET NuGet cache MISS (dotnet=${{ inputs.dotnet-version }}) — will upload after restore."
         fi
-
-        echo "   Cached NuGet path(s): ${NUGET_PATHS}"
-
-        echo "cache-paths=${NUGET_PATHS}" >> "$GITHUB_OUTPUT"
