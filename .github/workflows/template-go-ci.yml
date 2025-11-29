@@ -16,34 +16,10 @@
 #   the Runtime Matrix (Go 1.21–1.23, default 1.22.x) and Build Conventions,
 #   delegating to canonical `make ci` in the target project so local dev and CI
 #   stay in sync.
-#
-# Usage (in consumer repos):
-#
-#   name: "Go Service CI"
-#   on:
-#     push:
-#       branches: [ main, master ]
-#     pull_request:
-#       branches: [ main, master ]
-#
-#   jobs:
-#     ci:
-#       uses: BrikByte-Studios/.github/.github/workflows/template-go-ci.yml@main
-#       with:
-#         go-version: "1.22.x"
-#         project-path: "go-api-example"   # folder containing go.mod + Makefile
-#
-# Notes:
-#   - Expects:
-#       • go.mod in project-path
-#       • Makefile exposing `make build`, `make test`, `make ci`
-#         as per PIPE-BUILD-CONVENTIONS-CONFIG-003.
-#   - Runtime versions and commands MUST match runtime-matrix.md/json.
 # -----------------------------------------------------------------------------
 name: "Template: Go CI"
 
 on:
-  # Reusable-only. Consumer repos define triggers and call this via workflow_call.
   workflow_call:
     inputs:
       go-version:
@@ -66,10 +42,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Enforce immutable module graph resolution inside CI
       GOFLAGS: "-mod=readonly"
       GO_VERSION: ${{ inputs.go-version || '1.22.x' }}
-      PROJECT_PATH: ${{ inputs.project-path || '.' }}
+      GO_PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -79,74 +54,67 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 2) Verify Go project layout
-      #    - go.mod present in PROJECT_PATH
-      #    - Makefile present with canonical targets (build/test/ci).
+      # 2) Verify expected Go project layout
       # -----------------------------------------------------------------------
       - name: Verify Go project layout
         run: |
-          echo "📁 Project path: ${PROJECT_PATH}"
+          echo "📁 PROJECT_PATH=${GO_PROJECT_PATH}"
 
-          if [ ! -d "${PROJECT_PATH}" ]; then
-            echo "❌ PROJECT_PATH '${PROJECT_PATH}' does not exist."
+          if [ ! -d "${GO_PROJECT_PATH}" ]; then
+            echo "❌ Folder '${GO_PROJECT_PATH}' does not exist."
             exit 1
           fi
 
-          if [ ! -f "${PROJECT_PATH}/go.mod" ]; then
-            echo "❌ go.mod not found at ${PROJECT_PATH}/go.mod."
-            echo "   This reusable Go CI template expects a valid Go module in PROJECT_PATH."
+          if [ ! -f "${GO_PROJECT_PATH}/go.mod" ]; then
+            echo "❌ Missing go.mod in ${GO_PROJECT_PATH}"
             exit 1
           fi
 
-          if [ ! -f "${PROJECT_PATH}/Makefile" ]; then
-            echo "❌ Makefile not found in ${PROJECT_PATH}."
-            echo "   This template expects a Makefile exposing 'make ci' as per"
-            echo "   PIPE-BUILD-CONVENTIONS-CONFIG-003."
+          if [ ! -f "${GO_PROJECT_PATH}/Makefile" ]; then
+            echo "❌ Missing Makefile exposing 'make ci'"
             exit 1
           fi
 
       # -----------------------------------------------------------------------
-      # 3) Setup Go
-      #    - Aligns with Runtime Matrix (1.21–1.23, default 1.22.x).
-      #    - Uses cache keyed off go.sum in PROJECT_PATH.
+      # 3) Setup Go – module graph locked via GOFLAGS + go.sum caching
       # -----------------------------------------------------------------------
       - name: Setup Go
-        # When available, you can switch to:
-        # uses: BrikByte-Studios/brik-pipe-actions/setup-go@v1
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: ${{ env.PROJECT_PATH }}/go.sum
+          cache-dependency-path: ${{ env.GO_PROJECT_PATH }}/go.sum
 
       # -----------------------------------------------------------------------
-      # 4) Run canonical CI pipeline via Make
-      #    - Delegates go mod download / build / test to Makefile:
-      #        make ci  → should internally call:
-      #          - go mod download
-      #          - go build ./...
-      #          - go test ./...
-      #      matching PIPE-BUILD-RUNTIMES-INIT-001.
+      # 4) Cache Go modules & build cache (custom BrikByteOS action)
+      #    - Caches $GOMODCACHE + $GOCACHE
+      #    - Keys include go-version + go.sum hash
+      # -----------------------------------------------------------------------
+      - name: "Cache Go modules & build cache"
+        id: cache-go
+        uses: BrikByte-Studios/.github/.github/actions/cache-go-deps@main
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          project-path: ${{ env.GO_PROJECT_PATH }}
+
+      # -----------------------------------------------------------------------
+      # 5) Run canonical `make ci` pipeline (build+test)
       # -----------------------------------------------------------------------
       - name: Run Go CI via Make
-        working-directory: ${{ env.PROJECT_PATH }}
+        working-directory: ${{ env.GO_PROJECT_PATH }}
         run: |
-          echo "🚦 Running Go CI via 'make ci' in ${PWD}..."
+          echo "🚦 Running Go CI via 'make ci'"
           make ci
 
       # -----------------------------------------------------------------------
-      # 5) Upload binary artifacts (optional)
-      #    - Conventional Go build output dirs:
-      #        ./bin   → common for custom build scripts
-      #        ./build → alternative build output directory
-      #    - If these folders don't exist, artifacts are simply ignored.
+      # 6) Upload build artifacts (bin/, build/)
       # -----------------------------------------------------------------------
-      - name: Upload binary artifacts
+      - name: Upload Go binaries
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: go-binaries
           path: |
-            ${{ env.PROJECT_PATH }}/bin
-            ${{ env.PROJECT_PATH }}/build
+            ${{ env.GO_PROJECT_PATH }}/bin
+            ${{ env.GO_PROJECT_PATH }}/build
           if-no-files-found: ignore

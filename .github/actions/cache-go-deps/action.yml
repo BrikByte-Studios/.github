@@ -1,0 +1,185 @@
+# ======================================================================
+# BrikByteOS — Go Dependency & Build Cache (Go Modules)
+# ----------------------------------------------------------------------
+# TASK (Go equivalent of JVM/Node/Python caching):
+#   PIPE-CACHE-GO-BUILD-00X — Implement Go module + build cache
+#
+# PURPOSE:
+#   Provide a reusable GitHub Actions *composite action* that:
+#     - Caches Go modules + build cache for Go projects using modules.
+#     - Cache paths:
+#         • Module cache:  $GOMODCACHE (or GOPATH/pkg/mod)
+#         • Build cache:   ~/.cache/go-build
+#     - Cache key includes:
+#         • OS (runner.os)
+#         • Go version (go-version input)
+#         • go.mod / go.sum hash (from project-path)
+#
+# USAGE (EXAMPLE):
+#
+#   # In a consumer workflow (e.g. brik-pipe-examples/go-api-example CI):
+#
+#   env:
+#     GO_VERSION: "1.22"
+#
+#   jobs:
+#     build:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - uses: actions/checkout@v4
+#
+#         - name: "Setup Go"
+#           uses: actions/setup-go@v5
+#           with:
+#             go-version: ${{ env.GO_VERSION }}
+#
+#         - name: "Cache Go modules & build cache"
+#           uses: BrikByte-Studios/.github/.github/actions/cache-go-deps@main
+#           with:
+#             go-version: ${{ env.GO_VERSION }}
+#             project-path: go-api-example
+#
+#         - name: "Build & test"
+#           working-directory: go-api-example
+#           run: |
+#             go test ./...
+#             go build ./...
+#
+# NOTES:
+#   - Designed for Go modules (go.mod/go.sum present).
+#   - For monorepos, `project-path` points at the Go module root.
+#   - No secrets required; uses actions/cache only.
+# ======================================================================
+
+name: "Cache Go Dependencies (Go Modules + Build Cache)"
+description: >
+  BrikByteOS composite action to cache Go module & build cache using
+  Go-version– and go.mod/go.sum–aware keys.
+
+inputs:
+  go-version:
+    description: >
+      Go version used in CI (e.g. 1.21, 1.22). This MUST match the version
+      configured via actions/setup-go for safe cache reuse.
+    required: true
+
+  project-path:
+    description: >
+      Relative path to the Go module root (where go.mod/go.sum live).
+      Defaults to '.' for single-project repos.
+    required: false
+    default: "."
+
+outputs:
+  cache-path:
+    description: "Root paths cached (modules + build cache, comma-separated)"
+    value: ${{ steps.cache-go.outputs.cache-paths }}
+
+runs:
+  using: "composite"
+  steps:
+    # -------------------------------------------------------------------
+    # 1) Discover module info & set cache paths
+    #
+    #    - Validates go.mod presence under project-path.
+    #    - Computes:
+    #        • MODULE_PATH = project-path
+    #        • GOMODFILE   = go.mod under that path
+    #        • GO_SUM      = go.sum (if present)
+    #
+    #    - Cache paths:
+    #        • Module cache  → $GOMODCACHE or GOPATH/pkg/mod fallback
+    #        • Build cache   → ~/.cache/go-build
+    #
+    #    - These paths are *outside* the repo and reused across jobs.
+    # -------------------------------------------------------------------
+    - name: "Detect Go module & cache paths"
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        MODULE_PATH="${{ inputs.project-path }}"
+        echo "🔍 Inspecting Go module at: ${MODULE_PATH}"
+
+        if [ ! -f "${MODULE_PATH}/go.mod" ]; then
+          echo "::notice::No go.mod found at '${MODULE_PATH}'. Go cache will be skipped."
+          echo "module-path="       >> "$GITHUB_OUTPUT"
+          echo "gomodcache-path="   >> "$GITHUB_OUTPUT"
+          echo "gobuildcache-path=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "✅ go.mod found at '${MODULE_PATH}/go.mod'."
+
+        # Determine module cache location:
+        #   - Prefer `go env GOMODCACHE` if available.
+        #   - Fallback: GOPATH/pkg/mod
+        GOMODCACHE="$(go env GOMODCACHE || true)"
+        if [ -z "${GOMODCACHE}" ]; then
+          GOPATH_VAL="$(go env GOPATH)"
+          GOMODCACHE="${GOPATH_VAL}/pkg/mod"
+        fi
+
+        # Build cache (standard Go):
+        GOBUILDCACHE="${HOME}/.cache/go-build"
+
+        echo "📦 Go module cache:  ${GOMODCACHE}"
+        echo "🧱 Go build cache:   ${GOBUILDCACHE}"
+
+        echo "module-path=${MODULE_PATH}"        >> "$GITHUB_OUTPUT"
+        echo "gomodcache-path=${GOMODCACHE}"     >> "$GITHUB_OUTPUT"
+        echo "gobuildcache-path=${GOBUILDCACHE}" >> "$GITHUB_OUTPUT"
+
+    # -------------------------------------------------------------------
+    # 2) Cache Go module + build cache
+    #
+    #    - Only runs if go.mod is present.
+    #    - Key components:
+    #        • go-<os>-<go-version>-<hash(go.mod/go.sum)>
+    #
+    #    - Paths cached:
+    #        • <GOMODCACHE>
+    #        • ~/.cache/go-build
+    # -------------------------------------------------------------------
+    - name: "Cache Go modules & build cache"
+      id: cache-go
+      if: ${{ steps.detect.outputs.module-path != '' }}
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ steps.detect.outputs.gomodcache-path }}
+          ${{ steps.detect.outputs.gobuildcache-path }}
+        key: >
+          go-${{ runner.os }}-${{ inputs.go-version }}-${{
+            hashFiles(
+              format('{0}/go.mod', inputs['project-path']),
+              format('{0}/go.sum', inputs['project-path'])
+            )
+          }}
+        restore-keys: |
+          go-${{ runner.os }}-${{ inputs.go-version }}-
+
+    # -------------------------------------------------------------------
+    # 3) Log cache result for observability
+    # -------------------------------------------------------------------
+    - name: "Summarize Go cache result"
+      if: ${{ steps.detect.outputs.module-path != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        CACHE_HIT="${{ steps.cache-go.outputs.cache-hit }}"
+        GOMODCACHE="${{ steps.detect.outputs.gomodcache-path }}"
+        GOBUILDCACHE="${{ steps.detect.outputs.gobuildcache-path }}"
+
+        if [ "${CACHE_HIT}" = "true" ]; then
+          echo "✅ Go cache HIT (modules + build)."
+        else
+          echo "ℹ️ Go cache MISS — a new cache archive will be created."
+        fi
+
+        echo "   • Module cache: ${GOMODCACHE}"
+        echo "   • Build cache : ${GOBUILDCACHE}"
+
+        echo "cache-paths=${GOMODCACHE},${GOBUILDCACHE}" >> "$GITHUB_OUTPUT"
