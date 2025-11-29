@@ -1,0 +1,192 @@
+# ======================================================================
+# BrikByteOS — JVM Dependency Cache (Maven / Gradle)
+# ----------------------------------------------------------------------
+# TASK:
+#   PIPE-CACHE-JVM-BUILD-003 — Implement JVM dependency cache (Maven / Gradle)
+#
+# PURPOSE:
+#   Provide a reusable GitHub Actions *composite action* that:
+#     - Detects whether the project uses:
+#         • Maven   → pom.xml
+#         • Gradle  → build.gradle or build.gradle.kts
+#     - Restores/saves dependency caches for:
+#         • Maven   → ~/.m2/repository
+#         • Gradle  → ~/.gradle/caches
+#     - Uses cache keys that include:
+#         • OS (runner.os)
+#         • Java version (java-version input)
+#         • Tool (maven|gradle)
+#         • Hash of build descriptor(s) (pom.xml / build.gradle*)
+#
+#   This action is intentionally thin:
+#     - It does not run builds.
+#     - It only manages cache keys & paths.
+#     - Build pipelines remain in workflows/templates.
+#
+# USAGE (EXAMPLE):
+#
+#   # In a consumer workflow (e.g. brik-pipe-examples/java-app CI):
+#
+#   env:
+#     JAVA_VERSION: "17"
+#
+#   jobs:
+#     build:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - uses: actions/checkout@v4
+#
+#         - name: "Setup Java (Temurin)"
+#           uses: actions/setup-java@v4
+#           with:
+#             distribution: "temurin"
+#             java-version: ${{ env.JAVA_VERSION }}
+#
+#         - name: "Cache JVM dependencies (Maven / Gradle)"
+#           id: cache-jvm
+#           uses: BrikByte-Studios/.github/.github/actions/cache-java-deps@main
+#           with:
+#             java-version: ${{ env.JAVA_VERSION }}
+#             project-path: java-api-example
+#
+#         - name: "Build & Test (Maven or Gradle)"
+#           working-directory: java-api-example
+#           run: mvn -B verify   # or ./gradlew build --no-daemon
+#
+# NOTES:
+#   - Supports monorepos via `project-path`.
+#   - Cache keys are Java-version–aware to avoid ABI conflicts.
+#   - Outputs:
+#       - tool       → maven | gradle | none
+#       - cache-path → cached directory (for corruption handling / debugging)
+# ======================================================================
+
+name: "Cache JVM Dependencies (Maven / Gradle)"
+description: >
+  BrikByteOS composite action to cache JVM dependencies for Maven (~/.m2/repository)
+  and Gradle (~/.gradle/caches) using Java-version– and buildfile-hash–aware keys.
+
+inputs:
+  java-version:
+    description: >
+      Java version used in CI (e.g. 17, 21). This MUST match the version
+      configured via actions/setup-java so caches remain safe & ABI-consistent.
+    required: true
+
+  project-path:
+    description: >
+      Relative path to the JVM project root (where pom.xml or build.gradle*
+      live). Defaults to '.' (repo root) for single-project repos.
+    required: false
+    default: "."
+
+outputs:
+  tool:
+    description: "Detected JVM build tool: maven | gradle | none"
+    value: ${{ steps.detect.outputs.tool }}
+
+  cache-path:
+    description: "Filesystem path of the dependency cache directory"
+    value: ${{ steps.detect.outputs.cache-path }}
+
+runs:
+  using: "composite"
+  steps:
+    # -------------------------------------------------------------------
+    # 1) Detect JVM build tool + decide cache path
+    #
+    #    Priority:
+    #      - Maven  → pom.xml         → ~/.m2/repository
+    #      - Gradle → build.gradle*   → ~/.gradle/caches
+    #
+    #    Outputs:
+    #      - tool       → maven | gradle | none
+    #      - cache-path → cache directory path
+    #
+    #    NOTE:
+    #      - Detection is scoped to project-path to support monorepos.
+    # -------------------------------------------------------------------
+    - name: "Detect JVM build tool (Maven / Gradle)"
+      id: detect
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        set -euo pipefail
+
+        tool="none"
+        cache_path=""
+
+        if [ -f "pom.xml" ]; then
+          tool="maven"
+          cache_path="${HOME}/.m2/repository"
+          echo "::notice::Detected Maven project (pom.xml) in '${PWD}'."
+        elif [ -f "build.gradle.kts" ] || [ -f "build.gradle" ]; then
+          tool="gradle"
+          cache_path="${HOME}/.gradle/caches"
+          echo "::notice::Detected Gradle project (build.gradle*) in '${PWD}'."
+        else
+          echo "::notice::No pom.xml or build.gradle(.kts) found in '${PWD}'."
+          echo "::notice::JVM dependency cache will be skipped (tool=none)."
+        fi
+
+        echo "tool=${tool}"        >> "$GITHUB_OUTPUT"
+        echo "cache-path=${cache_path}" >> "$GITHUB_OUTPUT"
+
+    # -------------------------------------------------------------------
+    # 2) Cache JVM dependencies
+    #
+    #    - Only runs if a supported tool was detected.
+    #    - Cache key components:
+    #        • jvm-<os>-<java-version>-<tool>-<hash(buildfiles)>
+    #
+    #    - hashFiles() includes:
+    #        • <project-path>/pom.xml
+    #        • <project-path>/build.gradle
+    #        • <project-path>/build.gradle.kts
+    #
+    #    - This ensures:
+    #        • Java version isolation.
+    #        • Maven vs Gradle separation.
+    #        • Invalidation on build file changes.
+    # -------------------------------------------------------------------
+    - name: "Cache JVM dependencies"
+      id: cache-java
+      if: ${{ steps.detect.outputs.tool != 'none' }}
+      uses: actions/cache@v4
+      with:
+        # Cached directory:
+        #   Maven  → ~/.m2/repository
+        #   Gradle → ~/.gradle/caches
+        path: ${{ steps.detect.outputs.cache-path }}
+
+        # Key: jvm-OS-JAVA_VERSION-tool-hash(buildfiles)
+        key: >
+          jvm-${{ runner.os }}-${{ inputs.java-version }}-${{ steps.detect.outputs.tool }}-${{
+            hashFiles(
+              format('{0}/pom.xml',        inputs['project-path']),
+              format('{0}/build.gradle',   inputs['project-path']),
+              format('{0}/build.gradle.kts', inputs['project-path'])
+            )
+          }}
+
+        # Restore key prefix for minor changes while still segregating
+        # by OS, Java version, and tool.
+        restore-keys: |
+          jvm-${{ runner.os }}-${{ inputs.java-version }}-${{ steps.detect.outputs.tool }}-
+
+    # -------------------------------------------------------------------
+    # 3) Log cache result for observability
+    #
+    #    - Emits clear HIT/MISS messages in CI logs.
+    # -------------------------------------------------------------------
+    - name: "Summarize JVM cache result"
+      if: ${{ steps.detect.outputs.tool != 'none' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [ "${{ steps.cache-java.outputs.cache-hit }}" = "true" ]; then
+          echo "✅ JVM dependency cache HIT for tool='${{ steps.detect.outputs.tool }}' (Java ${{ inputs.java-version }})"
+        else
+          echo "ℹ️ JVM dependency cache MISS for tool='${{ steps.detect.outputs.tool }}' (Java ${{ inputs.java-version }}) — cache will be created/updated."
+        fi

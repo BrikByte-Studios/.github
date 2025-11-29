@@ -57,7 +57,7 @@ on:
         default: "temurin"
         type: string
       enable-cache:
-        description: "Enable Maven cache (requires pom.xml in caller repo)"
+        description: "Enable centralized JVM dependency cache (Maven / Gradle)"
         required: false
         default: "true"
         type: string
@@ -123,7 +123,7 @@ jobs:
       # -----------------------------------------------------------------------
       # 3) Setup Java
       #    - Uses runtime matrix defaults (Java 17, Temurin).
-      #    - Cache is *optional* and primarily tuned for Maven.
+      #    - We rely on BrikByteOS cache-java-deps for Maven/Gradle caching.
       # -----------------------------------------------------------------------
       - name: Setup Java
         # When available, replace with:
@@ -132,11 +132,25 @@ jobs:
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
-          # Only enable Maven cache when ENABLE_CACHE == 'true'.
-          cache: ${{ env.ENABLE_CACHE == 'true' && 'maven' || '' }}
 
       # -----------------------------------------------------------------------
-      # 4) Run canonical CI pipeline via Make
+      # 4) Cache JVM dependencies (Maven / Gradle) via BrikByteOS composite
+      #
+      #    - Uses:
+      #        BrikByte-Studios/.github/.github/actions/cache-java-deps@main
+      #    - Only runs when ENABLE_CACHE == 'true'.
+      #    - project-path → same as PROJECT_PATH env (Java project root).
+      # -----------------------------------------------------------------------
+      - name: "Cache JVM dependencies (Maven / Gradle)"
+        if: ${{ env.ENABLE_CACHE == 'true' }}
+        id: cache-jvm
+        uses: BrikByte-Studios/.github/.github/actions/cache-java-deps@main
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          project-path: ${{ env.PROJECT_PATH }}
+
+      # -----------------------------------------------------------------------
+      # 5) Run canonical CI pipeline via Make
       #    - Delegates build + test to repo-level conventions:
       #        make ci → (clean + build + test), as defined in Makefile.
       #    - This keeps workflow thin and enforces same commands in CI and local dev.
@@ -148,7 +162,7 @@ jobs:
           make ci
 
       # -----------------------------------------------------------------------
-      # 5) Upload JAR artifacts (if present)
+      # 6) Upload JAR artifacts (if present)
       #    - Supports Maven (target/**/*.jar) and Gradle (build/libs/**/*.jar)
       #      relative to PROJECT_PATH.
       # -----------------------------------------------------------------------
