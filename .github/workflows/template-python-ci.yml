@@ -113,7 +113,29 @@ jobs:
           cache: "pip"
 
       # -----------------------------------------------------------------------
-      # 4) Run canonical CI pipeline via Make
+      # 4) Cache Python dependencies (pip / Poetry / Pipenv)
+      #
+      #   Composite action location:
+      #     Repo: BrikByte-Studios/.github
+      #     Path: .github/actions/cache-python-deps/action.yml
+      #
+      #   Responsibilities:
+      #     - Detect toolchain (pip / poetry / pipenv) based on lockfiles.
+      #     - Build cache key from:
+      #         runner.os + PYTHON_VERSION + tool + lockfile hash.
+      #     - Restore & save cache in a lockfile-safe, version-safe way.
+      #
+      #   This implements:
+      #     [TASK] PIPE-CACHE-PYTHON-BUILD-002
+      # -----------------------------------------------------------------------
+      - name: Cache Python dependencies (pip / Poetry / Pipenv)
+        uses: BrikByte-Studios/.github/.github/actions/cache-python-deps@main
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          project-path: ${{ env.PROJECT_PATH }}
+
+      # -----------------------------------------------------------------------
+      # 5) Run canonical CI pipeline via Make
       #    - Delegates all build/test logic to repo-level conventions:
       #        make ci  → clean + deps + build + test (see Makefile)
       #    - This keeps the workflow thin and ensures local == CI behavior.
@@ -125,7 +147,7 @@ jobs:
           make ci
 
       # -----------------------------------------------------------------------
-      # 5) Upload dist/build artifacts (optional)
+      # 6) Upload dist/build artifacts (optional)
       #    - dist/ and build/ under PROJECT_PATH are common packaging outputs.
       # -----------------------------------------------------------------------
       - name: Upload package artifacts

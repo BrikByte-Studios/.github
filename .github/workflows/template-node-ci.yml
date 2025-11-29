@@ -1,59 +1,47 @@
 # -----------------------------------------------------------------------------
-# [TEMPLATE] Baseline Python CI Workflow
+# [TEMPLATE] Baseline Node.js CI Workflow
 #
 # Repos:
 #   - Implemented in: BrikByte-Studios/.github
-#   - Consumed by: brik-pipe-examples/python-*, product repos via workflow_call
+#   - Consumed by: BrikByte-Studios/brik-pipe-examples (node-* examples)
+#     and product repos via workflow_call.
 #
-# WBS / Tasks:
+# WBS / Task:
 #   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
-#   - [TASK] PIPE-BUILD-CONVENTIONS-CONFIG-003
 #   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
 #   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
 #
 # Purpose:
-#   Standardized, reusable Python CI workflow for BrikByteOS Pipelines.
-#   Delegates all build/test logic to canonical `make ci` target in the
-#   target project, so CI and local dev share the same entrypoint.
+#   Standardized, reusable Node.js CI workflow for BrikByteOS Pipelines.
 #
 # Usage (in consumer repos):
-#
-#   name: "CI — Python API Example"
-#   on:
-#     push:
-#       branches: [ main, master ]
-#     pull_request:
-#       branches: [ main, master ]
-#
 #   jobs:
 #     ci:
-#       uses: BrikByte-Studios/.github/.github/workflows/template-python-ci.yml@main
+#       uses: BrikByte-Studios/.github/.github/workflows/template-node-ci.yml@main
 #       with:
-#         python-version: "3.11"
-#         project-path: "python-api-example"   # folder with main.py, requirements.txt, Makefile
+#         node-version: "20"
+#         project-path: "node-api-example"   # <— folder with package.json + Makefile
 #
 # Notes:
 #   - Runtime versions and commands MUST match runtime-matrix.md / runtime-matrix.json.
-#   - This workflow is reusable-only (workflow_call). Consumer repos define their
-#     own triggers and call this template as a job.
-#   - Expects a Makefile with `make build`, `make test`, `make ci` per
-#     PIPE-BUILD-CONVENTIONS-CONFIG-003.
+#   - This template focuses on build + test; deployments live in pipeline packs.
+#   - All build/test logic is delegated to `make ci` in the target repo.
 # -----------------------------------------------------------------------------
-name: "Template: Python CI"
+name: "Template: Node.js CI"
 
 on:
-  # Reusable workflow only — lives in BrikByte-Studios/.github.
-  # Product/example repos must define their own push/pull_request triggers and
-  # call this via workflow_call.
+  # NOTE:
+  #   This is a *reusable* workflow.
+  #   Product/example repos define triggers and call this via workflow_call.
   workflow_call:
     inputs:
-      python-version:
-        description: "Python version (must align with runtime matrix, e.g. 3.11)"
+      node-version:
+        description: "Node.js version to use (must be allowed by Runtime Matrix)"
         required: false
-        default: "3.11"
+        default: "20"  # Align with Node 20 LTS in runtime matrix
         type: string
       project-path:
-        description: "Relative path to the Python project root ('.' for repo root)"
+        description: "Relative path to the Node.js project (folder containing package.json + Makefile)"
         required: false
         default: "."
         type: string
@@ -63,11 +51,11 @@ permissions:
 
 jobs:
   build-and-test:
-    name: "Python: Build & Test"
+    name: "Node.js: Build & Test"
     runs-on: ubuntu-latest
 
     env:
-      PYTHON_VERSION: ${{ inputs.python-version || '3.11' }}
+      NODE_VERSION: ${{ inputs.node-version || '20' }}
       PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
@@ -78,14 +66,18 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 2) Verify Python project layout
-      #    - We expect:
-      #        - PROJECT_PATH/Makefile      → with `make ci`
-      #        - PROJECT_PATH/requirements.txt (optional but recommended)
+      # 2) Verify Node project structure
+      #    - Fail early if package.json or Makefile is missing in PROJECT_PATH.
       # -----------------------------------------------------------------------
-      - name: Verify project layout (Makefile + optional requirements.txt)
+      - name: Verify project layout (package.json + Makefile)
         run: |
           echo "📁 Project path: ${PROJECT_PATH}"
+
+          if [ ! -f "${PROJECT_PATH}/package.json" ]; then
+            echo "❌ package.json not found in ${PROJECT_PATH}."
+            echo "   This Node CI template expects a Node project at PROJECT_PATH."
+            exit 1
+          fi
 
           if [ ! -f "${PROJECT_PATH}/Makefile" ]; then
             echo "❌ Makefile not found in ${PROJECT_PATH}."
@@ -94,68 +86,59 @@ jobs:
             exit 1
           fi
 
-          if [ -f "${PROJECT_PATH}/requirements.txt" ]; then
-            echo "✅ requirements.txt found in ${PROJECT_PATH}."
-          else
-            echo "ℹ️ No requirements.txt found in ${PROJECT_PATH}; assuming deps are handled"
-            echo "   inside Makefile or pyproject.toml."
-          fi
+      # -----------------------------------------------------------------------
+      # 3) Setup Node.js runtime
+      #    - Uses official setup-node for now.
+      #    - NODE_VERSION feeds into cache keys via composite action below.
+      # -----------------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       # -----------------------------------------------------------------------
-      # 3) Setup Python runtime (3.10–3.12, default 3.11)
+      # 4) Cache Node dependencies (npm / Yarn / pnpm)
+      #
+      #    BrikByteOS composite action:
+      #      Repo: BrikByte-Studios/.github
+      #      Path: .github/actions/cache-node-deps/action.yml
+      #
+      #    Responsibilities:
+      #      - Detects package manager:
+      #          * pnpm  → pnpm-lock.yaml
+      #          * yarn  → yarn.lock
+      #          * npm   → package-lock.json (fallback)
+      #      - Configures actions/cache with:
+      #          * Key:   [os]-[node-version]-[manager]-[lockfileHash]
+      #          * Paths: manager-specific cache dirs (~/.npm, .yarn/cache, pnpm store)
+      #
+      #    This implements:
+      #      - [TASK] PIPE-CACHE-NODE-BUILD-001 — Implement Node module cache
       # -----------------------------------------------------------------------
-      - name: Setup Python
-        # When available, switch to:
-        # uses: BrikByte-Studios/brik-pipe-actions/setup-python@v1
-        uses: actions/setup-python@v5
+      - name: "Cache Node dependencies (npm / Yarn / pnpm)"
+        uses: BrikByte-Studios/.github/.github/actions/cache-node-deps@main
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-
-      # -----------------------------------------------------------------------
-      # 4) Cache Python dependencies (pip / Poetry / Pipenv)
-      #
-      #   Composite action location:
-      #     Repo: BrikByte-Studios/.github
-      #     Path: .github/actions/cache-python-deps/action.yml
-      #
-      #   Responsibilities:
-      #     - Detect toolchain (pip / poetry / pipenv) based on lockfiles.
-      #     - Build cache key from:
-      #         runner.os + PYTHON_VERSION + tool + lockfile hash.
-      #     - Restore & save cache in a lockfile-safe, version-safe way.
-      #
-      #   This implements:
-      #     [TASK] PIPE-CACHE-PYTHON-BUILD-002
-      # -----------------------------------------------------------------------
-      - name: Cache Python dependencies (pip / Poetry / Pipenv)
-        uses: BrikByte-Studios/.github/.github/actions/cache-python-deps@main
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          project-path: ${{ env.PROJECT_PATH }}
+          node-version: ${{ env.NODE_VERSION }}
 
       # -----------------------------------------------------------------------
       # 5) Run canonical CI pipeline via Make
       #    - Delegates all build/test logic to repo-level conventions:
-      #        make ci  → clean + deps + build + test (see Makefile)
-      #    - This keeps the workflow thin and ensures local == CI behavior.
+      #        make ci  → clean + install + build + test (see Makefile)
       # -----------------------------------------------------------------------
-      - name: Run Python CI via Make
+      - name: Run Node CI via Make
         working-directory: ${{ env.PROJECT_PATH }}
         run: |
-          echo "🚦 Running Python CI via 'make ci'..."
+          echo "🚦 Running Node CI via 'make ci'..."
           make ci
 
       # -----------------------------------------------------------------------
-      # 6) Upload dist/build artifacts (optional)
-      #    - dist/ and build/ under PROJECT_PATH are common packaging outputs.
+      # 6) Upload build artifacts (optional)
+      #    - dist/ under PROJECT_PATH is a common convention.
       # -----------------------------------------------------------------------
-      - name: Upload package artifacts
+      - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: python-dist
-          path: |
-            ${{ env.PROJECT_PATH }}/dist
-            ${{ env.PROJECT_PATH }}/build
+          name: node-dist
+          path: ${{ env.PROJECT_PATH }}/dist
           if-no-files-found: ignore
