@@ -3,7 +3,7 @@
 #
 # Purpose:
 #   - Provide a reusable composite action that:
-#       * Detects which Python toolchain is in use:
+#       * Detects which Python toolchain is in use in a given project path:
 #           - pip        (requirements.txt)
 #           - Poetry     (poetry.lock)
 #           - Pipenv     (Pipfile.lock)
@@ -15,28 +15,39 @@
 #           - Pipenv:  ~/.local/share/virtualenvs
 #       * Uses lockfile + Python version in cache key to avoid ABI conflicts.
 #
-# Usage:
-#   - In your workflow, set PYTHON_VERSION or pass python-version directly:
+# Usage (example):
 #
-#       env:
-#         PYTHON_VERSION: "3.11"
+#   env:
+#     PYTHON_VERSION: "3.11"
 #
-#       - uses: actions/setup-python@v5
-#         with:
-#           python-version: ${{ env.PYTHON_VERSION }}
+#   - uses: actions/setup-python@v5
+#     with:
+#       python-version: ${{ env.PYTHON_VERSION }}
 #
-#       - name: "Cache Python deps (pip / Poetry / Pipenv)"
-#         uses: BrikByte-Studios/.github/.github/actions/cache-python-deps@main
-#         with:
-#           python-version: ${{ env.PYTHON_VERSION }}
+#   - name: "Cache Python deps (pip / Poetry / Pipenv)"
+#     uses: BrikByte-Studios/.github/.github/actions/cache-python-deps@main
+#     with:
+#       python-version: ${{ env.PYTHON_VERSION }}
+#       project-path: python-api-example
 #
-#   - Then run `pip install` / `poetry install` / `pipenv install` as normal.
+#   - name: Install deps
+#     working-directory: python-api-example
+#     run: |
+#       # pip example:
+#       pip install -r requirements.txt
+#
+#       # poetry example:
+#       # poetry install --no-interaction --no-ansi
+#
+#       # pipenv example:
+#       # pipenv install --dev
 # ======================================================================
 
 name: "Cache Python Dependencies (pip / Poetry / Pipenv)"
 description: >
-  BrikByteOS composite action that detects pip / Poetry / Pipenv and
-  restores/saves a dependency cache keyed by Python version + lockfile hash.
+  BrikByteOS composite action that detects pip / Poetry / Pipenv in a given
+  project path and restores/saves a dependency cache keyed by Python version
+  + lockfile hash.
 
 inputs:
   python-version:
@@ -44,6 +55,12 @@ inputs:
       Python version used in CI (e.g. "3.10", "3.11"). This is used as part
       of the cache key to avoid ABI conflicts between Python versions.
     required: true
+  project-path:
+    description: >
+      Relative path to the Python project root (where requirements.txt,
+      poetry.lock, or Pipfile.lock live).
+    required: false
+    default: "."
 
 runs:
   using: "composite"
@@ -59,11 +76,12 @@ runs:
     #    Outputs:
     #      - tool       → pip | poetry | pipenv | none
     #      - cache_path → directory to cache
-    #      - lockfile   → lockfile path (if any)
+    #      - lockfile   → lockfile name (relative to project-path)
     # ---------------------------------------------------------------
     - name: "Detect Python dependency toolchain"
       id: detect
       shell: bash
+      working-directory: ${{ inputs.project-path }}
       run: |
         set -euo pipefail
 
@@ -77,24 +95,24 @@ runs:
           # in key to avoid cross-project pollution.
           cache_path="${HOME}/.local/share/virtualenvs"
           lockfile="Pipfile.lock"
-          echo "::notice::Detected Pipenv (Pipfile.lock)."
+          echo "::notice::Detected Pipenv (Pipfile.lock) in ${PWD}."
         elif [ -f "poetry.lock" ]; then
           tool="poetry"
-          # We will configure Poetry to use an in-project virtualenv (.venv)
+          # We'll configure Poetry to use an in-project virtualenv (.venv)
           # so cache path is stable and tied to this repo.
           cache_path=".venv"
           lockfile="poetry.lock"
-          echo "::notice::Detected Poetry (poetry.lock)."
+          echo "::notice::Detected Poetry (poetry.lock) in ${PWD}."
         elif [ -f "requirements.txt" ]; then
           tool="pip"
           cache_path="${HOME}/.cache/pip"
           lockfile="requirements.txt"
-          echo "::notice::Detected pip (requirements.txt)."
+          echo "::notice::Detected pip (requirements.txt) in ${PWD}."
         else
-          echo "::notice::No Pipfile.lock, poetry.lock, or requirements.txt found; Python cache will be skipped."
+          echo "::notice::No Pipfile.lock, poetry.lock, or requirements.txt found under '${PWD}'; Python cache will be skipped."
         fi
 
-        echo "tool=${tool}"       >> "$GITHUB_OUTPUT"
+        echo "tool=${tool}"             >> "$GITHUB_OUTPUT"
         echo "cache_path=${cache_path}" >> "$GITHUB_OUTPUT"
         echo "lockfile=${lockfile}"     >> "$GITHUB_OUTPUT"
 
@@ -107,6 +125,7 @@ runs:
     - name: "Configure Poetry virtualenv (in-project .venv)"
       if: ${{ steps.detect.outputs.tool == 'poetry' }}
       shell: bash
+      working-directory: ${{ inputs.project-path }}
       run: |
         set -euo pipefail
 
@@ -115,7 +134,7 @@ runs:
           poetry config virtualenvs.in-project true
           poetry config virtualenvs.create true
         else
-          echo "::warning::poetry.lock present, but 'poetry' is not installed yet."
+          echo "::warning::poetry.lock present in '${PWD}', but 'poetry' is not installed yet."
           echo "::warning::Install Poetry BEFORE this cache action for best behavior."
         fi
 
@@ -124,7 +143,7 @@ runs:
     #
     #    - Skips if no supported lockfile is found (tool == none).
     #    - Key includes:
-    #        runner.os, python-version, tool, lockfile hash.
+    #        runner.os, python-version, tool, lockfile hash (scoped to project-path).
     # ---------------------------------------------------------------
     - name: "Cache Python dependencies"
       if: ${{ steps.detect.outputs.tool != 'none' }}
@@ -132,7 +151,7 @@ runs:
       with:
         # Resolved cache path for the detected tool:
         #   pip     → ~/.cache/pip
-        #   poetry  → .venv
+        #   poetry  → .venv (in-project)
         #   pipenv  → ~/.local/share/virtualenvs
         path: ${{ steps.detect.outputs.cache_path }}
 
@@ -140,10 +159,14 @@ runs:
         #   - OS
         #   - Python version
         #   - Tool name
-        #   - Hash of all supported lockfiles (only one should exist at a time)
+        #   - Hash of relevant lockfiles under project-path
         key: >
           python-${{ runner.os }}-${{ inputs.python-version }}-${{ steps.detect.outputs.tool }}-${{
-            hashFiles('**/requirements.txt', '**/poetry.lock', '**/Pipfile.lock')
+            hashFiles(
+              format('{0}/requirements.txt', inputs['project-path']),
+              format('{0}/poetry.lock', inputs['project-path']),
+              format('{0}/Pipfile.lock', inputs['project-path'])
+            )
           }}
 
         # Restore key prefix to make minor changes still hit a close cache
