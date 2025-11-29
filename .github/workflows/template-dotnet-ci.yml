@@ -1,48 +1,17 @@
 # -----------------------------------------------------------------------------
 # [TEMPLATE] Baseline .NET CI Workflow
 #
-# Repos:
-#   - Implemented in: BrikByte-Studios/.github
-#   - Consumed by: brik-pipe-examples/dotnet-* and product repos via workflow_call
+#  🔥 Now enhanced with:
+#     → BrikByteOS central .NET dependency caching
+#       via cache-dotnet-deps@main
 #
-# WBS / Tasks:
-#   - [TASK] PIPE-BUILD-TEMPLATES-BUILD-002
-#   - [TASK] PIPE-BUILD-CONVENTIONS-CONFIG-003
-#   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
-#   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
+#  Cache Paths:
+#      ~/.nuget/packages          (packages restore)
+#      ~/.dotnet/tools            (global tools)
 #
-# Purpose:
-#   Reusable .NET build + test workflow aligned with:
-#     - Runtime Matrix (.NET 6/7/8)
-#     - Build Conventions (canonical Make targets)
+#  Cache Key drivers:
+#      OS + DOTNET_VERSION + hash(csproj/sln + Directory.Packages.props)
 #
-#   Delegates to repo-level Makefile:
-#     - make build   → dotnet build (Release)
-#     - make test    → dotnet test (Release, TRX output)
-#     - make ci      → CI-safe build + test combo
-#
-# Usage (in consumer repo):
-#
-#   name: ".NET Service CI"
-#   on:
-#     push:
-#       branches: [ main, master ]
-#     pull_request:
-#       branches: [ main, master ]
-#
-#   jobs:
-#     ci:
-#       uses: BrikByte-Studios/.github/.github/workflows/template-dotnet-ci.yml@main
-#       with:
-#         dotnet-version: "8.0.x"
-#         project-path: "dotnet-api-example"   # folder with .sln/.csproj + Makefile
-#
-# Notes:
-#   - Expects:
-#       • .sln and/or .csproj in project-path
-#       • Makefile exposing `make build`, `make test`, `make ci`
-#         as per PIPE-BUILD-CONVENTIONS-CONFIG-003.
-#   - Runtime versions and commands MUST match runtime-matrix.md/json.
 # -----------------------------------------------------------------------------
 name: "Template: .NET CI"
 
@@ -70,7 +39,7 @@ jobs:
 
     env:
       DOTNET_VERSION: ${{ inputs.dotnet-version || '8.0.x' }}
-      PROJECT_PATH: ${{ inputs.project-path || '.' }}
+      DOTNET_PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -81,81 +50,77 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 2) Verify .NET project layout
-      #    - PROJECT_PATH exists
-      #    - .sln or .csproj present
-      #    - Makefile present (with build/test/ci targets).
       # -----------------------------------------------------------------------
       - name: Verify .NET project layout
         run: |
-          echo "📁 Project path: ${PROJECT_PATH}"
+          echo "📁 Project path: ${DOTNET_PROJECT_PATH}"
 
-          if [ ! -d "${PROJECT_PATH}" ]; then
-            echo "❌ PROJECT_PATH '${PROJECT_PATH}' does not exist."
+          if [ ! -d "${DOTNET_PROJECT_PATH}" ]; then
+            echo "❌ PROJECT_PATH '${DOTNET_PROJECT_PATH}' does not exist."
             exit 1
           fi
 
-          cd "${PROJECT_PATH}"
+          cd "${DOTNET_PROJECT_PATH}"
 
           if compgen -G "*.sln" > /dev/null || compgen -G "**/*.csproj" > /dev/null; then
             echo "✅ .NET solution/project files detected."
           else
-            echo "❌ No .sln or .csproj files found in ${PWD}."
-            echo "   This template expects a .NET project in PROJECT_PATH."
+            echo "❌ No .sln or .csproj files found."
             exit 1
           fi
 
           if [ ! -f "Makefile" ]; then
-            echo "❌ Makefile not found in ${PWD}."
-            echo "   This template expects a Makefile exposing 'make ci' as per"
-            echo "   PIPE-BUILD-CONVENTIONS-CONFIG-003."
+            echo "❌ Missing Makefile exposing 'make ci'"
             exit 1
           fi
 
       # -----------------------------------------------------------------------
-      # 3) Setup .NET SDK
+      # 3) Setup .NET runtime (SDK)
       # -----------------------------------------------------------------------
-      - name: Setup .NET
-        # When a BrikByte composite exists, switch to:
-        # uses: BrikByte-Studios/brik-pipe-actions/setup-dotnet@v1
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       # -----------------------------------------------------------------------
-      # 4) Run canonical CI pipeline via Make
-      #    - Delegates to Makefile in PROJECT_PATH:
-      #        make ci  → should internally run:
-      #          - dotnet restore
-      #          - dotnet build  (Release, no-restore)
-      #          - dotnet test   (Release, no-build, TRX logger)
-      #      matching Runtime Matrix + build conventions.
+      # 4) BrikByteOS — .NET Dependency Cache
+      #    🟢 Restores/Saves ~/.nuget & ~/.dotnet/tools
+      #    🔑 Keys: OS + DOTNET_VERSION + csproj/sln hash
+      # -----------------------------------------------------------------------
+      - name: "Cache .NET dependencies & NuGet artifacts"
+        id: cache-dotnet
+        uses: BrikByte-Studios/.github/.github/actions/cache-dotnet-deps@main
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          project-path: ${{ env.DOTNET_PROJECT_PATH }}
+
+      # -----------------------------------------------------------------------
+      # 5) Execute CI Build via Make convention
       # -----------------------------------------------------------------------
       - name: Run .NET CI via Make
-        working-directory: ${{ env.PROJECT_PATH }}
+        working-directory: ${{ env.DOTNET_PROJECT_PATH }}
         run: |
-          echo "🚦 Running .NET CI via 'make ci' in ${PWD}..."
+          echo "🚦 Running .NET CI pipeline..."
           make ci
 
       # -----------------------------------------------------------------------
-      # 5) Upload test results (TRX)
-      #    - Convention: any TestResult*.trx under PROJECT_PATH.
+      # 6) Upload test reports (TRX)
       # -----------------------------------------------------------------------
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-test-results
-          path: ${{ env.PROJECT_PATH }}/**/TestResult*.trx
+          path: ${{ env.DOTNET_PROJECT_PATH }}/**/TestResult*.trx
           if-no-files-found: ignore
 
       # -----------------------------------------------------------------------
-      # 6) Upload build artifacts
-      #    - Convention: Release binaries under bin/Release.
+      # 7) Upload built binaries
       # -----------------------------------------------------------------------
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-artifacts
-          path: ${{ env.PROJECT_PATH }}/**/bin/Release/**
+          path: ${{ env.DOTNET_PROJECT_PATH }}/**/bin/Release/**
           if-no-files-found: ignore
