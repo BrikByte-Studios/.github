@@ -1,83 +1,38 @@
 # BrikByteOS — Node Dependency Cache (npm / Yarn Berry / pnpm)
 # ---------------------------------------------------------------------------
-# PIPE-CACHE-NODE-BUILD-001
+# PIPE-CACHE-NODE-BUILD-001 + ENHANCED (project-path support)
 #
-# Purpose:
-#   - Provide a *central*, lockfile-aware Node dependency cache for:
-#       • npm
-#       • Yarn Berry (v2+)
-#       • pnpm
-#   - Cache keys include:
-#       • OS (Linux, Windows, macOS)
-#       • Node version (to avoid ABI conflicts)
-#       • Package manager (npm/yarn/pnpm)
-#       • Lockfile hash (to invalidate cache on dependency change)
-#
-# Usage (example in a workflow):
-#
-#   jobs:
-#     build:
-#       runs-on: ubuntu-latest
-#       steps:
-#         - uses: actions/checkout@v4
-#
-#         - name: "Setup Node.js"
-#           uses: actions/setup-node@v4
-#           with:
-#             node-version: 20
-#
-#         - name: "Cache Node dependencies"
-#           uses: BrikByte-Studios/.github/.github/actions/cache-node-deps@main
-#           with:
-#             node-version: 20
-#
-#         - name: "Install dependencies"
-#           run: npm ci
-#
-# Notes:
-#   - Manager is auto-detected via presence of lockfile:
-#       pnpm-lock.yaml → pnpm
-#       yarn.lock      → yarn (Berry)
-#       package-lock.json (or default) → npm
-#   - No secrets are required; this only uses actions/cache.
+# New Feature:
+#   ✔ Supports `project-path` — detects lockfiles inside target folder
+#   ✔ Cache key now hashes lockfiles inside project-path
+#   ✔ Safe defaults maintained for monorepos / multi-app repos
 # ---------------------------------------------------------------------------
 
-name: "Cache Node Dependencies (npm / Yarn / pnpm)"
+name: "Cache Node Dependencies (npm / Yarn / pnpm) — project aware"
 description: >
   BrikByteOS composite action to cache Node dependencies across npm, Yarn Berry, and pnpm.
-  Cache keys include lockfile + Node version to avoid ABI conflicts and stale deps.
+  Supports monorepos via project-path detection.
 
 inputs:
   node-version:
-    description: >
-      Node.js version used in CI (e.g. 18, 20).
-      This MUST match the version used by actions/setup-node in your workflow,
-      so cache keys remain consistent and safe.
+    description: "Node version (must match setup-node version)."
     required: true
+
+  project-path:
+    description: "Where package.json + lockfiles live. Supports monorepo apps."
+    required: false
+    default: "."   # root fallback
 
 runs:
   using: "composite"
   steps:
     # -----------------------------------------------------------------------
-    # 1) Detect package manager based on lockfile presence.
-    #
-    #    Priority:
-    #      1) pnpm-lock.yaml → pnpm
-    #      2) yarn.lock      → yarn
-    #      3) package-lock.json / default → npm
-    #
-    #    Outputs:
-    #      manager     → npm | yarn | pnpm
-    #      cache-path  → filesystem path to cache (manager-specific)
-    #
-    #    NOTE:
-    #      - For Yarn Berry we cache .yarn/cache (standard Pattern).
-    #      - For pnpm on GitHub-hosted Ubuntu, store is ~/.local/share/pnpm/store.
-    #      - For npm we use ~/.npm (standard global cache).
+    # 1) Detect package manager based on lockfiles inside project-path
     # -----------------------------------------------------------------------
     - name: "Detect Node package manager"
       id: detect
       shell: bash
+      working-directory: ${{ inputs.project-path }}
       run: |
         set -euo pipefail
 
@@ -86,74 +41,51 @@ runs:
 
         if [ -f "pnpm-lock.yaml" ]; then
           manager="pnpm"
-          # pnpm store location on GitHub-hosted Ubuntu runners:
           cache_path="${HOME}/.local/share/pnpm/store"
         elif [ -f "yarn.lock" ]; then
           manager="yarn"
-          # Yarn Berry/Fn: .yarn/cache at repo root
           cache_path=".yarn/cache"
         elif [ -f "package-lock.json" ]; then
           manager="npm"
           cache_path="${HOME}/.npm"
         else
-          echo "No known Node lockfile found (pnpm-lock.yaml / yarn.lock / package-lock.json)."
-          echo "Defaulting to npm cache at ~/.npm."
+          echo "::notice::No lockfile found in '${PWD}', defaulting to npm ~/.npm cache"
         fi
 
-        echo "Detected package manager: ${manager}"
-        echo "Using cache path: ${cache_path}"
-
-        {
-          echo "manager=${manager}"
-          echo "cache-path=${cache_path}"
-        } >> "$GITHUB_OUTPUT"
+        echo "manager=${manager}"     >> "$GITHUB_OUTPUT"
+        echo "cache-path=${cache_path}" >> "$GITHUB_OUTPUT"
+        echo "::notice::Detected Node manager='${manager}' at path='${PWD}'"
 
     # -----------------------------------------------------------------------
-    # 2) Cache Node dependencies using actions/cache@v4.
-    #
-    #    - Key components:
-    #        • runner.os          → ubuntu-latest, windows-latest, etc.
-    #        • inputs.node-version → to avoid ABI conflicts
-    #        • steps.detect.outputs.manager → npm|yarn|pnpm
-    #        • hashFiles(...)     → hash over all lockfiles present
-    #
-    #    - We hash ALL lockfile types, but manager is part of the key,
-    #      so switching from npm↔yarn↔pnpm does NOT cross-pollute caches.
-    #
-    #    - If no lockfile exists, hashFiles returns an empty string; cache
-    #      will still be unique per manager + Node version.
-    #
-    #    Outputs:
-    #      cache-hit (via actions/cache) is visible as:
-    #        steps.cache-deps.outputs.cache-hit == 'true' | 'false'
-    #
-    #    NOTE:
-    #      - We do not try to be clever with skipping installs; we just rely
-    #        on the package manager to reuse its local cache for speed.
+    # 2) Cache Dependencies — key includes lockfile hash inside project-path
     # -----------------------------------------------------------------------
-    - name: "Cache Node dependencies"
-      id: cache-deps
+    - name: "Cache Node deps"
+      id: cache-node
       uses: actions/cache@v4
       with:
         path: ${{ steps.detect.outputs.cache-path }}
         key: >
-          node-${{ runner.os }}-${{ inputs.node-version }}-${{ steps.detect.outputs.manager }}-${{ hashFiles('**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml') }}
+          node-${{ runner.os }}-${{ inputs.node-version }}-${{ steps.detect.outputs.manager }}-${{
+          hashFiles(
+            format('{0}/package-lock.json', inputs['project-path']),
+            format('{0}/yarn.lock', inputs['project-path']),
+            format('{0}/pnpm-lock.yaml', inputs['project-path'])
+          ) }}
         restore-keys: |
           node-${{ runner.os }}-${{ inputs.node-version }}-${{ steps.detect.outputs.manager }}-
 
     # -----------------------------------------------------------------------
-    # 3) Log cache result for debugging / observability
-    #
-    #    - Writes a short message indicating hit/miss.
-    #    - This is purely for log clarity; no behavior change.
+    # 3) Summarize Cache Result in Logs
     # -----------------------------------------------------------------------
-    - name: "Summarize Node cache result"
+    - name: "Cache Summary"
       shell: bash
       run: |
-        set -euo pipefail
-
-        if [ "${{ steps.cache-deps.outputs.cache-hit }}" = "true" ]; then
-          echo "✅ Node dependency cache HIT for manager=${{ steps.detect.outputs.manager }} (Node ${{ inputs.node-version }})"
+        if [ "${{ steps.cache-node.outputs.cache-hit }}" = "true" ]; then
+          echo "🚀 Cache restored successfully for ${{
+            steps.detect.outputs.manager
+          }} (Node v${{ inputs.node-version }})"
         else
-          echo "ℹ️ Node dependency cache MISS for manager=${{ steps.detect.outputs.manager }} (Node ${{ inputs.node-version }}) — will create/update cache."
+          echo "🆕 Cache created for ${{
+            steps.detect.outputs.manager
+          }} (Node v${{ inputs.node-version }})"
         fi

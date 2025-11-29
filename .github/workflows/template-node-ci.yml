@@ -95,6 +95,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          project-path: ${{ env.PROJECT_PATH }}
 
       # -----------------------------------------------------------------------
       # 4) Cache Node dependencies (npm / Yarn / pnpm)
