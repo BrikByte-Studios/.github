@@ -4,6 +4,8 @@
 #  🔥 Now enhanced with:
 #     → BrikByteOS central .NET dependency caching
 #       via cache-dotnet-deps@main
+#     → Optional cache refresh / cleanup hook
+#       via .github/scripts/cache-clean.sh
 #
 #  Cache Paths:
 #      ~/.nuget/packages          (packages restore)
@@ -12,6 +14,9 @@
 #  Cache Key drivers:
 #      OS + DOTNET_VERSION + hash(csproj/sln + Directory.Packages.props)
 #
+#  Related Tasks:
+#      - [TASK] PIPE-CACHE-DOTNET-BUILD-003  — .NET cache
+#      - [TASK] PIPE-CACHE-STRATEGY-CONFIG-004 — Cache fallback & recovery
 # -----------------------------------------------------------------------------
 name: "Template: .NET CI"
 
@@ -28,6 +33,13 @@ on:
         required: false
         default: "."
         type: string
+      force-cache-refresh:
+        description: >
+          Optional: when 'true', run cache-clean.sh to force NuGet/tooling cache
+          refresh as per PIPE-CACHE-STRATEGY-CONFIG-004.
+        required: false
+        default: "false"
+        type: string
 
 permissions:
   contents: read
@@ -40,6 +52,7 @@ jobs:
     env:
       DOTNET_VERSION: ${{ inputs.dotnet-version || '8.0.x' }}
       DOTNET_PROJECT_PATH: ${{ inputs.project-path || '.' }}
+      FORCE_CACHE_REFRESH: ${{ inputs.force-cache-refresh || 'false' }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -81,6 +94,42 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # -----------------------------------------------------------------------
+      # 3.1 Optional — Force .NET cache cleanup (NuGet + dotnet tools)
+      #
+      #   Implements the cache fallback/refresh semantics from:
+      #     [TASK] PIPE-CACHE-STRATEGY-CONFIG-004
+      #
+      #   Behavior:
+      #     - Only runs when FORCE_CACHE_REFRESH == 'true'.
+      #     - Targets:
+      #         ~/.nuget/packages
+      #         ~/.dotnet/tools
+      #     - Uses .github/scripts/cache-clean.sh if present.
+      #     - Safe to run multiple times (idempotent).
+      # -----------------------------------------------------------------------
+      - name: "(Optional) Force .NET cache cleanup"
+        if: ${{ env.FORCE_CACHE_REFRESH == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "🧹 FORCE CACHE REFRESH ENABLED — cleaning .NET caches..."
+
+          NUGET_CACHE="${HOME}/.nuget/packages"
+          DOTNET_TOOLS="${HOME}/.dotnet/tools"
+
+          echo "   NuGet cache : ${NUGET_CACHE}"
+          echo "   dotnet tools: ${DOTNET_TOOLS}"
+
+          if [ ! -f ".github/scripts/cache-clean.sh" ]; then
+            echo "::warning::cache-clean.sh not found at .github/scripts/cache-clean.sh — skipping forced .NET cache cleanup."
+          else
+            bash .github/scripts/cache-clean.sh "${NUGET_CACHE}" "${DOTNET_TOOLS}"
+          fi
+
+          echo "✅ .NET cache cleanup step completed."
 
       # -----------------------------------------------------------------------
       # 4) BrikByteOS — .NET Dependency Cache

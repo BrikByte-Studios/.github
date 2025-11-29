@@ -122,6 +122,19 @@ jobs:
           project-path: ${{ env.PROJECT_PATH }}
 
       # -----------------------------------------------------------------------
+      # 4.1 Optional — Cache Fallback & Refresh Hook
+      # Implements PIPE-CACHE-STRATEGY-CONFIG-004
+      # Use ONLY when we detect lockfile hash change, mutation, or build failure.
+      # -----------------------------------------------------------------------
+      - name: (Optional) Cache Cleanup & Forced Refresh
+        if: ${{ inputs.force-cache-refresh == 'true' }}
+        run: |
+          echo "🧹 FORCE REFRESH ENABLED — cleaning Node cache directories..."
+          bash .github/scripts/cache-clean.sh "${HOME}/.npm" "${PROJECT_PATH}/node_modules"
+        # NOTE: requires new workflow_call input:
+        #   force-cache-refresh: "true" | "false"
+
+      # -----------------------------------------------------------------------
       # 5) Run canonical CI pipeline via Make
       #    - Delegates all build/test logic to repo-level conventions:
       #        make ci  → clean + install + build + test (see Makefile)

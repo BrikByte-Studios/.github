@@ -10,6 +10,8 @@
 #   - [TASK] PIPE-BUILD-CONVENTIONS-CONFIG-003
 #   - PIPE-CORE-1.1.2 — CI/CD Templates Repo
 #   - PIPE-BUILD-RUNTIMES-INIT-001 — Runtime Matrix
+#   - [TASK] PIPE-CACHE-JVM-BUILD-003 — JVM cache (Maven / Gradle)
+#   - [TASK] PIPE-CACHE-STRATEGY-CONFIG-004 — Cache fallback & recovery
 #
 # Purpose:
 #   Standardized, reusable Java CI workflow (Maven/Gradle) for BrikByteOS
@@ -32,6 +34,9 @@
 #         java-version: "17"
 #         distribution: "temurin"
 #         project-path: "java-api-example"   # or "." if project at repo root
+#         enable-cache: "true"
+#         # Optional, for debugging / corruption recovery:
+#         # force-cache-refresh: "true"
 #
 # Notes:
 #   - Expects a Java project in `project-path` with:
@@ -61,6 +66,13 @@ on:
         required: false
         default: "true"
         type: string
+      force-cache-refresh:
+        description: >
+          Optional: when 'true', run cache-clean.sh to force JVM cache refresh
+          (implements PIPE-CACHE-STRATEGY-CONFIG-004 fallback behavior).
+        required: false
+        default: "false"
+        type: string
       project-path:
         description: "Relative path to the Java project ('.' or 'subdir')"
         required: false
@@ -79,6 +91,7 @@ jobs:
       JAVA_VERSION: ${{ inputs.java-version || '17' }}
       JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
       ENABLE_CACHE: ${{ inputs.enable-cache || 'true' }}
+      FORCE_CACHE_REFRESH: ${{ inputs.force-cache-refresh || 'false' }}
       PROJECT_PATH: ${{ inputs.project-path || '.' }}
 
     steps:
@@ -148,6 +161,32 @@ jobs:
         with:
           java-version: ${{ env.JAVA_VERSION }}
           project-path: ${{ env.PROJECT_PATH }}
+
+      # -----------------------------------------------------------------------
+      # 4.1 Optional — Cache Fallback & Forced Refresh Hook
+      #
+      #   Implements platform-wide cache strategy from:
+      #     [TASK] PIPE-CACHE-STRATEGY-CONFIG-004
+      #
+      #   Behavior:
+      #     - When FORCE_CACHE_REFRESH == 'true':
+      #         • Runs .github/scripts/cache-clean.sh
+      #         • Targets typical JVM cache locations:
+      #             - ~/.m2/repository    (Maven)
+      #             - ~/.gradle/caches   (Gradle)
+      #     - Safe to run multiple times (idempotent).
+      #     - Does NOT run by default; must be opted-in via workflow_call input.
+      # -----------------------------------------------------------------------
+      - name: "(Optional) Force JVM cache cleanup"
+        if: ${{ env.FORCE_CACHE_REFRESH == 'true' }}
+        shell: bash
+        run: |
+          echo "🧹 FORCE CACHE REFRESH ENABLED — cleaning JVM caches..."
+          echo "   Target paths:"
+          echo "     - ${HOME}/.m2/repository"
+          echo "     - ${HOME}/.gradle/caches"
+          bash .github/scripts/cache-clean.sh "${HOME}/.m2/repository" "${HOME}/.gradle/caches"
+          echo "✅ JVM cache cleanup completed."
 
       # -----------------------------------------------------------------------
       # 5) Run canonical CI pipeline via Make
