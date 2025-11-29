@@ -88,19 +88,40 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 3) Setup Node.js runtime
-      #    Prefer BrikByte composite action if available; fallback to official.
-      #    - Node 20 LTS primary, 18 allowed by runtime matrix.
+      #    - Uses official setup-node for now.
+      #    - NODE_VERSION feeds into cache keys via composite action below.
       # -----------------------------------------------------------------------
       - name: Setup Node.js
-        # uses: BrikByte-Studios/brik-pipe-actions/setup-node@v1
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ${{ env.PROJECT_PATH }}/package-lock.json
 
       # -----------------------------------------------------------------------
-      # 4) Run canonical CI pipeline via Make
+      # 4) Cache Node dependencies (npm / Yarn / pnpm)
+      #
+      #    BrikByteOS composite action:
+      #      Repo: BrikByte-Studios/.github
+      #      Path: .github/actions/cache-node-deps/action.yml
+      #
+      #    Responsibilities:
+      #      - Detects package manager:
+      #          * pnpm  → pnpm-lock.yaml
+      #          * yarn  → yarn.lock
+      #          * npm   → package-lock.json (fallback)
+      #      - Configures actions/cache with:
+      #          * Key:   [os]-[node-version]-[manager]-[lockfileHash]
+      #          * Paths: manager-specific cache dirs (~/.npm, .yarn/cache, pnpm store)
+      #
+      #    This implements:
+      #      - [TASK] PIPE-CACHE-NODE-BUILD-001 — Implement Node module cache
+      # -----------------------------------------------------------------------
+      - name: "Cache Node dependencies (npm / Yarn / pnpm)"
+        uses: BrikByte-Studios/.github/.github/actions/cache-node-deps@main
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # -----------------------------------------------------------------------
+      # 5) Run canonical CI pipeline via Make
       #    - Delegates all build/test logic to repo-level conventions:
       #        make ci  → clean + install + build + test (see Makefile)
       # -----------------------------------------------------------------------
@@ -111,7 +132,7 @@ jobs:
           make ci
 
       # -----------------------------------------------------------------------
-      # 5) Upload build artifacts (optional)
+      # 6) Upload build artifacts (optional)
       #    - dist/ under PROJECT_PATH is a common convention.
       # -----------------------------------------------------------------------
       - name: Upload build artifacts
