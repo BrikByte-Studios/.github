@@ -125,7 +125,14 @@ jobs:
         working-directory: ${{ env.DOTNET_PROJECT_PATH }}
         run: |
           echo "🚦 Running .NET CI pipeline..."
+          START_TIME=$(date +%s)
+
           make ci
+          
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+
+          echo "⏱ CI completed in ${DURATION}s"
 
       # -----------------------------------------------------------------------
       # 6) Upload test reports (TRX)
