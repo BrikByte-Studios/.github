@@ -6,7 +6,7 @@
  * Task: PIPE-TEST-COVERAGE-INTEG-003
  *
  * Purpose:
- *   Read language-specific coverage outputs (Node, Python, JVM, Go),
+ *   Read language-specific coverage outputs (Node, Python, JVM, Go, .NET),
  *   compute overall line coverage, and emit a normalized coverage.json that
  *   governance + audit layers can consume consistently.
  *
@@ -39,6 +39,12 @@
  *     --out out/coverage.json \
  *     --go-file coverage.out
  *
+ *   # .NET example (OpenCover XML from coverlet):
+ *   node .github/scripts/coverage-merge.mjs \
+ *     --language dotnet \
+ *     --out out/coverage.json \
+ *     --dotnet-file TestResults/coverage.net.opencover.xml
+ *
  * Arguments:
  *   --language=<node|python|java|go|dotnet>
  *   --out=<path/to/coverage.json>
@@ -48,6 +54,7 @@
  *     --python-file=<path>
  *     --jvm-file=<path>
  *     --go-file=<path>
+ *     --dotnet-file=<path>
  *
  * Output (normalized):
  *
@@ -348,8 +355,22 @@ function parseGoCoverage(filePath) {
 }
 
 /**
- * Placeholder parser for .NET coverage.
- * For v1 we simply emit a stub if a coverage file is provided or log a warning.
+ * Parse .NET coverage from an OpenCover-style XML file (e.g. coverlet).
+ *
+ * Expected shape (simplified):
+ *
+ *   <CoverageSession>
+ *     <Summary numSequencePoints="123" visitedSequencePoints="110" ... />
+ *     ...
+ *   </CoverageSession>
+ *
+ * We compute:
+ *   line% = visitedSequencePoints / numSequencePoints * 100
+ *
+ * Notes:
+ *   - For v1 we keep this intentionally simple and only look at <Summary>.
+ *   - If the XML does not contain a usable <Summary>, we log a warning and
+ *     return a stub with line = null.
  */
 function parseDotnetCoverage(filePath) {
   if (!filePath || !fileExists(filePath)) {
@@ -357,18 +378,42 @@ function parseDotnetCoverage(filePath) {
       "No .NET coverage file provided; emitting stub coverage.json. Wire coverlet/opencover later."
     );
     return {
-      tool: "dotnet-coverage (stub)",
+      tool: "dotnet-opencover (stub)",
       summary: {
         line: null,
       },
     };
   }
 
-  // If you later adopt coverlet/opencover, parse the file here.
+  const raw = fs.readFileSync(filePath, "utf8");
+
+  // Roughly match: <Summary ... numSequencePoints="123" ... visitedSequencePoints="110" ... />
+  const match = raw.match(
+    /<Summary[^>]*\snumSequencePoints="(\d+)"[^>]*\svisitedSequencePoints="(\d+)"[^>]*\/?>/i
+  );
+
+  if (!match) {
+    logWarn(
+      `Unable to locate <Summary> with numSequencePoints/visitedSequencePoints in .NET coverage XML at ${filePath}.`
+    );
+    return {
+      tool: "dotnet-opencover (unparsed)",
+      summary: {
+        line: null,
+      },
+    };
+  }
+
+  const totalSeqPoints = parseInt(match[1], 10) || 0;
+  const visitedSeqPoints = parseInt(match[2], 10) || 0;
+
+  const linePct =
+    totalSeqPoints > 0 ? (visitedSeqPoints / totalSeqPoints) * 100 : null;
+
   return {
-    tool: "dotnet-coverage (unparsed)",
+    tool: "dotnet-opencover",
     summary: {
-      line: null,
+      line: round(linePct),
     },
   };
 }
@@ -447,7 +492,8 @@ function computeCoverage(languageKey) {
 
     case "java": {
       const explicit = args["jvm-file"];
-      let file = explicit || path.join("target", "site", "jacoco", "jacoco.xml");
+      let file =
+        explicit || path.join("target", "site", "jacoco", "jacoco.xml");
 
       if (!fileExists(file)) {
         // Try an alternate path if the default Jacoco report layout is different
@@ -491,11 +537,23 @@ function computeCoverage(languageKey) {
     }
 
     case "dotnet": {
-      const file = args["dotnet-file"]; // optional for now
+      // Default path for coverlet OpenCover output if not overridden:
+      //   TestResults/coverage.net.opencover.xml
+      const file =
+        args["dotnet-file"] ||
+        path.join("TestResults", "coverage.net.opencover.xml");
+
       const { tool, summary } = parseDotnetCoverage(file);
-      return buildCoverageResult(languageKey, tool, summary, {
-        dotnet_file: file || null,
-      });
+
+      const meta = {
+        dotnet_file: file,
+      };
+
+      if (summary.line === null) {
+        meta.reason = "dotnet-coverage-unavailable";
+      }
+
+      return buildCoverageResult(languageKey, tool, summary, meta);
     }
 
     default: {
