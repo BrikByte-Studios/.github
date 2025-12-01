@@ -1,0 +1,109 @@
+# =============================================================================
+# BrikByteOS — Reusable Node.js Unit Test Workflow
+# -----------------------------------------------------------------------------
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# Repos  :
+#   - Implemented in:
+#       • BrikByte-Studios/.github (.github/workflows/test-node.yml)
+#   - Consumed by:
+#       • BrikByte-Studios/brik-pipe-examples/node-api-example
+#       • Product repos (via workflow_call)
+#
+# Contract:
+#   - Expects repo to expose:
+#       • Makefile with `make test` (per PIPE-TEST-UNIT-STANDARDS-INIT-001)
+#   - This workflow:
+#       • Sets up Node
+#       • (Optionally) uses cache-node-deps composite
+#       • Runs `make test` and fails CI on non-zero exit.
+# =============================================================================
+name: "BrikByteOS — Node.js Unit Tests"
+
+on:
+  # Reusable mode for service repos
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version (must align with Runtime Matrix)"
+        required: false
+        type: string
+        default: "20"
+      working-directory:
+        description: "Path to Node project (folder with package.json + Makefile)"
+        required: false
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: "Node.js: Unit Tests"
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_VERSION: ${{ inputs.node-version || '20' }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1) Checkout repository
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2) Verify Node project layout
+      #    - Must have package.json + Makefile in WORKING_DIRECTORY
+      # -----------------------------------------------------------------------
+      - name: Verify Node test layout
+        run: |
+          echo "📁 Working directory: ${WORKING_DIRECTORY}"
+
+          if [ ! -d "${WORKING_DIRECTORY}" ]; then
+            echo "❌ WORKING_DIRECTORY '${WORKING_DIRECTORY}' does not exist."
+            exit 1
+          fi
+
+          if [ ! -f "${WORKING_DIRECTORY}/package.json" ]; then
+            echo "❌ package.json not found in ${WORKING_DIRECTORY}."
+            exit 1
+          fi
+
+          if [ ! -f "${WORKING_DIRECTORY}/Makefile" ]; then
+            echo "❌ Makefile not found in ${WORKING_DIRECTORY}."
+            echo "   Expected a Makefile exposing 'make test' (Node)."
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3) Setup Node.js runtime
+      # -----------------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # -----------------------------------------------------------------------
+      # 4) (Optional) Use central Node cache composite
+      #    - Implemented in BrikByte-Studios/.github/.github/actions/cache-node-deps
+      # -----------------------------------------------------------------------
+      - name: "Cache Node dependencies (npm / Yarn / pnpm)"
+        uses: BrikByte-Studios/.github/.github/actions/cache-node-deps@main
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          project-path: ${{ env.WORKING_DIRECTORY }}
+
+      # -----------------------------------------------------------------------
+      # 5) Run unit tests via `make test`
+      #    - MUST fail on non-zero exit (blocks merges via status checks).
+      # -----------------------------------------------------------------------
+      - name: Run Node.js unit tests (make test)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          echo "🧪 Starting Node.js tests with Node ${NODE_VERSION} in ${PWD}..."
+          start_ts=$(date +%s)
+          make test
+          end_ts=$(date +%s)
+          echo "✅ Node.js tests completed in $((end_ts - start_ts)) seconds."

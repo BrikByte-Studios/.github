@@ -1,0 +1,88 @@
+# =============================================================================
+# BrikByteOS — Reusable Go Unit Test Workflow
+# -----------------------------------------------------------------------------
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# Repos  :
+#   - Implemented in:
+#       • BrikByte-Studios/.github (.github/workflows/test-go.yml)
+#   - Consumed by:
+#       • BrikByte-Studios/brik-pipe-examples/go-api-example
+#       • Product repos (via workflow_call)
+#
+# Contract:
+#   - Expects:
+#       • Makefile with `make test` calling `go test ./...`
+#       • *_test.go files in relevant packages.
+# =============================================================================
+name: "BrikByteOS — Go Unit Tests"
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version (must align with runtime matrix, e.g. 1.22.x)"
+        required: false
+        type: string
+        default: "1.22.x"
+      working-directory:
+        description: "Path to Go module root (Makefile + go.mod)"
+        required: false
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: "Go: Unit Tests"
+    runs-on: ubuntu-latest
+
+    env:
+      GO_VERSION: ${{ inputs.go-version || '1.22.x' }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+      GOFLAGS: "-mod=readonly"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Go test layout
+        run: |
+          echo "📁 Working directory: ${WORKING_DIRECTORY}"
+
+          if [ ! -d "${WORKING_DIRECTORY}" ]; then
+            echo "❌ WORKING_DIRECTORY '${WORKING_DIRECTORY}' does not exist."
+            exit 1
+          fi
+
+          if [ ! -f "${WORKING_DIRECTORY}/go.mod" ]; then
+            echo "❌ go.mod not found in ${WORKING_DIRECTORY}."
+            exit 1
+          fi
+
+          if [ ! -f "${WORKING_DIRECTORY}/Makefile" ]; then
+            echo "❌ Makefile not found in ${WORKING_DIRECTORY}."
+            echo "   Expected 'make test' mapping to 'go test ./...'."
+            exit 1
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: "Cache Go modules & build cache"
+        uses: BrikByte-Studios/.github/.github/actions/cache-go-deps@main
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          project-path: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Run Go unit tests (make test)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          echo "🧪 Starting Go tests with Go ${GO_VERSION} in ${PWD}..."
+          start_ts=$(date +%s)
+          make test
+          end_ts=$(date +%s)
+          echo "✅ Go tests completed in $((end_ts - start_ts)) seconds."

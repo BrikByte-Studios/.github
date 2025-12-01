@@ -1,0 +1,89 @@
+# =============================================================================
+# BrikByteOS — Reusable .NET Unit Test Workflow
+# -----------------------------------------------------------------------------
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# Repos  :
+#   - Implemented in:
+#       • BrikByte-Studios/.github (.github/workflows/test-dotnet.yml)
+#   - Consumed by:
+#       • BrikByte-Studios/brik-pipe-examples/dotnet-api-example
+#       • Product repos (via workflow_call)
+#
+# Contract:
+#   - Expects:
+#       • Makefile with `make test` calling `dotnet test`
+#       • One or more test projects (e.g. /tests/SomeApp.Tests).
+# =============================================================================
+name: "BrikByteOS — .NET Unit Tests"
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: ".NET SDK version (e.g. 8.0.x)"
+        required: false
+        type: string
+        default: "8.0.x"
+      working-directory:
+        description: "Path to .NET solution root (Makefile + *.sln or tests/)"
+        required: false
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ".NET: Unit Tests"
+    runs-on: ubuntu-latest
+
+    env:
+      DOTNET_VERSION: ${{ inputs.dotnet-version || '8.0.x' }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify .NET test layout
+        run: |
+          echo "📁 Working directory: ${WORKING_DIRECTORY}"
+
+          if [ ! -d "${WORKING_DIRECTORY}" ]; then
+            echo "❌ WORKING_DIRECTORY '${WORKING_DIRECTORY}' does not exist."
+            exit 1
+          fi
+
+          cd "${WORKING_DIRECTORY}"
+
+          if ! compgen -G "*.sln" > /dev/null && ! compgen -G "**/*.csproj" > /dev/null; then
+            echo "❌ No .sln or .csproj files found in ${PWD}."
+            exit 1
+          fi
+
+          if [ ! -f "Makefile" ]; then
+            echo "❌ Makefile not found in ${PWD}."
+            echo "   Expected 'make test' mapping to 'dotnet test'."
+            exit 1
+          fi
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: "Cache .NET dependencies & tools"
+        uses: BrikByte-Studios/.github/.github/actions/cache-dotnet-deps@main
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          project-path: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Run .NET unit tests (make test)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          echo "🧪 Starting .NET tests with SDK ${DOTNET_VERSION} in ${PWD}..."
+          start_ts=$(date +%s)
+          make test
+          end_ts=$(date +%s)
+          echo "✅ .NET tests completed in $((end_ts - start_ts)) seconds."
