@@ -36,11 +36,18 @@ permissions:
 jobs:
   test:
     name: "Go: Unit Tests"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: [ "1.21.x", "1.22.x" ]
+
     runs-on: ubuntu-latest
 
     env:
-      GO_VERSION: ${{ inputs.go-version || '1.22.x' }}
-      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+      LANGUAGE: go
+      GO_VERSION: ${{ inputs.go-version != '' && inputs.go-version || matrix.go-version }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
       GOFLAGS: "-mod=readonly"
 
     steps:
@@ -81,8 +88,21 @@ jobs:
       - name: Run Go unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
-          echo "🧪 Starting Go tests with Go ${GO_VERSION} in ${PWD}..."
-          start_ts=$(date +%s)
+          set -euo pipefail
+
+          echo "🧪 [TEST] Language  : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime   : Go ${GO_VERSION}"
+          echo "🧪 [TEST] Directory : ${PWD}"
+          echo "🧪 [TEST] Command   : make test"
+          echo "🧪 [TEST] Status    : STARTING"
+
+          START_TS=$(date +%s)
+
           make test
-          end_ts=$(date +%s)
-          echo "✅ Go tests completed in $((end_ts - start_ts)) seconds."
+
+          END_TS=$(date +%s)
+          DURATION=$((END_TS - START_TS))
+
+          echo "✅ [TEST] Status    : COMPLETED"
+          echo "⏱  [TEST] Duration : ${DURATION} seconds"
+          echo "ℹ️  [TEST] See go test ./... summary above."

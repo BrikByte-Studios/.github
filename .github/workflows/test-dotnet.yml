@@ -36,11 +36,18 @@ permissions:
 jobs:
   test:
     name: ".NET: Unit Tests"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        dotnet-version: [ "8.0.x" ]  # extend later (e.g., "7.0.x") if needed
+
     runs-on: ubuntu-latest
 
     env:
-      DOTNET_VERSION: ${{ inputs.dotnet-version || '8.0.x' }}
-      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+      LANGUAGE: dotnet
+      DOTNET_VERSION: ${{ inputs.dotnet-version != '' && inputs.dotnet-version || matrix.dotnet-version }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
     steps:
       - name: Checkout repository
@@ -82,8 +89,21 @@ jobs:
       - name: Run .NET unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
-          echo "🧪 Starting .NET tests with SDK ${DOTNET_VERSION} in ${PWD}..."
-          start_ts=$(date +%s)
+          set -euo pipefail
+
+          echo "🧪 [TEST] Language  : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime   : .NET SDK ${DOTNET_VERSION}"
+          echo "🧪 [TEST] Directory : ${PWD}"
+          echo "🧪 [TEST] Command   : make test"
+          echo "🧪 [TEST] Status    : STARTING"
+
+          START_TS=$(date +%s)
+
           make test
-          end_ts=$(date +%s)
-          echo "✅ .NET tests completed in $((end_ts - start_ts)) seconds."
+
+          END_TS=$(date +%s)
+          DURATION=$((END_TS - START_TS))
+
+          echo "✅ [TEST] Status    : COMPLETED"
+          echo "⏱  [TEST] Duration : ${DURATION} seconds"
+          echo "ℹ️  [TEST] See dotnet test summary above."

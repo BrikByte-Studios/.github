@@ -40,11 +40,24 @@ permissions:
 jobs:
   test:
     name: "Node.js: Unit Tests"
+    # Optional matrix for direct CI mode.
+    # - For workflow_call, we still honour inputs.node-version;
+    #   if you want the matrix only in direct mode, you can gate it with `if`.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18", "20"]
+
     runs-on: ubuntu-latest
 
+    # NOTE:
+    #   - When called via workflow_call, inputs.node-version is set.
+    #   - When triggered via push/PR:
+    #        inputs.node-version is empty, so we use matrix.node-version.
     env:
-      NODE_VERSION: ${{ inputs.node-version || '20' }}
-      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+      LANGUAGE: node
+      NODE_VERSION: ${{ inputs.node-version != '' && inputs.node-version || matrix.node-version }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -102,8 +115,21 @@ jobs:
       - name: Run Node.js unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
-          echo "🧪 Starting Node.js tests with Node ${NODE_VERSION} in ${PWD}..."
-          start_ts=$(date +%s)
+          set -euo pipefail
+
+          echo "🧪 [TEST] Language  : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime   : Node.js ${NODE_VERSION}"
+          echo "🧪 [TEST] Directory : ${PWD}"
+          echo "🧪 [TEST] Command   : make test"
+          echo "🧪 [TEST] Status    : STARTING"
+
+          START_TS=$(date +%s)
+
           make test
-          end_ts=$(date +%s)
-          echo "✅ Node.js tests completed in $((end_ts - start_ts)) seconds."
+
+          END_TS=$(date +%s)
+          DURATION=$((END_TS - START_TS))
+
+          echo "✅ [TEST] Status    : COMPLETED"
+          echo "⏱  [TEST] Duration : ${DURATION} seconds"
+          echo "ℹ️  [TEST] See TAP summary above for test counts."

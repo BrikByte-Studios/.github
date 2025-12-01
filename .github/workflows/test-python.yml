@@ -36,11 +36,19 @@ permissions:
 jobs:
   test:
     name: "Python: Unit Tests"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10", "3.11" ]
+
+
     runs-on: ubuntu-latest
 
     env:
-      PYTHON_VERSION: ${{ inputs.python-version || '3.11' }}
-      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+      LANGUAGE: python
+      PYTHON_VERSION: ${{ inputs.python-version != '' && inputs.python-version || matrix.python-version }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
     steps:
       - name: Checkout repository
@@ -73,11 +81,27 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
+      # -----------------------------------------------------------------------
+      # Run unit tests via `make test`
+      # -----------------------------------------------------------------------
       - name: Run Python unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
-          echo "🧪 Starting Python tests with Python ${PYTHON_VERSION} in ${PWD}..."
-          start_ts=$(date +%s)
+          set -euo pipefail
+
+          echo "🧪 [TEST] Language  : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime   : Python ${PYTHON_VERSION}"
+          echo "🧪 [TEST] Directory : ${PWD}"
+          echo "🧪 [TEST] Command   : make test"
+          echo "🧪 [TEST] Status    : STARTING"
+
+          START_TS=$(date +%s)
+
           make test
-          end_ts=$(date +%s)
-          echo "✅ Python tests completed in $((end_ts - start_ts)) seconds."
+
+          END_TS=$(date +%s)
+          DURATION=$((END_TS - START_TS))
+
+          echo "✅ [TEST] Status    : COMPLETED"
+          echo "⏱  [TEST] Duration : ${DURATION} seconds"
+          echo "ℹ️  [TEST] See pytest summary above for test counts."

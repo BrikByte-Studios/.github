@@ -43,12 +43,19 @@ permissions:
 jobs:
   test:
     name: "Java: Unit Tests"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: [ "17", "21" ]
+
     runs-on: ubuntu-latest
 
     env:
-      JAVA_VERSION: ${{ inputs.java-version || '17' }}
+      LANGUAGE: java
+      JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || matrix.java-version }}
       JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
-      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
     steps:
       - name: Checkout repository
@@ -91,8 +98,21 @@ jobs:
       - name: Run Java unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
-          echo "🧪 Starting Java tests (Java ${JAVA_VERSION}, ${JAVA_DISTRIBUTION}) in ${PWD}..."
-          start_ts=$(date +%s)
+          set -euo pipefail
+
+          echo "🧪 [TEST] Language  : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime   : Java (Temurin) ${JAVA_VERSION}"
+          echo "🧪 [TEST] Directory : ${PWD}"
+          echo "🧪 [TEST] Command   : make test"
+          echo "🧪 [TEST] Status    : STARTING"
+
+          START_TS=$(date +%s)
+
           make test
-          end_ts=$(date +%s)
-          echo "✅ Java tests completed in $((end_ts - start_ts)) seconds."
+
+          END_TS=$(date +%s)
+          DURATION=$((END_TS - START_TS))
+
+          echo "✅ [TEST] Status    : COMPLETED"
+          echo "⏱  [TEST] Duration : ${DURATION} seconds"
+          echo "ℹ️  [TEST] See Maven/Gradle test summary above."
