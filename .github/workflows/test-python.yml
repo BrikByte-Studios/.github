@@ -36,18 +36,11 @@ permissions:
 jobs:
   test:
     name: "Python: Unit Tests"
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: [ "3.10", "3.11" ]
-
-
     runs-on: ubuntu-latest
 
     env:
       LANGUAGE: python
-      PYTHON_VERSION: ${{ inputs.python-version != '' && inputs.python-version || matrix.python-version }}
+      PYTHON_VERSION: ${{ inputs.python-version != '' && inputs.python-version || '3.11' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
     steps:
@@ -105,3 +98,25 @@ jobs:
           echo "✅ [TEST] Status    : COMPLETED"
           echo "⏱  [TEST] Duration : ${DURATION} seconds"
           echo "ℹ️  [TEST] See pytest summary above for test counts."
+
+      # -----------------------------------------------------------------------
+      # X) Collect coverage (Python: pytest + pytest-cov)
+      #    - Expects coverage.xml produced by pytest-cov.
+      # -----------------------------------------------------------------------
+      - name: Normalize coverage → coverage.json
+        uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
+        with:
+          language: ${{ env.LANGUAGE }}
+          working-directory: ${{ env.WORKING_DIRECTORY }}
+          out: out/coverage.json
+
+      - name: Upload Python coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ env.LANGUAGE }}
+          path: |
+            ${{ inputs.working-directory || '.' }}/out/coverage.json
+            ${{ inputs.working-directory || '.' }}/coverage.xml
+          if-no-files-found: ignore
+

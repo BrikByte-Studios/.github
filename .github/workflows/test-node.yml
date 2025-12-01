@@ -40,7 +40,6 @@ permissions:
 jobs:
   test:
     name: "Node.js: Unit Tests"
-
     runs-on: ubuntu-latest
 
     # NOTE:
