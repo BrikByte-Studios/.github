@@ -137,22 +137,23 @@ jobs:
       # -----------------------------------------------------------------------
       # X) Collect coverage (Node: Jest + c8 / Istanbul)
       #    - Expects coverage/coverage-final.json from the test step.
-      #    - Writes normalized out/coverage.json under PROJECT_PATH.
+      #    - Writes normalized out/coverage.json under WORKING_DIRECTORY.
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
           language: node
-          working-directory: node-api-example
+          working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
       - name: Upload Node coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ env.LANGUAGE }}-normalized-${{ github.job }}-${{ github.run_attempt }}
+          # Unique per matrix entry: includes runtime version + job + attempt
+          name: coverage-${{ env.LANGUAGE }}-node${{ env.NODE_VERSION }}-${{ github.job }}-${{ github.run_attempt }}
           path: |
-            ${{ inputs.working-directory || '.' }}/out/coverage.json
-            ${{ inputs.working-directory || '.' }}/coverage/
+            ${{ env.WORKING_DIRECTORY }}/out/coverage.json
+            ${{ env.WORKING_DIRECTORY }}/coverage/
           if-no-files-found: ignore
 
