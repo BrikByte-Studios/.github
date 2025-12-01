@@ -20,7 +20,7 @@ BrikByteOS CI templates ship with a cross-runtime caching strategy:
 - Central cache clean utility
 - Weekly cache benchmark suite (cold vs warm builds)
 
-📘 **Docs:** See [`BrikByte-Studios/brik-pipe-docs/cache/index.md`](BrikByte-Studios/brik-pipe-docs/cache/index.md)  
+📘 **Docs:** See [`brik-pipe-docs/cache/index.md`](brik-pipe-docs/cache/index.md)  
 for:
 
 - How cache keys are generated
