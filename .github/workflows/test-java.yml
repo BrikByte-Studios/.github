@@ -121,7 +121,6 @@ jobs:
           language: ${{ env.LANGUAGE }}
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
-          jvm-file: target/site/jacoco/jacoco.xml
 
       - name: Upload Node coverage artifacts
         if: always()
