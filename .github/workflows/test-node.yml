@@ -150,7 +150,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-node
+          name: coverage-${{ env.LANGUAGE }}-normalized-${{ github.job }}-${{ github.run_attempt }}
           path: |
             ${{ inputs.working-directory || '.' }}/out/coverage.json
             ${{ inputs.working-directory || '.' }}/coverage/
