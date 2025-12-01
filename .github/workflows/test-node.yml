@@ -40,13 +40,6 @@ permissions:
 jobs:
   test:
     name: "Node.js: Unit Tests"
-    # Optional matrix for direct CI mode.
-    # - For workflow_call, we still honour inputs.node-version;
-    #   if you want the matrix only in direct mode, you can gate it with `if`.
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: ["18", "20"]
 
     runs-on: ubuntu-latest
 
@@ -56,8 +49,8 @@ jobs:
     #        inputs.node-version is empty, so we use matrix.node-version.
     env:
       LANGUAGE: node
-      NODE_VERSION: ${{ inputs.node-version != '' && inputs.node-version || matrix.node-version }}
-      WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
+      NODE_VERSION: ${{ inputs.node-version || '20' }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -151,7 +144,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # Unique per matrix entry: includes runtime version + job + attempt
-          name: coverage-${{ env.LANGUAGE }}-node${{ env.NODE_VERSION }}-${{ github.job }}-${{ github.run_attempt }}
+          name: coverage-${{ env.LANGUAGE }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/coverage/
