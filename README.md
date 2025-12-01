@@ -10,3 +10,20 @@ See the full strategy in:
 
 - `brik-pipe-docs/containers/container-build-strategy.md`
 - ADR: `docs/adr/ADR-00X-container-build-strategy.md`
+
+---
+## Build Optimization & Caching
+
+BrikByteOS CI templates ship with a cross-runtime caching strategy:
+
+- Node.js, Python, JVM, Go, .NET dependency caches
+- Central cache clean utility
+- Weekly cache benchmark suite (cold vs warm builds)
+
+📘 **Docs:** See [`BrikByte-Studios/brik-pipe-docs/cache/index.md`](BrikByte-Studios/brik-pipe-docs/cache/index.md)  
+for:
+
+- How cache keys are generated
+- Cache reset / force-clear instructions
+- Performance expectations
+- Troubleshooting matrix & debug tips
