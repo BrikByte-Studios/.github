@@ -95,8 +95,8 @@ runs:
 
         # Run the merge script located in this action's directory.
         node "${GITHUB_ACTION_PATH}/coverage-merge.mjs" \
-          "language=${LANGUAGE}" \
-          "out=${OUT_PATH}"
+          --language "${LANGUAGE}" \
+          --out "${OUT_PATH}"
 
         # Resolve the absolute path for output.
         COVERAGE_ABS="${PWD}/${OUT_PATH}"
