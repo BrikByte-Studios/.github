@@ -1,0 +1,87 @@
+# =============================================================================
+# BrikByteOS — Reusable Python Unit Test Workflow
+# -----------------------------------------------------------------------------
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# Repos  :
+#   - Implemented in:
+#       • BrikByte-Studios/.github (.github/workflows/test-python.yml)
+#   - Consumed by:
+#       • BrikByte-Studios/brik-pipe-examples/python-api-example
+#       • Product repos (via workflow_call)
+#
+# Contract:
+#   - Expects:
+#       • Makefile with `make test` calling `pytest`
+#       • tests/ directory with test_*.py / *_test.py
+# =============================================================================
+name: "BrikByteOS — Python Unit Tests"
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version (e.g. 3.11; must match runtime matrix)"
+        required: false
+        type: string
+        default: "3.11"
+      working-directory:
+        description: "Path to Python project (Makefile + tests/)"
+        required: false
+        type: string
+        default: "."
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: "Python: Unit Tests"
+    runs-on: ubuntu-latest
+
+    env:
+      PYTHON_VERSION: ${{ inputs.python-version || '3.11' }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Python test layout
+        run: |
+          echo "📁 Working directory: ${WORKING_DIRECTORY}"
+
+          if [ ! -d "${WORKING_DIRECTORY}" ]; then
+            echo "❌ WORKING_DIRECTORY '${WORKING_DIRECTORY}' does not exist."
+            exit 1
+          fi
+
+          if [ ! -f "${WORKING_DIRECTORY}/Makefile" ]; then
+            echo "❌ Makefile not found in ${WORKING_DIRECTORY}."
+            echo "   Expected 'make test' calling pytest."
+            exit 1
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Optional: central Python cache composite
+      - name: "Cache Python dependencies"
+        uses: BrikByte-Studios/.github/.github/actions/cache-python-deps@main
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          project-path: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Run Python unit tests (make test)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          echo "🧪 Starting Python tests with Python ${PYTHON_VERSION} in ${PWD}..."
+          start_ts=$(date +%s)
+          make test
+          end_ts=$(date +%s)
+          echo "✅ Python tests completed in $((end_ts - start_ts)) seconds."

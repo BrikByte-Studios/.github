@@ -1,0 +1,102 @@
+# =============================================================================
+# BrikByteOS — Reusable Java Unit Test Workflow (Maven/Gradle)
+# -----------------------------------------------------------------------------
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# Repos  :
+#   - Implemented in:
+#       • BrikByte-Studios/.github (.github/workflows/test-java.yml)
+#   - Consumed by:
+#       • BrikByte-Studios/brik-pipe-examples/java-api-example
+#       • Product repos (via workflow_call)
+#
+# Contract:
+#   - Expects:
+#       • Makefile with `make test` calling:
+#           - Maven: mvn -B test
+#           - Gradle: ./gradlew test
+#       • src/test/java for tests.
+# =============================================================================
+name: "BrikByteOS — Java Unit Tests"
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java version (e.g. 17 or 21; must align with runtime matrix)"
+        required: false
+        type: string
+        default: "17"
+      distribution:
+        description: "JDK distribution (e.g. temurin)"
+        required: false
+        type: string
+        default: "temurin"
+      working-directory:
+        description: "Path to Java project (Makefile + pom.xml/build.gradle)"
+        required: false
+        type: string
+        default: "."
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: "Java: Unit Tests"
+    runs-on: ubuntu-latest
+
+    env:
+      JAVA_VERSION: ${{ inputs.java-version || '17' }}
+      JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
+      WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Java test layout
+        run: |
+          echo "📁 Working directory: ${WORKING_DIRECTORY}"
+
+          if [ ! -d "${WORKING_DIRECTORY}" ]; then
+            echo "❌ WORKING_DIRECTORY '${WORKING_DIRECTORY}' does not exist."
+            exit 1
+          fi
+
+          if [ ! -f "${WORKING_DIRECTORY}/Makefile" ]; then
+            echo "❌ Makefile not found in ${WORKING_DIRECTORY}."
+            echo "   Expected 'make test' using Maven or Gradle."
+            exit 1
+          fi
+
+          if [ ! -f "${WORKING_DIRECTORY}/pom.xml" ] && \
+             [ ! -f "${WORKING_DIRECTORY}/build.gradle" ] && \
+             [ ! -f "${WORKING_DIRECTORY}/build.gradle.kts" ]; then
+            echo "❌ No pom.xml or build.gradle(.kts) found in ${WORKING_DIRECTORY}."
+            exit 1
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: "Cache JVM dependencies (Maven / Gradle)"
+        uses: BrikByte-Studios/.github/.github/actions/cache-java-deps@main
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          project-path: ${{ env.WORKING_DIRECTORY }}
+
+      - name: Run Java unit tests (make test)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          echo "🧪 Starting Java tests (Java ${JAVA_VERSION}, ${JAVA_DISTRIBUTION}) in ${PWD}..."
+          start_ts=$(date +%s)
+          make test
+          end_ts=$(date +%s)
+          echo "✅ Java tests completed in $((end_ts - start_ts)) seconds."
