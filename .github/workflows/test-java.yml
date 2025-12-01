@@ -43,17 +43,11 @@ permissions:
 jobs:
   test:
     name: "Java: Unit Tests"
-
-    strategy:
-      fail-fast: false
-      matrix:
-        java-version: [ "17", "21" ]
-
     runs-on: ubuntu-latest
 
     env:
       LANGUAGE: java
-      JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || matrix.java-version }}
+      JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || '17' }}
       JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
