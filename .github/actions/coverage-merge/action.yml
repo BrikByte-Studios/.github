@@ -1,0 +1,106 @@
+# =============================================================================
+# BrikByteOS — Coverage Merge Composite Action
+# -----------------------------------------------------------------------------
+# WBS ID :
+#   - PIPE-TEST-COVERAGE-INTEG-003
+#
+# Repo:
+#   - Implemented in:
+#       • BrikByte-Studios/.github
+#   - Consumed by:
+#       • BrikByte-Studios/brik-pipe-examples/*
+#       • Product repos using BrikByteOS pipelines
+#
+# Purpose:
+#   Normalize language-specific coverage outputs into a single coverage.json
+#   format that can be consumed by governance & audit layers.
+#
+# Contract (v1):
+#   - Expects language-specific coverage to already be generated, e.g.:
+#       Node   : coverage/coverage-final.json
+#       Python : coverage.xml (pytest-cov / Cobertura)
+#       Java   : target/site/jacoco/jacoco.xml
+#       Go     : coverage.out (go test -coverprofile)
+#
+#   - This action:
+#       1) Sets up Node (for the merge script runtime).
+#       2) Runs coverage-merge.mjs inside the specified working directory.
+#       3) Writes coverage.json to an output path (default: out/coverage.json).
+#
+#   - Uploading artifacts is handled by the calling workflow, e.g.:
+#       - uses: actions/upload-artifact@v4
+#         with:
+#           name: coverage-node
+#           path: |
+#             out/coverage.json
+#             coverage/
+#             ...
+# =============================================================================
+name: "BrikByteOS — Coverage Merge"
+description: "Normalize per-language coverage into a standard coverage.json (PIPE-TEST-COVERAGE-INTEG-003)"
+
+inputs:
+  language:
+    description: "Language hint (node|python|java|go|dotnet|auto)"
+    required: false
+    default: "auto"
+  working-directory:
+    description: >
+      Directory where coverage files exist (relative to repository root).
+      For monorepos, this is typically the project path (e.g. node-api-example).
+    required: false
+    default: "."
+  out:
+    description: "Output path for coverage.json (relative to working-directory)"
+    required: false
+    default: "out/coverage.json"
+
+outputs:
+  coverage-path:
+    description: "Absolute path to the generated coverage.json file"
+    value: ${{ steps.merge.outputs.coverage-path }}
+
+runs:
+  using: "composite"
+  steps:
+    # -------------------------------------------------------------------------
+    # 1) Ensure Node.js is available (used only to run coverage-merge.mjs)
+    # -------------------------------------------------------------------------
+    - name: Setup Node.js runtime for coverage merge
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    # -------------------------------------------------------------------------
+    # 2) Run the coverage merge script
+    #
+    # Notes:
+    #   - GITHUB_ACTION_PATH is the directory of this action
+    #   - working-directory is set to the project path so the script
+    #     sees coverage/coverage.xml/etc relative to that folder.
+    # -------------------------------------------------------------------------
+    - name: Normalize coverage into coverage.json
+      id: merge
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+      env:
+        LANGUAGE: ${{ inputs.language }}
+        OUT_PATH: ${{ inputs.out }}
+      run: |
+        set -euo pipefail
+
+        echo "[COVERAGE-MERGE/ACTION] language=${LANGUAGE}"
+        echo "[COVERAGE-MERGE/ACTION] working-directory=${PWD}"
+        echo "[COVERAGE-MERGE/ACTION] out=${OUT_PATH}"
+
+        # Run the merge script located in this action's directory.
+        node "${GITHUB_ACTION_PATH}/coverage-merge.mjs" \
+          "language=${LANGUAGE}" \
+          "out=${OUT_PATH}"
+
+        # Resolve the absolute path for output.
+        COVERAGE_ABS="${PWD}/${OUT_PATH}"
+        echo "[COVERAGE-MERGE/ACTION] coverage.json created at: ${COVERAGE_ABS}"
+
+        # Expose as action output.
+        echo "coverage-path=${COVERAGE_ABS}" >> "${GITHUB_OUTPUT}"

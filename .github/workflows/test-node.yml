@@ -139,19 +139,12 @@ jobs:
       #    - Expects coverage/coverage-final.json from the test step.
       #    - Writes normalized out/coverage.json under PROJECT_PATH.
       # -----------------------------------------------------------------------
-      - name: Collect coverage (normalize → coverage.json)
-        working-directory: ${{ inputs.working-directory || '.' }}
-        run: |
-          set -euo pipefail
-
-          echo "📊 Normalizing Node coverage for project: ${PWD}"
-
-          mkdir -p out
-
-          node ../.github/scripts/coverage-merge.mjs \
-            --language node \
-            --out out/coverage.json \
-            --node-file coverage/coverage-final.json
+      - name: Normalize coverage → coverage.json
+        uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
+        with:
+          language: node
+          working-directory: node-api-example
+          out: out/coverage.json
 
       - name: Upload Node coverage artifacts
         if: always()
