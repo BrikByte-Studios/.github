@@ -184,9 +184,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        TOOL="${{ steps.detect.outputs.tool }}"
+        JAVA="${{ inputs.java-version }}"
 
         if [ "${{ steps.cache-java.outputs.cache-hit }}" = "true" ]; then
-          echo "✅ JVM dependency cache HIT for tool='${{ steps.detect.outputs.tool }}' (Java ${{ inputs.java-version }})"
+          echo "✅ JVM dependency cache HIT for tool='${TOOL}' (Java ${JAVA})"
         else
-          echo "ℹ️ JVM dependency cache MISS for tool='${{ steps.detect.outputs.tool }}' (Java ${{ inputs.java-version }}) — cache will be created/updated."
+          echo "ℹ️ JVM dependency cache MISS for tool='${TOOL}' (Java ${JAVA})"
+          echo "↳ Cache will be created/updated."
         fi
+

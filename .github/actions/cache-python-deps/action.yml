@@ -109,7 +109,8 @@ runs:
           lockfile="requirements.txt"
           echo "::notice::Detected pip (requirements.txt) in ${PWD}."
         else
-          echo "::notice::No Pipfile.lock, poetry.lock, or requirements.txt found under '${PWD}'; Python cache will be skipped."
+          echo "::notice::No Python lock/requirements files detected in '${PWD}'."
+          echo "::notice::Skipping Python dependency cache."
         fi
 
         echo "tool=${tool}"             >> "$GITHUB_OUTPUT"
