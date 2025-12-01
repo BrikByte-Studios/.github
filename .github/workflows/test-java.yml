@@ -116,3 +116,26 @@ jobs:
           echo "✅ [TEST] Status    : COMPLETED"
           echo "⏱  [TEST] Duration : ${DURATION} seconds"
           echo "ℹ️  [TEST] See Maven/Gradle test summary above."
+
+      # -----------------------------------------------------------------------
+      # X) Collect coverage (Java: Jacoco XML)
+      #    - Expects target/site/jacoco/jacoco.xml.
+      # -----------------------------------------------------------------------
+      - name: Normalize coverage → coverage.json
+        uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
+        with:
+          language: ${{ env.LANGUAGE }}
+          working-directory: ${{ env.WORKING_DIRECTORY }}
+          out: out/coverage.json
+          jvm-file: target/site/jacoco/jacoco.xml
+
+      - name: Upload Node coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # Unique per matrix entry: includes runtime version + job + attempt
+          name: coverage-${{ env.LANGUAGE }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/out/coverage.json
+            ${{ env.WORKING_DIRECTORY }}/coverage/
+          if-no-files-found: ignore

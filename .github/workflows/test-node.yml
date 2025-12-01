@@ -135,7 +135,7 @@ jobs:
       - name: Normalize coverage → coverage.json
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
-          language: node
+          language: ${{ env.LANGUAGE }}
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
