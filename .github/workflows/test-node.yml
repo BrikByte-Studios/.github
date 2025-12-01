@@ -133,3 +133,33 @@ jobs:
           echo "✅ [TEST] Status    : COMPLETED"
           echo "⏱  [TEST] Duration : ${DURATION} seconds"
           echo "ℹ️  [TEST] See TAP summary above for test counts."
+
+      # -----------------------------------------------------------------------
+      # X) Collect coverage (Node: Jest + c8 / Istanbul)
+      #    - Expects coverage/coverage-final.json from the test step.
+      #    - Writes normalized out/coverage.json under PROJECT_PATH.
+      # -----------------------------------------------------------------------
+      - name: Collect coverage (normalize → coverage.json)
+        working-directory: ${{ inputs.working-directory || '.' }}
+        run: |
+          set -euo pipefail
+
+          echo "📊 Normalizing Node coverage for project: ${PWD}"
+
+          mkdir -p out
+
+          node ../.github/scripts/coverage-merge.mjs \
+            --language node \
+            --out out/coverage.json \
+            --node-file coverage/coverage-final.json
+
+      - name: Upload Node coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-node
+          path: |
+            ${{ inputs.working-directory || '.' }}/out/coverage.json
+            ${{ inputs.working-directory || '.' }}/coverage/
+          if-no-files-found: ignore
+
