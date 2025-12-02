@@ -46,6 +46,11 @@ on:
         required: false
         default: ".audit/coverage-baseline.json"
         type: string
+      coverage-artifact-name:
+        description: "Name of coverage artifact uploaded by test job"
+        required: false
+        default: "coverage-node"
+        type: string
 
   # Optional direct mode for governance repo itself
   pull_request:
@@ -84,8 +89,8 @@ jobs:
       - name: Download coverage artifact
         uses: actions/download-artifact@v4
         with:
-          name: coverage-node
-          path: ${{ inputs.working-directory }}/out
+          name: ${{ inputs.coverage-artifact-name }}
+          path: .
 
       # -----------------------------------------------------------------------
       # 3) Run coverage governance gate
