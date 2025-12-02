@@ -112,12 +112,79 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
+      - name: Ensure summary.line is set in coverage.json (.NET / Coverlet)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
+
+          # 1) Locate Coverlet JSON (e.g. TestResults/coverage.net.json)
+          if [ -f "TestResults/coverage.net.json" ]; then
+            export COVERLET_JSON="TestResults/coverage.net.json"
+          else
+            echo "❌ Coverlet JSON not found at TestResults/coverage.net.json; searching..."
+            FOUND=$(find TestResults -maxdepth 2 -type f -name "*.json" | head -n 1 || true)
+            if [ -z "$FOUND" ]; then
+              echo "❌ No Coverlet JSON file found under TestResults/"
+              ls -R
+              exit 1
+            fi
+            echo "ℹ️ Using detected Coverlet JSON: $FOUND"
+            export COVERLET_JSON="$FOUND"
+          fi
+
+          python - << 'EOF'
+          import json
+          import os
+          from pathlib import Path
+
+          coverlet_path = Path(os.environ["COVERLET_JSON"])
+          data = json.loads(coverlet_path.read_text(encoding="utf-8"))
+
+          # Coverlet JSON typically has a top-level "Line" summary:
+          # "Line": { "Total": 42, "Covered": 40, "Percent": 95.238... }
+          line_summary = data.get("Line")
+          if not isinstance(line_summary, dict):
+            raise SystemExit("Coverlet JSON missing top-level 'Line' summary")
+
+          percent = line_summary.get("Percent")
+          total = line_summary.get("Total")
+          covered = line_summary.get("Covered")
+
+          if percent is None:
+            if total and covered is not None:
+              percent = (covered / total) * 100.0
+            else:
+              raise SystemExit("Cannot determine coverage percent from Coverlet JSON")
+
+          cov_dir = Path("out")
+          cov_dir.mkdir(parents=True, exist_ok=True)
+          cov_path = cov_dir / "coverage.json"
+
+          try:
+            cov = json.loads(cov_path.read_text(encoding="utf-8"))
+          except FileNotFoundError:
+            cov = {}
+
+          cov.setdefault("summary", {})
+          cov["summary"]["line"] = float(percent)  # numeric %
+
+          cov.setdefault("files", [])
+
+          cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
+          print(f"✅ Updated out/coverage.json with summary.line = {percent:.1f}")
+          EOF
+
+          echo "✅ coverage.json after normalization:"
+          cat out/coverage.json
+
+
       - name: Upload Dotnet coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ env.LANGUAGE }}
           path: |
-            ${{ inputs.working-directory || '.' }}/out/coverage.json
-            ${{ inputs.working-directory || '.' }}/coverage.out
+            ${{ env.WORKING_DIRECTORY }}/out/coverage.json
+            ${{ env.WORKING_DIRECTORY }}/TestResults/
           if-no-files-found: ignore
