@@ -14,6 +14,11 @@
 # Purpose:
 #   Enforce coverage thresholds (overall + critical paths) for protected branches
 #   using coverage.json + .governance/tests.yml.
+#
+# Notes:
+#   - This workflow can be:
+#       • Called as a reusable workflow (preferred)
+#       • Or triggered directly on pull_request (for central governance repos)
 # =============================================================================
 name: "BrikByteOS — Coverage Governance Gate"
 
@@ -22,12 +27,12 @@ on:
   workflow_call:
     inputs:
       working-directory:
-        description: "Directory where coverage.json lives (for logs / relative paths)"
+        description: "Directory where coverage.json lives (relative to repo root)"
         required: false
         default: "."
         type: string
       coverage-file:
-        description: "Path to normalized coverage.json (relative to repo root)"
+        description: "Path to normalized coverage.json (relative to working-directory)"
         required: false
         default: "out/coverage.json"
         type: string
@@ -47,7 +52,7 @@ on:
         default: "coverage-node"
         type: string
 
-  # Optional direct mode for governance repo itself (if you ever want it)
+  # Optional direct mode for governance repo itself
   pull_request:
     branches:
       - main
@@ -69,9 +74,17 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 2) Download coverage artifact produced by the tests job
-      #    - Caller must upload an artifact with this name and include
-      #      a coverage.json somewhere inside it.
+      # 2) (Optional) Download coverage artifact
+      #
+      #    If coverage.json is produced by a separate job (e.g., "tests" job),
+      #    you can uncomment this block and align the artifact name.
+      #
+      #    Example:
+      #      - tests job uploads:
+      #          name: coverage-node
+      #          path: node-api-example/out/coverage.json
+      #
+      #      - This job downloads it before running coverage-check.
       # -----------------------------------------------------------------------
       - name: Download coverage artifact
         uses: actions/download-artifact@v4
@@ -79,42 +92,19 @@ jobs:
           name: ${{ inputs.coverage-artifact-name }}
           path: .
 
-      # -----------------------------------------------------------------------
-      # 3) Locate coverage.json dynamically
-      #    - Avoids hard-coding node-api-example/out/coverage.json
-      #    - Whatever path we find is exported as $COVERAGE_FILE.
-      # -----------------------------------------------------------------------
-      - name: Locate coverage.json
-        id: locate-coverage
-        run: |
-          set -euo pipefail
-
-          echo "🗂 Workspace tree after artifact download:"
-          ls -R
-          echo
-
-          echo "🔍 Searching for coverage.json..."
-          FOUND=$(find . -maxdepth 6 -type f -name "coverage.json" | head -n 1 || true)
-
-          if [ -z "$FOUND" ]; then
-            echo "❌ No coverage.json found in workspace after artifact download."
-            echo "   Ensure the tests workflow uploads an artifact containing coverage.json."
-            exit 1
-          fi
-
-          echo "✅ Found coverage.json at: $FOUND"
-          echo "COVERAGE_FILE=$FOUND" >> "$GITHUB_ENV"
 
       # -----------------------------------------------------------------------
-      # 4) Run coverage governance gate
-      #    - Uses the discovered coverage.json path.
-      #    - Enforces thresholds defined in .governance/tests.yml.
+      # 3) Run coverage governance gate
+      #
+      #    - Invokes .github/scripts/coverage-check.mjs
+      #    - Enforces thresholds defined in .governance/tests.yml
+      #    - Fails with clear messages if thresholds are not met.
       # -----------------------------------------------------------------------
       - name: Run coverage governance gate
         uses: BrikByte-Studios/.github/.github/actions/coverage-gate@main
         with:
           working-directory: ${{ inputs.working-directory }}
-          coverage-file: ${{ env.COVERAGE_FILE }}
+          coverage-file: ${{ inputs.coverage-file }}
           policy-file: ${{ inputs.policy-file }}
           baseline-file: ${{ inputs.baseline-file }}
           node-version: "20"
