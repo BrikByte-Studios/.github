@@ -111,12 +111,71 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
+      - name: Ensure summary.line is set in coverage.json (Go)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          echo "🔧 Normalizing coverage: syncing summary.line from Go coverage.out"
+
+          if [ ! -f "coverage.out" ]; then
+            echo "❌ coverage.out not found – did 'go test ./... -coverprofile=coverage.out' run in make test?"
+            ls -R
+            exit 1
+          fi
+
+          # Use go tool cover to compute total % coverage
+          go tool cover -func=coverage.out > coverage-func.txt
+
+          echo "📄 go tool cover output (summary line should be 'total: ... X.Y%'):"
+          tail -n 5 coverage-func.txt || cat coverage-func.txt
+
+          python - << 'EOF'
+          import json
+          from pathlib import Path
+
+          lines = Path("coverage-func.txt").read_text(encoding="utf-8").strip().splitlines()
+          if not lines:
+            raise SystemExit("coverage-func.txt is empty; cannot compute coverage.")
+
+          last = lines[-1]
+          parts = last.split()
+          if not parts or not parts[-1].endswith("%"):
+            raise SystemExit(f"Unexpected go tool cover summary line: {last!r}")
+
+          pct_str = parts[-1].rstrip("%")
+          try:
+            line_pct = float(pct_str)
+          except ValueError:
+            raise SystemExit(f"Invalid coverage percentage: {pct_str!r}")
+
+          out_dir = Path("out")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          cov_path = out_dir / "coverage.json"
+
+          try:
+            cov = json.loads(cov_path.read_text(encoding="utf-8"))
+          except FileNotFoundError:
+            cov = {}
+
+          cov.setdefault("summary", {})
+          cov["summary"]["line"] = line_pct  # numeric percentage
+
+          cov.setdefault("files", [])        # can stay empty until you enforce critical_paths
+
+          cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
+          print(f"✅ Updated out/coverage.json with summary.line = {line_pct:.1f}")
+          EOF
+
+          echo "✅ coverage.json after normalization:"
+          cat out/coverage.json
+
       - name: Upload Go coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ env.LANGUAGE }}
+          name: coverage-${{ env.LANGUAGE }}   # => coverage-go
           path: |
-            ${{ inputs.working-directory || '.' }}/out/coverage.json
-            ${{ inputs.working-directory || '.' }}/coverage.out
+            ${{ env.WORKING_DIRECTORY }}/out/coverage.json
+            ${{ env.WORKING_DIRECTORY }}/coverage.out
+            ${{ env.WORKING_DIRECTORY }}/coverage-func.txt
           if-no-files-found: ignore
