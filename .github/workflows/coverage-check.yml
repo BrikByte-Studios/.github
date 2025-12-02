@@ -92,6 +92,20 @@ jobs:
           name: ${{ inputs.coverage-artifact-name }}
           path: .
 
+      - name: Debug coverage artifact contents
+        run: |
+          echo "Workspace tree in coverage gate job:"
+          ls -R
+
+          echo
+          echo "Checking for node-api-example/out/coverage.json:"
+          if [ -f "node-api-example/out/coverage.json" ]; then
+            echo "✅ Found node-api-example/out/coverage.json"
+          else
+            echo "❌ node-api-example/out/coverage.json is missing"
+          fi
+
+
       # -----------------------------------------------------------------------
       # 3) Run coverage governance gate
       #
