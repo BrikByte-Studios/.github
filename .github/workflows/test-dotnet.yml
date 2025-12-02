@@ -118,23 +118,20 @@ jobs:
           set -euo pipefail
           echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
 
-          # 1) Prefer a root-level TestResults/coverage.net.json if present
+          # 1) Locate Coverlet JSON (e.g. TestResults/coverage.net.json)
           if [ -f "TestResults/coverage.net.json" ]; then
-            COVERLET_JSON="TestResults/coverage.net.json"
+            export COVERLET_JSON="TestResults/coverage.net.json"
           else
-            echo "❌ Coverlet JSON not found at TestResults/coverage.net.json; searching under working directory..."
-            # 2) Fall back to a generic search (handles tests/*/TestResults/coverage.net..json)
-            FOUND=$(find . -maxdepth 6 -type f -name "coverage.net*.json" | head -n 1 || true)
+            echo "❌ Coverlet JSON not found at TestResults/coverage.net.json; searching..."
+            FOUND=$(find TestResults -maxdepth 2 -type f -name "*.json" | head -n 1 || true)
             if [ -z "$FOUND" ]; then
-              echo "❌ No Coverlet JSON file found under $(pwd)"
+              echo "❌ No Coverlet JSON file found under TestResults/"
               ls -R
               exit 1
             fi
             echo "ℹ️ Using detected Coverlet JSON: $FOUND"
-            COVERLET_JSON="$FOUND"
+            export COVERLET_JSON="$FOUND"
           fi
-
-          export COVERLET_JSON
 
           python - << 'EOF'
           import json
@@ -144,38 +141,63 @@ jobs:
           coverlet_path = Path(os.environ["COVERLET_JSON"])
           data = json.loads(coverlet_path.read_text(encoding="utf-8"))
 
-          # Coverlet JSON typically has a top-level "Line" summary:
-          # "Line": { "Total": 42, "Covered": 40, "Percent": 95.238... }
-          line_summary = data.get("Line")
-          if not isinstance(line_summary, dict):
-              raise SystemExit("Coverlet JSON missing top-level 'Line' summary")
+          # Try several shapes Coverlet uses.
+          percent = None
+          total = None
+          covered = None
 
-          percent = line_summary.get("Percent")
-          total = line_summary.get("Total")
-          covered = line_summary.get("Covered")
+          # Shape 1: top-level "Line": { Total, Covered, Percent }
+          line_summary = data.get("Line")
+          if isinstance(line_summary, dict):
+            percent = line_summary.get("Percent")
+            total = line_summary.get("Total")
+            covered = line_summary.get("Covered")
+
+          # Shape 2: "Summary": { "Line": {...} }
+          if percent is None and isinstance(data.get("Summary"), dict):
+            ls = data["Summary"].get("Line") or data["Summary"].get("line")
+            if isinstance(ls, dict):
+              percent = ls.get("Percent") or ls.get("percent")
+              total = ls.get("Total") or ls.get("total")
+              covered = ls.get("Covered") or ls.get("covered")
+
+          # Shape 3: Aggregate from Modules[*].Summary.Line
+          if percent is None and "Modules" in data and isinstance(data["Modules"], dict):
+            t_total = 0
+            t_cov = 0
+            for mod in data["Modules"].values():
+              summary = mod.get("Summary") or mod.get("summary") or {}
+              ls = summary.get("Line") or summary.get("line") or {}
+              tt = ls.get("Total") or ls.get("total")
+              cc = ls.get("Covered") or ls.get("covered")
+              if isinstance(tt, (int, float)) and isinstance(cc, (int, float)):
+                t_total += tt
+                t_cov += cc
+            if t_total > 0:
+              total = t_total
+              covered = t_cov
+              percent = (t_cov / t_total) * 100.0
 
           if percent is None:
-              if total and covered is not None:
-                  percent = (covered / total) * 100.0
-              else:
-                  raise SystemExit("Cannot determine coverage percent from Coverlet JSON")
+            raise SystemExit("Cannot determine coverage percent from Coverlet JSON (no Line summary found)")
 
           cov_dir = Path("out")
           cov_dir.mkdir(parents=True, exist_ok=True)
           cov_path = cov_dir / "coverage.json"
 
           try:
-              cov = json.loads(cov_path.read_text(encoding="utf-8"))
+            cov = json.loads(cov_path.read_text(encoding="utf-8"))
           except FileNotFoundError:
-              cov = {}
+            cov = {}
 
           cov.setdefault("summary", {})
-          cov["summary"]["line"] = float(percent)  # numeric %
+          cov["summary"]["line"] = float(percent)
 
+          # Ensure files is present (even if empty)
           cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
-          print(f"✅ Updated out/coverage.json with summary.line = {percent:.1f}")
+          print(f"✅ Updated out/coverage.json with summary.line = {percent:.2f}")
           EOF
 
           echo "✅ coverage.json after normalization:"
