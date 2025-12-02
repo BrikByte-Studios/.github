@@ -138,20 +138,6 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
-      - name: Debug after coverage merge
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: |
-          echo "PWD after coverage merge: ${PWD}"
-          echo "Tree after coverage merge:"
-
-          echo "Checking for out/coverage.json:"
-          if [ -f "out/coverage.json" ]; then
-            echo "✅ Found out/coverage.json in ${PWD}"
-          else
-            echo "❌ out/coverage.json is missing in ${PWD}"
-            exit 1
-          fi
-
       - name: Upload Node coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
