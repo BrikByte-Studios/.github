@@ -133,15 +133,6 @@ jobs:
           echo "Tree after coverage merge:"
           ls -R
 
-          echo
-          echo "Checking for out/coverage.json:"
-          if [ -f "out/coverage.json" ]; then
-            echo "✅ Found out/coverage.json in ${PWD}"
-          else
-            echo "❌ out/coverage.json is missing in ${PWD}"
-            exit 1
-          fi
-
       # -----------------------------------------------------------------------
       # X) Collect coverage (Node: Jest + c8 / Istanbul)
       #    - Expects coverage/coverage-final.json from the test step.
@@ -153,6 +144,22 @@ jobs:
           language: ${{ env.LANGUAGE }}
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
+
+      - name: Debug after coverage merge
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          echo "PWD after coverage merge: ${PWD}"
+          echo "Tree after coverage merge:"
+          ls -R
+
+          echo
+          echo "Checking for out/coverage.json:"
+          if [ -f "out/coverage.json" ]; then
+            echo "✅ Found out/coverage.json in ${PWD}"
+          else
+            echo "❌ out/coverage.json is missing in ${PWD}"
+            exit 1
+          fi
 
       - name: Upload Node coverage artifacts
         if: always()
