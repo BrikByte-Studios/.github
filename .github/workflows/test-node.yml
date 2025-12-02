@@ -126,12 +126,22 @@ jobs:
           echo "⏱  [TEST] Duration : ${DURATION} seconds"
           echo "ℹ️  [TEST] See TAP summary above for test counts."
 
-      - name: Debug after tests
+      - name: Debug after coverage merge
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
-          echo "PWD: ${PWD}"
-          echo "Tree after tests:"
+          echo "PWD after coverage merge: ${PWD}"
+          echo "Tree after coverage merge:"
           ls -R
+
+          echo
+          echo "Checking for out/coverage.json:"
+          if [ -f "out/coverage.json" ]; then
+            echo "✅ Found out/coverage.json in ${PWD}"
+          else
+            echo "❌ out/coverage.json is missing in ${PWD}"
+            exit 1
+          fi
+
       # -----------------------------------------------------------------------
       # X) Collect coverage (Node: Jest + c8 / Istanbul)
       #    - Expects coverage/coverage-final.json from the test step.
