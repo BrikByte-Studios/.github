@@ -1,0 +1,104 @@
+# =============================================================================
+# BrikByteOS — Coverage Governance Gate Workflow
+# -----------------------------------------------------------------------------
+# Task / WBS:
+#   - [TASK] GOV-TEST-COVERAGE-POLICY-004
+#
+# Repo:
+#   - Implemented in:
+#       • BrikByte-Studios/.github (.github/workflows/coverage-check.yml)
+#   - Consumed by:
+#       • BrikByte-Studios/brik-pipe-examples/*
+#       • Product repos via workflow_call
+#
+# Purpose:
+#   Enforce coverage thresholds (overall + critical paths) for protected branches
+#   using coverage.json + .governance/tests.yml.
+#
+# Notes:
+#   - This workflow can be:
+#       • Called as a reusable workflow (preferred)
+#       • Or triggered directly on pull_request (for central governance repos)
+# =============================================================================
+name: "BrikByteOS — Coverage Governance Gate"
+
+on:
+  # Reusable mode for product/example repos
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory where coverage.json lives (relative to repo root)"
+        required: false
+        default: "."
+        type: string
+      coverage-file:
+        description: "Path to normalized coverage.json (relative to working-directory)"
+        required: false
+        default: "out/coverage.json"
+        type: string
+      policy-file:
+        description: "Coverage policy file (relative to repo root)"
+        required: false
+        default: ".governance/tests.yml"
+        type: string
+      baseline-file:
+        description: "Optional baseline coverage file (relative to repo root)."
+        required: false
+        default: ".audit/coverage-baseline.json"
+        type: string
+
+  # Optional direct mode for governance repo itself
+  pull_request:
+    branches:
+      - main
+      - "release/*"
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-gate:
+    name: "Coverage Governance Gate"
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1) Checkout repository
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2) (Optional) Download coverage artifact
+      #
+      #    If coverage.json is produced by a separate job (e.g., "tests" job),
+      #    you can uncomment this block and align the artifact name.
+      #
+      #    Example:
+      #      - tests job uploads:
+      #          name: coverage-node
+      #          path: node-api-example/out/coverage.json
+      #
+      #      - This job downloads it before running coverage-check.
+      # -----------------------------------------------------------------------
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-node
+          path: ${{ inputs.working-directory }}/out
+
+      # -----------------------------------------------------------------------
+      # 3) Run coverage governance gate
+      #
+      #    - Invokes .github/scripts/coverage-check.mjs
+      #    - Enforces thresholds defined in .governance/tests.yml
+      #    - Fails with clear messages if thresholds are not met.
+      # -----------------------------------------------------------------------
+      - name: Run coverage governance gate
+        uses: BrikByte-Studios/.github/.github/actions/coverage-gate@main
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          coverage-file: ${{ inputs.coverage-file }}
+          policy-file: ${{ inputs.policy-file }}
+          baseline-file: ${{ inputs.baseline-file }}
+          node-version: "20"
