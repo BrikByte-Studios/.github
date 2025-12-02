@@ -1,7 +1,7 @@
 # =============================================================================
-# BrikByteOS — Reusable Java Unit Test Workflow
+# BrikByteOS — Reusable Java Unit Test Workflow (Maven/Gradle)
 # -----------------------------------------------------------------------------
-# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002 (Java lane)
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
 # Repos  :
 #   - Implemented in:
 #       • BrikByte-Studios/.github (.github/workflows/test-java.yml)
@@ -11,8 +11,10 @@
 #
 # Contract:
 #   - Expects:
-#       • Makefile with `make test` calling `mvn test` (with JaCoCo)
-#       • JaCoCo XML at target/site/jacoco/jacoco.xml
+#       • Makefile with `make test` calling:
+#           - Maven: mvn -B test
+#           - Gradle: ./gradlew test
+#       • src/test/java for tests.
 # =============================================================================
 name: "BrikByteOS — Java Unit Tests"
 
@@ -20,12 +22,17 @@ on:
   workflow_call:
     inputs:
       java-version:
-        description: "Java version (e.g. 21; must match runtime matrix)"
+        description: "Java version (e.g. 17 or 21; must align with runtime matrix)"
         required: false
         type: string
-        default: "21"
+        default: "17"
+      distribution:
+        description: "JDK distribution (e.g. temurin)"
+        required: false
+        type: string
+        default: "temurin"
       working-directory:
-        description: "Path to Java project (Makefile + pom.xml)"
+        description: "Path to Java project (Makefile + pom.xml/build.gradle)"
         required: false
         type: string
         default: "."
@@ -40,7 +47,8 @@ jobs:
 
     env:
       LANGUAGE: java
-      JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || '21' }}
+      JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || '17' }}
+      JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
     steps:
@@ -58,39 +66,36 @@ jobs:
 
           if [ ! -f "${WORKING_DIRECTORY}/Makefile" ]; then
             echo "❌ Makefile not found in ${WORKING_DIRECTORY}."
-            echo "   Expected 'make test' calling Maven (mvn test) with JaCoCo."
+            echo "   Expected 'make test' using Maven or Gradle."
             exit 1
           fi
 
-          if [ ! -f "${WORKING_DIRECTORY}/pom.xml" ]; then
-            echo "❌ pom.xml not found in ${WORKING_DIRECTORY}."
+          if [ ! -f "${WORKING_DIRECTORY}/pom.xml" ] && \
+             [ ! -f "${WORKING_DIRECTORY}/build.gradle" ] && \
+             [ ! -f "${WORKING_DIRECTORY}/build.gradle.kts" ]; then
+            echo "❌ No pom.xml or build.gradle(.kts) found in ${WORKING_DIRECTORY}."
             exit 1
           fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-          cache: 'maven'
 
-      # Optional: central Java cache composite, if you have one
-      # - name: "Cache Java dependencies"
-      #   uses: BrikByte-Studios/.github/.github/actions/cache-java-deps@main
-      #   with:
-      #     java-version: ${{ env.JAVA_VERSION }}
-      #     project-path: ${{ env.WORKING_DIRECTORY }}
+      - name: "Cache JVM dependencies (Maven / Gradle)"
+        uses: BrikByte-Studios/.github/.github/actions/cache-java-deps@main
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          project-path: ${{ env.WORKING_DIRECTORY }}
 
-      # -----------------------------------------------------------------------
-      # Run unit tests via `make test`
-      # -----------------------------------------------------------------------
       - name: Run Java unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
           echo "🧪 [TEST] Language  : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime   : Java ${JAVA_VERSION}"
+          echo "🧪 [TEST] Runtime   : Java (Temurin) ${JAVA_VERSION}"
           echo "🧪 [TEST] Directory : ${PWD}"
           echo "🧪 [TEST] Command   : make test"
           echo "🧪 [TEST] Status    : STARTING"
@@ -104,9 +109,10 @@ jobs:
 
           echo "✅ [TEST] Status    : COMPLETED"
           echo "⏱  [TEST] Duration : ${DURATION} seconds"
+          echo "ℹ️  [TEST] See Maven/Gradle test summary above."
 
       # -----------------------------------------------------------------------
-      # X) Collect coverage (Java: JaCoCo)
+      # X) Collect coverage (Java: Jacoco XML)
       #    - Expects target/site/jacoco/jacoco.xml.
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
@@ -122,10 +128,11 @@ jobs:
           set -euo pipefail
           echo "🔧 Normalizing coverage: syncing summary.line from JaCoCo XML"
 
+          # Common JaCoCo locations
           if [ -f "target/site/jacoco/jacoco.xml" ]; then
-            JACOCO_XML="target/site/jacoco/jacoco.xml"
+            export JACOCO_XML="target/site/jacoco/jacoco.xml"
           elif [ -f "jacoco.xml" ]; then
-            JACOCO_XML="jacoco.xml"
+            export JACOCO_XML="jacoco.xml"
           else
             echo "❌ JaCoCo XML not found (expected target/site/jacoco/jacoco.xml or jacoco.xml)."
             ls -R
@@ -147,7 +154,7 @@ jobs:
           tree = ET.parse(xml_path)
           root = tree.getroot()
 
-          # JaCoCo coverage summary is given by:
+          # JaCoCo coverage summary:
           # <counter type="LINE" missed="X" covered="Y"/>
           missed = 0
           covered = 0
