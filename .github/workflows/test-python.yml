@@ -110,13 +110,63 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
+      - name: Ensure summary.line is set in coverage.json (Python)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          echo "🔧 Normalizing coverage: syncing summary.line from coverage.xml"
+
+          if [ ! -f "coverage.xml" ]; then
+            echo "❌ coverage.xml not found – did pytest run with --cov-report=xml:coverage.xml?"
+            ls -R
+            exit 1
+          fi
+
+          python - << 'EOF'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          xml_path = Path("coverage.xml")
+          tree = ET.parse(xml_path)
+          root = tree.getroot()
+
+          # coverage.py / pytest-cov typically put overall line-rate on the root tag:
+          # <coverage line-rate="0.95" ...>
+          line_rate_attr = root.get("line-rate", "0")
+          try:
+            line_rate = float(line_rate_attr) * 100.0   # convert ratio → percentage
+          except ValueError:
+            raise SystemExit(f"Invalid line-rate in coverage.xml: {line_rate_attr!r}")
+
+          out_dir = Path("out")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          cov_path = out_dir / "coverage.json"
+
+          try:
+            cov = json.loads(cov_path.read_text(encoding="utf-8"))
+          except FileNotFoundError:
+            cov = {}
+
+          cov.setdefault("summary", {})
+          cov["summary"]["line"] = line_rate  # numeric percentage
+
+          cov.setdefault("files", [])  # can stay empty until you enforce critical_paths
+
+          cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
+          print(f"✅ Updated out/coverage.json with summary.line = {line_rate:.1f}")
+          EOF
+
+          echo "✅ coverage.json after normalization:"
+          cat out/coverage.json
+
       - name: Upload Python coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ env.LANGUAGE }}
+          name: coverage-${{ env.LANGUAGE }}   # => coverage-python
           path: |
-            ${{ inputs.working-directory || '.' }}/out/coverage.json
-            ${{ inputs.working-directory || '.' }}/coverage.xml
+            ${{ env.WORKING_DIRECTORY }}/out/coverage.json
+            ${{ env.WORKING_DIRECTORY }}/coverage.xml
           if-no-files-found: ignore
 
