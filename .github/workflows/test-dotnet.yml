@@ -103,7 +103,7 @@ jobs:
           echo "ℹ️  [TEST] See dotnet test summary above."
 
       # -----------------------------------------------------------------------
-      # X) Collect coverage (Dotnet: go test -coverprofile=coverage.out)
+      # X) Collect coverage (.NET: coverlet JSON via dotnet test)
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
@@ -118,20 +118,23 @@ jobs:
           set -euo pipefail
           echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
 
-          # 1) Locate Coverlet JSON (e.g. TestResults/coverage.net.json)
+          # 1) Prefer a root-level TestResults/coverage.net.json if present
           if [ -f "TestResults/coverage.net.json" ]; then
-            export COVERLET_JSON="TestResults/coverage.net.json"
+            COVERLET_JSON="TestResults/coverage.net.json"
           else
-            echo "❌ Coverlet JSON not found at TestResults/coverage.net.json; searching..."
-            FOUND=$(find TestResults -maxdepth 2 -type f -name "*.json" | head -n 1 || true)
+            echo "❌ Coverlet JSON not found at TestResults/coverage.net.json; searching under working directory..."
+            # 2) Fall back to a generic search (handles tests/*/TestResults/coverage.net..json)
+            FOUND=$(find . -maxdepth 6 -type f -name "coverage.net*.json" | head -n 1 || true)
             if [ -z "$FOUND" ]; then
-              echo "❌ No Coverlet JSON file found under TestResults/"
+              echo "❌ No Coverlet JSON file found under $(pwd)"
               ls -R
               exit 1
             fi
             echo "ℹ️ Using detected Coverlet JSON: $FOUND"
-            export COVERLET_JSON="$FOUND"
+            COVERLET_JSON="$FOUND"
           fi
+
+          export COVERLET_JSON
 
           python - << 'EOF'
           import json
@@ -145,26 +148,26 @@ jobs:
           # "Line": { "Total": 42, "Covered": 40, "Percent": 95.238... }
           line_summary = data.get("Line")
           if not isinstance(line_summary, dict):
-            raise SystemExit("Coverlet JSON missing top-level 'Line' summary")
+              raise SystemExit("Coverlet JSON missing top-level 'Line' summary")
 
           percent = line_summary.get("Percent")
           total = line_summary.get("Total")
           covered = line_summary.get("Covered")
 
           if percent is None:
-            if total and covered is not None:
-              percent = (covered / total) * 100.0
-            else:
-              raise SystemExit("Cannot determine coverage percent from Coverlet JSON")
+              if total and covered is not None:
+                  percent = (covered / total) * 100.0
+              else:
+                  raise SystemExit("Cannot determine coverage percent from Coverlet JSON")
 
           cov_dir = Path("out")
           cov_dir.mkdir(parents=True, exist_ok=True)
           cov_path = cov_dir / "coverage.json"
 
           try:
-            cov = json.loads(cov_path.read_text(encoding="utf-8"))
+              cov = json.loads(cov_path.read_text(encoding="utf-8"))
           except FileNotFoundError:
-            cov = {}
+              cov = {}
 
           cov.setdefault("summary", {})
           cov["summary"]["line"] = float(percent)  # numeric %
@@ -177,7 +180,6 @@ jobs:
 
           echo "✅ coverage.json after normalization:"
           cat out/coverage.json
-
 
       - name: Upload Dotnet coverage artifacts
         if: always()
