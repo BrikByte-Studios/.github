@@ -138,6 +138,63 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
+      - name: Ensure summary.line is set in coverage.json (Node + c8)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          echo "🔧 Normalizing coverage: syncing summary.line from coverage/coverage-final.json"
+
+          if [ ! -f "coverage/coverage-final.json" ]; then
+            echo "❌ coverage/coverage-final.json not found – did c8 run with --reporter=json?"
+            ls -R
+            exit 1
+          fi
+
+          # Read c8's coverage-final.json and patch out/coverage.json
+          node - << 'EOF'
+          const fs = require('fs');
+
+          function readJson(path) {
+            return JSON.parse(fs.readFileSync(path, 'utf8'));
+          }
+
+          // 1) Read c8 summary
+          const c8 = readJson('coverage/coverage-final.json');
+
+          if (!c8.total || !c8.total.lines || typeof c8.total.lines.pct !== 'number') {
+            console.error('Unexpected coverage-final.json format. total.lines.pct is missing.');
+            process.exit(1);
+          }
+
+          const linePct = c8.total.lines.pct; // e.g. 100
+
+          // 2) Read existing coverage.json if present, otherwise start fresh
+          let cov;
+          try {
+            cov = readJson('out/coverage.json');
+          } catch {
+            cov = {};
+          }
+
+          if (!cov.summary || typeof cov.summary !== 'object') {
+            cov.summary = {};
+          }
+
+          cov.summary.line = linePct;
+
+          // Ensure files key exists (can stay empty if you don't yet enforce critical_paths)
+          if (!Array.isArray(cov.files)) {
+            cov.files = [];
+          }
+
+          fs.writeFileSync('out/coverage.json', JSON.stringify(cov, null, 2));
+          console.log('✅ Updated out/coverage.json with summary.line =', linePct);
+          EOF
+
+          echo "✅ coverage.json after normalization:"
+          cat out/coverage.json
+
+
       - name: Upload Node coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
