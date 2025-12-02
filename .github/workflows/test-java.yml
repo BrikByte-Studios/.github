@@ -1,7 +1,7 @@
 # =============================================================================
-# BrikByteOS — Reusable Java Unit Test Workflow (Maven/Gradle)
+# BrikByteOS — Reusable Java Unit Test Workflow
 # -----------------------------------------------------------------------------
-# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002 (Java lane)
 # Repos  :
 #   - Implemented in:
 #       • BrikByte-Studios/.github (.github/workflows/test-java.yml)
@@ -11,10 +11,8 @@
 #
 # Contract:
 #   - Expects:
-#       • Makefile with `make test` calling:
-#           - Maven: mvn -B test
-#           - Gradle: ./gradlew test
-#       • src/test/java for tests.
+#       • Makefile with `make test` calling `mvn test` (with JaCoCo)
+#       • JaCoCo XML at target/site/jacoco/jacoco.xml
 # =============================================================================
 name: "BrikByteOS — Java Unit Tests"
 
@@ -22,17 +20,12 @@ on:
   workflow_call:
     inputs:
       java-version:
-        description: "Java version (e.g. 17 or 21; must align with runtime matrix)"
+        description: "Java version (e.g. 21; must match runtime matrix)"
         required: false
         type: string
-        default: "17"
-      distribution:
-        description: "JDK distribution (e.g. temurin)"
-        required: false
-        type: string
-        default: "temurin"
+        default: "21"
       working-directory:
-        description: "Path to Java project (Makefile + pom.xml/build.gradle)"
+        description: "Path to Java project (Makefile + pom.xml)"
         required: false
         type: string
         default: "."
@@ -47,8 +40,7 @@ jobs:
 
     env:
       LANGUAGE: java
-      JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || '17' }}
-      JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
+      JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || '21' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
     steps:
@@ -66,36 +58,39 @@ jobs:
 
           if [ ! -f "${WORKING_DIRECTORY}/Makefile" ]; then
             echo "❌ Makefile not found in ${WORKING_DIRECTORY}."
-            echo "   Expected 'make test' using Maven or Gradle."
+            echo "   Expected 'make test' calling Maven (mvn test) with JaCoCo."
             exit 1
           fi
 
-          if [ ! -f "${WORKING_DIRECTORY}/pom.xml" ] && \
-             [ ! -f "${WORKING_DIRECTORY}/build.gradle" ] && \
-             [ ! -f "${WORKING_DIRECTORY}/build.gradle.kts" ]; then
-            echo "❌ No pom.xml or build.gradle(.kts) found in ${WORKING_DIRECTORY}."
+          if [ ! -f "${WORKING_DIRECTORY}/pom.xml" ]; then
+            echo "❌ pom.xml not found in ${WORKING_DIRECTORY}."
             exit 1
           fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'maven'
 
-      - name: "Cache JVM dependencies (Maven / Gradle)"
-        uses: BrikByte-Studios/.github/.github/actions/cache-java-deps@main
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          project-path: ${{ env.WORKING_DIRECTORY }}
+      # Optional: central Java cache composite, if you have one
+      # - name: "Cache Java dependencies"
+      #   uses: BrikByte-Studios/.github/.github/actions/cache-java-deps@main
+      #   with:
+      #     java-version: ${{ env.JAVA_VERSION }}
+      #     project-path: ${{ env.WORKING_DIRECTORY }}
 
+      # -----------------------------------------------------------------------
+      # Run unit tests via `make test`
+      # -----------------------------------------------------------------------
       - name: Run Java unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
           echo "🧪 [TEST] Language  : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime   : Java (Temurin) ${JAVA_VERSION}"
+          echo "🧪 [TEST] Runtime   : Java ${JAVA_VERSION}"
           echo "🧪 [TEST] Directory : ${PWD}"
           echo "🧪 [TEST] Command   : make test"
           echo "🧪 [TEST] Status    : STARTING"
@@ -109,10 +104,9 @@ jobs:
 
           echo "✅ [TEST] Status    : COMPLETED"
           echo "⏱  [TEST] Duration : ${DURATION} seconds"
-          echo "ℹ️  [TEST] See Maven/Gradle test summary above."
 
       # -----------------------------------------------------------------------
-      # X) Collect coverage (Java: Jacoco XML)
+      # X) Collect coverage (Java: JaCoCo)
       #    - Expects target/site/jacoco/jacoco.xml.
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
@@ -122,13 +116,80 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
-      - name: Upload Node coverage artifacts
+      - name: Ensure summary.line is set in coverage.json (Java / JaCoCo)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          echo "🔧 Normalizing coverage: syncing summary.line from JaCoCo XML"
+
+          if [ -f "target/site/jacoco/jacoco.xml" ]; then
+            JACOCO_XML="target/site/jacoco/jacoco.xml"
+          elif [ -f "jacoco.xml" ]; then
+            JACOCO_XML="jacoco.xml"
+          else
+            echo "❌ JaCoCo XML not found (expected target/site/jacoco/jacoco.xml or jacoco.xml)."
+            ls -R
+            exit 1
+          fi
+
+          python - << 'EOF'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          import os
+
+          jacoco_path = os.environ.get("JACOCO_XML", "target/site/jacoco/jacoco.xml")
+          xml_path = Path(jacoco_path)
+
+          if not xml_path.is_file():
+            raise SystemExit(f"JaCoCo XML not found at {xml_path}")
+
+          tree = ET.parse(xml_path)
+          root = tree.getroot()
+
+          # JaCoCo coverage summary is given by:
+          # <counter type="LINE" missed="X" covered="Y"/>
+          missed = 0
+          covered = 0
+          for counter in root.iter("counter"):
+            if counter.get("type") == "LINE":
+              missed = int(counter.get("missed", "0"))
+              covered = int(counter.get("covered", "0"))
+              break
+
+          total = missed + covered
+          if total == 0:
+            raise SystemExit("No LINE coverage data found in JaCoCo XML.")
+
+          line_pct = (covered / total) * 100.0
+
+          out_dir = Path("out")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          cov_path = out_dir / "coverage.json"
+
+          try:
+            cov = json.loads(cov_path.read_text(encoding="utf-8"))
+          except FileNotFoundError:
+            cov = {}
+
+          cov.setdefault("summary", {})
+          cov["summary"]["line"] = line_pct
+
+          cov.setdefault("files", [])
+
+          cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
+          print(f"✅ Updated out/coverage.json with summary.line = {line_pct:.1f}")
+          EOF
+
+          echo "✅ coverage.json after normalization:"
+          cat out/coverage.json
+
+      - name: Upload Java coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Unique per matrix entry: includes runtime version + job + attempt
-          name: coverage-${{ env.LANGUAGE }}
+          name: coverage-${{ env.LANGUAGE }}   # => coverage-java
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
-            ${{ env.WORKING_DIRECTORY }}/coverage/
+            ${{ env.WORKING_DIRECTORY }}/target/site/jacoco/jacoco.xml
           if-no-files-found: ignore
