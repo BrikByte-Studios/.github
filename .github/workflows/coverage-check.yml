@@ -34,7 +34,7 @@ on:
       coverage-file:
         description: "Path to normalized coverage.json (relative to working-directory)"
         required: false
-        default: "out/coverage.json"
+        default: "./out/coverage.json"
         type: string
       policy-file:
         description: "Coverage policy file (relative to repo root)"
