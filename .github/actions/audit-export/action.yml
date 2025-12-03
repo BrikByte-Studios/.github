@@ -160,6 +160,9 @@ runs:
 
         echo "[COVERAGE-AUDIT/ACTION] upload-to-blob = TRUE"
         echo "[COVERAGE-AUDIT/ACTION] Invoking stub blob-sync script..."
+        echo "[COVERAGE-AUDIT/ACTION] Using working-directory='${{ inputs.working-directory }}'"
+
+        cd "${{ inputs.working-directory }}"
 
         node "${GITHUB_ACTION_PATH}/audit-blob-sync.mjs" \
           --audit-root "${{ inputs.audit-root }}" \

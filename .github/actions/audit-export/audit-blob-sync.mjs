@@ -32,14 +32,37 @@ import path from "path";
 import process from "process";
 
 // -----------------------------------------------------------------------------
-// CLI argument parsing — simple, dependency-free
+// CLI argument parsing — supports:
+//   --key=value
+//   --key value
 // -----------------------------------------------------------------------------
-const args = Object.fromEntries(
-  process.argv.slice(2).map((arg) => {
-    const [key, value] = arg.split("=");
-    return [key.replace(/^--/, ""), value];
-  })
-);
+function parseArgs(argv) {
+  const options = {};
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (!arg.startsWith("--")) continue;
+
+    const [rawKey, valueFromEq] = arg.split("=");
+    const key = rawKey.replace(/^--/, "");
+
+    if (valueFromEq !== undefined) {
+      // --key=value
+      options[key] = valueFromEq;
+    } else {
+      // --key value
+      const next = argv[i + 1];
+      if (next && !next.startsWith("--")) {
+        options[key] = next;
+        i++;
+      } else {
+        options[key] = true;
+      }
+    }
+  }
+  return options;
+}
+
+const args = parseArgs(process.argv.slice(2));
 
 const auditRoot = args["audit-root"] || ".audit";
 const blobTarget = args["blob-target"] || "";
@@ -80,7 +103,7 @@ function walk(dir) {
 }
 
 // -----------------------------------------------------------------------------
-// Locate audit bundle directory
+// Locate audit bundle directory (relative to current working directory)
 // -----------------------------------------------------------------------------
 const auditPath = path.resolve(cwd, auditRoot);
 const filesToSync = walk(auditPath);
