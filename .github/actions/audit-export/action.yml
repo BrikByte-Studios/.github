@@ -1,0 +1,81 @@
+name: "BrikByteOS — Unit Test Audit Export"
+description: >
+  Export unit test audit bundle (.audit/<timestamp>/unit-tests) containing
+  JUnit results, coverage summary, and CI metadata for governance and compliance.
+author: "BrikByte Studios"
+
+inputs:
+  working-directory:
+    description: "Directory where JUnit, coverage.json, and .audit/ live (relative to repo root)"
+    required: false
+    default: "."
+  junit:
+    description: "Path to JUnit XML file, relative to working-directory"
+    required: false
+    default: "out/junit.xml"
+  coverage:
+    description: "Path to normalized coverage.json file, relative to working-directory"
+    required: false
+    default: "out/coverage.json"
+  audit-root:
+    description: "Root directory for audit bundles (relative to working-directory)"
+    required: false
+    default: ".audit"
+  runtime:
+    description: "Runtime descriptor (e.g. node@20, python@3.11, dotnet@8.0)"
+    required: false
+    default: ""
+  duration-seconds:
+    description: "Optional duration (in seconds) for the unit test run"
+    required: false
+    default: ""
+  node-version:
+    description: "Node.js version to use for the exporter script"
+    required: false
+    default: "20"
+
+runs:
+  using: "composite"
+  steps:
+    # -------------------------------------------------------------------------
+    # 1) Setup Node.js runtime for the exporter script
+    # -------------------------------------------------------------------------
+    - name: Setup Node.js for audit exporter
+    # BrikByte-Studios/.github/.github/actions/audit-export is consumed
+    # by repos like:
+    #   - BrikByte-Studios/brik-pipe-examples
+    #   - Product repos using BrikByteOS test templates
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # -------------------------------------------------------------------------
+    # 2) Run the audit exporter script
+    #    - Script is co-located in this action directory:
+    #      ${GITHUB_ACTION_PATH}/export-unit-audit.mjs
+    # -------------------------------------------------------------------------
+    - name: Export unit test audit bundle
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "[COVERAGE-AUDIT/ACTION] Working directory  : '${{ inputs.working-directory }}'"
+        echo "[COVERAGE-AUDIT/ACTION] JUnit path         : '${{ inputs.junit }}'"
+        echo "[COVERAGE-AUDIT/ACTION] Coverage path      : '${{ inputs.coverage }}'"
+        echo "[COVERAGE-AUDIT/ACTION] Audit root         : '${{ inputs.audit-root }}'"
+        echo "[COVERAGE-AUDIT/ACTION] Runtime            : '${{ inputs.runtime }}'"
+        echo "[COVERAGE-AUDIT/ACTION] Duration (seconds) : '${{ inputs.duration-seconds }}'"
+
+        cd "${{ inputs.working-directory }}"
+
+        EXTRA_ARGS=""
+        if [ -n "${{ inputs.duration-seconds }}" ]; then
+          EXTRA_ARGS="--duration-seconds \"${{ inputs.duration-seconds }}\""
+        fi
+
+        node "${GITHUB_ACTION_PATH}/export-unit-audit.mjs" \
+          --junit "${{ inputs.junit }}" \
+          --coverage "${{ inputs.coverage }}" \
+          --audit-root "${{ inputs.audit-root }}" \
+          --runtime "${{ inputs.runtime }}" \
+          $EXTRA_ARGS
