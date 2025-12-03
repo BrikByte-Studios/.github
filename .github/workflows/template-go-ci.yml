@@ -136,6 +136,18 @@ jobs:
             ${GOMODCACHE:-$HOME/go/pkg/mod}
             ${GOCACHE:-$HOME/.cache/go-build}
 
+      # install go-junit-report so `make test` can emit out/junit.xml
+      - name: Install go-junit-report
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          set -euo pipefail
+          echo "📦 Installing go-junit-report..."
+          go install github.com/jstemmer/go-junit-report/v2@latest
+          GOPATH="$(go env GOPATH)"
+          echo "📁 GOPATH is: ${GOPATH}"
+          echo "${GOPATH}/bin" >> "$GITHUB_PATH"
+          echo "✅ go-junit-report installed and added to PATH"
+
       # -----------------------------------------------------------------------
       # 5) Run canonical `make ci` pipeline (build+test)
       # -----------------------------------------------------------------------
