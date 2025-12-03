@@ -118,14 +118,17 @@ jobs:
           set -euo pipefail
           echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
 
-          # 1) Locate Coverlet JSON (e.g. TestResults/coverage.net.json)
+          # 1) Try common root-level location first.
           if [ -f "TestResults/coverage.net.json" ]; then
             export COVERLET_JSON="TestResults/coverage.net.json"
+          elif [ -f "TestResults/coverage.net..json" ]; then
+            export COVERLET_JSON="TestResults/coverage.net..json"
           else
-            echo "❌ Coverlet JSON not found at TestResults/coverage.net.json; searching..."
-            FOUND=$(find TestResults -maxdepth 2 -type f -name "*.json" | head -n 1 || true)
+            echo "❌ Coverlet JSON not found at TestResults/coverage.net*.json; searching under working directory..."
+            # Search entire working directory for any coverage.net*.json
+            FOUND=$(find . -type f -name "coverage.net*.json" | head -n 1 || true)
             if [ -z "$FOUND" ]; then
-              echo "❌ No Coverlet JSON file found under TestResults/"
+              echo "❌ No Coverlet JSON file found under working directory."
               ls -R
               exit 1
             fi
@@ -141,7 +144,6 @@ jobs:
           coverlet_path = Path(os.environ["COVERLET_JSON"])
           data = json.loads(coverlet_path.read_text(encoding="utf-8"))
 
-          # Try several shapes Coverlet uses.
           percent = None
           total = None
           covered = None
@@ -162,7 +164,7 @@ jobs:
               covered = ls.get("Covered") or ls.get("covered")
 
           # Shape 3: Aggregate from Modules[*].Summary.Line
-          if percent is None and "Modules" in data and isinstance(data["Modules"], dict):
+          if percent is None and isinstance(data.get("Modules"), dict):
             t_total = 0
             t_cov = 0
             for mod in data["Modules"].values():
@@ -179,6 +181,8 @@ jobs:
               percent = (t_cov / t_total) * 100.0
 
           if percent is None:
+            # Last-resort debugging output to help if schema is different
+            print("Coverlet JSON keys:", list(data.keys()))
             raise SystemExit("Cannot determine coverage percent from Coverlet JSON (no Line summary found)")
 
           cov_dir = Path("out")
@@ -193,7 +197,7 @@ jobs:
           cov.setdefault("summary", {})
           cov["summary"]["line"] = float(percent)
 
-          # Ensure files is present (even if empty)
+          # Ensure files array exists (even if empty)
           cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
@@ -202,6 +206,7 @@ jobs:
 
           echo "✅ coverage.json after normalization:"
           cat out/coverage.json
+
 
       - name: Upload Dotnet coverage artifacts
         if: always()
