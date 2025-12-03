@@ -34,6 +34,41 @@ inputs:
     required: false
     default: "20"
 
+  # ---------------------------------------------------------------------------
+  # NEW: Artifact upload controls
+  # ---------------------------------------------------------------------------
+  upload-artifact:
+    description: >
+      If 'true', upload the audit root directory (.audit/) as a GitHub
+      Actions artifact after export-unit-audit.mjs finishes.
+    required: false
+    default: "true"
+
+  artifact-name:
+    description: >
+      Optional override for the artifact name. If empty, a default name
+      including job + run_attempt will be used.
+    required: false
+    default: ""
+
+  # ---------------------------------------------------------------------------
+  # Future blob sync hook (no external upload yet)
+  # ---------------------------------------------------------------------------
+  upload-to-blob:
+    description: >
+      If 'true', invoke a stub blob-sync hook. This does NOT perform any real
+      external upload yet, but is a safe extension point for future tasks
+      (e.g. sync to S3 / Azure Blob / GCS).
+    required: false
+    default: "false"
+
+  blob-target:
+    description: >
+      Logical blob destination identifier, e.g. 's3://brikbyte-audit/unit-tests'
+      or 'azure://brikbyte-audit/unit-tests'. Currently used only for logging.
+    required: false
+    default: ""
+
 runs:
   using: "composite"
   steps:
@@ -41,10 +76,10 @@ runs:
     # 1) Setup Node.js runtime for the exporter script
     # -------------------------------------------------------------------------
     - name: Setup Node.js for audit exporter
-    # BrikByte-Studios/.github/.github/actions/audit-export is consumed
-    # by repos like:
-    #   - BrikByte-Studios/brik-pipe-examples
-    #   - Product repos using BrikByteOS test templates
+      # BrikByte-Studios/.github/.github/actions/audit-export is consumed
+      # by repos like:
+      #   - BrikByte-Studios/brik-pipe-examples
+      #   - Product repos using BrikByteOS test templates
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
@@ -73,9 +108,56 @@ runs:
           EXTRA_ARGS="--duration-seconds \"${{ inputs.duration-seconds }}\""
         fi
 
+        # Delegates all parsing / JSON construction to export-unit-audit.mjs.
+        # That script:
+        #   • Parses JUnit XML -> results.json
+        #   • Distils coverage.json -> coverage-summary.json
+        #   • Creates metadata.json from GitHub env + CLI args
+        #   • Writes into: <audit-root>/<timestamp>/unit-tests/
         node "${GITHUB_ACTION_PATH}/export-unit-audit.mjs" \
           --junit "${{ inputs.junit }}" \
           --coverage "${{ inputs.coverage }}" \
           --audit-root "${{ inputs.audit-root }}" \
           --runtime "${{ inputs.runtime }}" \
           $EXTRA_ARGS
+
+    # -------------------------------------------------------------------------
+    # 3) Always upload .audit/ as artifact (unless explicitly disabled)
+    # -------------------------------------------------------------------------
+    - name: Upload .audit bundle as artifact
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        # If caller provided a name, honour it; otherwise derive a stable one.
+        name: ${{ inputs.artifact-name != '' && inputs.artifact-name || format('unit-tests-audit-{0}-{1}', github.job, github.run_attempt) }}
+        # Upload the entire audit root for this repo/project.
+        # Using ** ensures nested timestamp folders are included.
+        path: |
+          ${{ inputs.working-directory }}/${{ inputs.audit-root }}/**
+        # Warn if we misconfigured paths (useful during rollout)
+        if-no-files-found: warn
+
+    # -------------------------------------------------------------------------
+    # 4) Stub blob-sync hook (no external upload yet)
+    #
+    #    This is intentionally a no-op for now. It gives governance / infra
+    #    teams a clear extension point:
+    #
+    #      - They can add a follow-up task to:
+    #          • Configure cloud credentials via secrets
+    #          • Implement a sync script (e.g. .github/scripts/audit-blob-sync.mjs)
+    #          • Invoke that script here when `upload-to-blob: true`
+    #
+    #    For now we only log intent safely.
+    # -------------------------------------------------------------------------
+    - name: Blob sync hook (stub only — no external upload)
+      if: ${{ inputs.upload-to-blob == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "[COVERAGE-AUDIT/ACTION] upload-to-blob = TRUE"
+        echo "[COVERAGE-AUDIT/ACTION] This is a stub hook — no cloud upload is performed."
+        echo "[COVERAGE-AUDIT/ACTION] When infra is ready, wire up a sync script here."
+        echo "[COVERAGE-AUDIT/ACTION] Suggested blob target: '${{ inputs.blob-target }}'"
+        echo "[COVERAGE-AUDIT/ACTION] Audit root to sync: '${{ inputs.working-directory }}/${{ inputs.audit-root }}'"
