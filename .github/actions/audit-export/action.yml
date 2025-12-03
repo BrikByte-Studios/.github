@@ -35,7 +35,7 @@ inputs:
     default: "20"
 
   # ---------------------------------------------------------------------------
-  # NEW: Artifact upload controls
+  # Artifact upload controls
   # ---------------------------------------------------------------------------
   upload-artifact:
     description: >
@@ -134,8 +134,10 @@ runs:
         # Using ** ensures nested timestamp folders are included.
         path: |
           ${{ inputs.working-directory }}/${{ inputs.audit-root }}/**
-        # Warn if we misconfigured paths (useful during rollout)
-        if-no-files-found: warn
+        include-hidden-files: true      # REQUIRED (because .audit is hidden)
+        if-no-files-found: ignore       # RECOMMENDED
+        compression-level: 6
+        overwrite: false
 
     # -------------------------------------------------------------------------
     # 4) Stub blob-sync hook (no external upload yet)
