@@ -159,7 +159,8 @@ runs:
         set -euo pipefail
 
         echo "[COVERAGE-AUDIT/ACTION] upload-to-blob = TRUE"
-        echo "[COVERAGE-AUDIT/ACTION] This is a stub hook — no cloud upload is performed."
-        echo "[COVERAGE-AUDIT/ACTION] When infra is ready, wire up a sync script here."
-        echo "[COVERAGE-AUDIT/ACTION] Suggested blob target: '${{ inputs.blob-target }}'"
-        echo "[COVERAGE-AUDIT/ACTION] Audit root to sync: '${{ inputs.working-directory }}/${{ inputs.audit-root }}'"
+        echo "[COVERAGE-AUDIT/ACTION] Invoking stub blob-sync script..."
+
+        node "${GITHUB_ACTION_PATH}/audit-blob-sync.mjs" \
+          --audit-root "${{ inputs.audit-root }}" \
+          --blob-target "${{ inputs.blob-target }}"
