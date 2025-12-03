@@ -178,4 +178,5 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/coverage.out
             ${{ env.WORKING_DIRECTORY }}/coverage-func.txt
+            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
           if-no-files-found: ignore
