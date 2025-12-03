@@ -168,5 +168,6 @@ jobs:
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/coverage.xml
+            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
           if-no-files-found: ignore
 
