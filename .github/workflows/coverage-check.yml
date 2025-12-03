@@ -90,7 +90,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.coverage-artifact-name }}
-          path: .
+          path: ${{ inputs.working-directory }}
 
 
       # -----------------------------------------------------------------------
