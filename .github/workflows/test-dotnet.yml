@@ -140,99 +140,11 @@ jobs:
           import json
           import os
           from pathlib import Path
-
-          coverlet_path = Path(os.environ["COVERLET_JSON"])
-          data = json.loads(coverlet_path.read_text(encoding="utf-8"))
-
-          percent = None
-          total = None
-          covered = None
+          import xml.etree.ElementTree as ET
 
           # -------------------------------
-          # Shape 1: top-level "Line"
+          # Helper: load existing coverage.json (may be stub)
           # -------------------------------
-          line_summary = data.get("Line")
-          if isinstance(line_summary, dict):
-            percent = line_summary.get("Percent")
-            total = line_summary.get("Total")
-            covered = line_summary.get("Covered")
-
-          # -------------------------------
-          # Shape 2: "Summary": { "Line": {...} }
-          # -------------------------------
-          if percent is None and isinstance(data.get("Summary"), dict):
-            ls = data["Summary"].get("Line") or data["Summary"].get("line")
-            if isinstance(ls, dict):
-              percent = ls.get("Percent") or ls.get("percent")
-              total = ls.get("Total") or ls.get("total")
-              covered = ls.get("Covered") or ls.get("covered")
-
-          # -------------------------------
-          # Shape 3: "Modules": { name → { Summary.Line } }
-          # -------------------------------
-          modules = None
-          if isinstance(data.get("Modules"), dict):
-            modules = data["Modules"]
-
-          # -------------------------------
-          # Shape 4: TOP-LEVEL assemblies:
-          #   { "SomeAssembly.dll": { ... }, ... }
-          # (your current case: keys == ["BrikByte.DotNetApiExample.dll"])
-          # -------------------------------
-          if modules is None and isinstance(data, dict):
-            # If all values are dicts, assume this is the modules map.
-            if all(isinstance(v, dict) for v in data.values()):
-              modules = data
-
-          # If we have a modules map, try to aggregate from it
-          if percent is None and isinstance(modules, dict):
-            t_total = 0
-            t_cov = 0
-            for mod_name, mod in modules.items():
-              # Prefer a Line summary if present
-              ls = None
-
-              # Option A: top-level "Line" in module
-              if isinstance(mod.get("Line"), dict):
-                ls = mod["Line"]
-
-              # Option B: in "Summary"
-              if ls is None and isinstance(mod.get("Summary"), dict):
-                cand = mod["Summary"].get("Line") or mod["Summary"].get("line")
-                if isinstance(cand, dict):
-                  ls = cand
-
-              if isinstance(ls, dict):
-                tt = ls.get("Total") or ls.get("total")
-                cc = ls.get("Covered") or ls.get("covered")
-                if isinstance(tt, (int, float)) and isinstance(cc, (int, float)):
-                  t_total += tt
-                  t_cov += cc
-                  continue  # handled via Line summary
-
-              # Option C: raw "Lines" map: { "1": 1, "2": 0, ... }
-              lines_map = mod.get("Lines") or mod.get("lines")
-              if isinstance(lines_map, dict):
-                for _line, hits in lines_map.items():
-                  # hits might be 0/1 or int
-                  try:
-                    h = int(hits)
-                  except Exception:
-                    continue
-                  t_total += 1
-                  if h > 0:
-                    t_cov += 1
-
-            if t_total > 0:
-              total = t_total
-              covered = t_cov
-              percent = (t_cov / t_total) * 100.0
-
-          if percent is None:
-            # Last-resort debugging output to help if schema is different
-            print("Coverlet JSON keys:", list(data.keys()))
-            raise SystemExit("Cannot determine coverage percent from Coverlet JSON (no Line summary found)")
-
           cov_dir = Path("out")
           cov_dir.mkdir(parents=True, exist_ok=True)
           cov_path = cov_dir / "coverage.json"
@@ -242,19 +154,133 @@ jobs:
           except FileNotFoundError:
             cov = {}
 
+          percent = None
+          total = None
+          covered = None
+
+          # -------------------------------
+          # Try to read percent from Coverlet JSON
+          # -------------------------------
+          cj = os.environ.get("COVERLET_JSON")
+          if cj:
+            coverlet_path = Path(cj)
+            if coverlet_path.is_file():
+              data = json.loads(coverlet_path.read_text(encoding="utf-8"))
+
+              # Shape 1: top-level "Line"
+              line_summary = data.get("Line")
+              if isinstance(line_summary, dict):
+                percent = line_summary.get("Percent")
+                total = line_summary.get("Total")
+                covered = line_summary.get("Covered")
+
+              # Shape 2: "Summary": { "Line": {...} }
+              if percent is None and isinstance(data.get("Summary"), dict):
+                ls = data["Summary"].get("Line") or data["Summary"].get("line")
+                if isinstance(ls, dict):
+                  percent = ls.get("Percent") or ls.get("percent")
+                  total = ls.get("Total") or ls.get("total")
+                  covered = ls.get("Covered") or ls.get("covered")
+
+              # Shape 3: "Modules": { name -> { Summary.Line } }
+              modules = None
+              if isinstance(data.get("Modules"), dict):
+                modules = data["Modules"]
+
+              # Shape 4: top-level assemblies map:
+              #   { "SomeAssembly.dll": { ... }, ... }
+              if modules is None and isinstance(data, dict):
+                if all(isinstance(v, dict) for v in data.values()):
+                  modules = data
+
+              if percent is None and isinstance(modules, dict):
+                t_total = 0
+                t_cov = 0
+                for mod_name, mod in modules.items():
+                  ls = None
+
+                  # Option A: module["Line"]
+                  if isinstance(mod.get("Line"), dict):
+                    ls = mod["Line"]
+
+                  # Option B: module["Summary"]["Line"]
+                  if ls is None and isinstance(mod.get("Summary"), dict):
+                    cand = mod["Summary"].get("Line") or mod["Summary"].get("line")
+                    if isinstance(cand, dict):
+                      ls = cand
+
+                  if isinstance(ls, dict):
+                    tt = ls.get("Total") or ls.get("total")
+                    cc = ls.get("Covered") or ls.get("covered")
+                    if isinstance(tt, (int, float)) and isinstance(cc, (int, float)):
+                      t_total += tt
+                      t_cov += cc
+                      continue
+
+                  # Option C: raw "Lines": { "12": 1, "13": 0, ... }
+                  lines_map = mod.get("Lines") or mod.get("lines")
+                  if isinstance(lines_map, dict):
+                    for _, hits in lines_map.items():
+                      try:
+                        h = int(hits)
+                      except Exception:
+                        continue
+                      t_total += 1
+                      if h > 0:
+                        t_cov += 1
+
+                if t_total > 0:
+                  total = t_total
+                  covered = t_cov
+                  percent = (t_cov / t_total) * 100.0
+
+          # -------------------------------
+          # Fallback: parse OpenCover XML if percent still unknown
+          # -------------------------------
+          if percent is None:
+            print("ℹ️ JSON did not yield a summary; trying OpenCover XML...")
+            xml_path: Path | None = None
+
+            # Search for coverage.net*.opencover.xml under working dir
+            for p in Path(".").rglob("coverage.net*.opencover.xml"):
+              xml_path = p
+              break
+
+            if xml_path and xml_path.is_file():
+              tree = ET.parse(str(xml_path))
+              root = tree.getroot()
+              summary = root.find(".//Summary")
+              if summary is not None:
+                num_sp = summary.attrib.get("numSequencePoints")
+                vis_sp = summary.attrib.get("visitedSequencePoints")
+                try:
+                  if num_sp is not None and vis_sp is not None:
+                    total = int(num_sp)
+                    covered = int(vis_sp)
+                    if total > 0:
+                      percent = covered / total * 100.0
+                except ValueError:
+                  pass
+
+          # -------------------------------
+          # Final: require percent to be set
+          # -------------------------------
+          if percent is None:
+            # Last-resort debug info
+            print("⚠️ Unable to determine coverage percent from Coverlet JSON or OpenCover XML.")
+            raise SystemExit("Cannot determine coverage percent from coverage artifacts")
+
           cov.setdefault("summary", {})
           cov["summary"]["line"] = float(percent)
-
-          # Ensure files array exists (even if empty)
           cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
           print(f"✅ Updated out/coverage.json with summary.line = {percent:.2f}")
           EOF
 
-
           echo "✅ coverage.json after normalization:"
           cat out/coverage.json
+
 
 
       - name: Upload Dotnet coverage artifacts
