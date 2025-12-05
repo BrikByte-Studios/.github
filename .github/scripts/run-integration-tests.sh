@@ -137,14 +137,29 @@ run_python_tests() {
     return 1
   fi
 
-  # 🔑 Ensure current directory (SERVICE_WORKDIR) is on PYTHONPATH
-  #    so imports like `from main import app` always work.
+  # Ensure current directory (SERVICE_WORKDIR) is on PYTHONPATH so
+  # imports like `from main import app` always work.
   log INFO "Exporting PYTHONPATH to include current directory: $(pwd)"
   export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
-  # Convention: use pytest mark "integration" by default.
+  # First attempt: use the "integration" mark convention.
   log INFO "Running Python integration tests via 'pytest -m integration'"
+
+  # Temporarily disable -e so we can inspect pytest's exit code.
+  set +e
   pytest -m "integration"
+  status=$?
+  set -e
+
+  # Exit code 5 = no tests collected / all deselected.
+  if [ "${status}" -eq 5 ]; then
+    log WARN "No tests collected for '-m integration'; falling back to 'pytest'."
+    pytest
+    return
+  fi
+
+  # Propagate pytest status (0 = success, others = real failures).
+  return "${status}"
 }
 
 # ------------------------
