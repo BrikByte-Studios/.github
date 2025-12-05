@@ -1,0 +1,340 @@
+# BrikByteOS Pipelines — Containerized Integration Test Workflow
+# --------------------------------------------------------------
+# Purpose:
+#   Provide a reusable, container-based integration test job that:
+#     - Builds or pulls the *real* service image under test.
+#     - Orchestrates multi-container environment: app + DB + optional cache.
+#     - Runs language-specific integration tests from a dedicated test runner.
+#     - Applies explicit health checks (DB + app) to avoid flaky race conditions.
+#     - Tears everything down deterministically in under 5 minutes.
+#
+# Usage from a service repo (brik-pipe-examples/*):
+#
+#   jobs:
+#     integration:
+#       uses: BrikByte-Studios/.github/.github/workflows/integration-test.yml@v1
+#       with:
+#         image: ghcr.io/brikbyte-studios/example-node-api:sha-${{ github.sha }}
+#         dockerfile: ./Dockerfile
+#         context: .
+#         db_image: postgres:16
+#         cache_image: redis:7
+#         test_command: "npm run test:integration"
+#         healthcheck_path: "/health"
+#         healthcheck_timeout: 60
+#         app_port: 3000
+#         db_port: 5432
+#         enable_cache_service: true
+#         test_language: "node"
+#
+# NOTE:
+#   This workflow is intentionally generic. Language-specific test behavior
+#   is delegated to the integration test runner image via environment
+#   variables such as TEST_LANGUAGE and TEST_COMMAND.
+
+name: "BrikPipe — Containerized Integration Tests"
+
+on:
+  # Reusable from other workflows via workflow_call
+  workflow_call:
+    inputs:
+      image:
+        description: >
+          Full tag for service image under test. If the image does not
+          exist in the registry yet, this workflow will build it from
+          the provided Dockerfile/context and tag it with this value.
+        required: true
+        type: string
+      dockerfile:
+        description: >
+          Path to the Dockerfile for building the service image under test.
+        required: false
+        type: string
+        default: "./Dockerfile"
+      context:
+        description: >
+          Build context directory for the service image under test.
+        required: false
+        type: string
+        default: "."
+      db_image:
+        description: >
+          Database image to use for integration tests. Example: postgres:16.
+        required: false
+        type: string
+        default: "postgres:16"
+      cache_image:
+        description: >
+          Optional cache or message broker image (e.g., redis:7, rabbitmq:3-management).
+          Will be started only if enable_cache_service is true.
+        required: false
+        type: string
+        default: ""
+      test_command:
+        description: >
+          Shell command to run inside the test-runner container to execute
+          integration tests. If empty, the runner falls back to language-specific
+          defaults based on test_language.
+        required: false
+        type: string
+        default: ""
+      healthcheck_path:
+        description: >
+          Path on the app for readiness probing (combined with app_port).
+          Example: /health or /actuator/health.
+        required: false
+        type: string
+        default: "/health"
+      healthcheck_timeout:
+        description: >
+          Maximum number of seconds to wait for DB + app readiness.
+        required: false
+        type: string
+        default: "60"
+      app_port:
+        description: >
+          Port exposed by the app container for HTTP health checks.
+        required: false
+        type: string
+        default: "3000"
+      db_port:
+        description: >
+          DB port for readiness checks.
+        required: false
+        type: string
+        default: "5432"
+      enable_cache_service:
+        description: >
+          If true, start a cache/message broker container using cache_image.
+        required: false
+        type: boolean
+        default: false
+      test_language:
+        description: >
+          Language hint for the test runner. Supported: node | python | java.
+          Used when test_command is empty.
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  integration-tests:
+    name: "Containerized Integration Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5  # DoD: Under 5 minutes for sample services
+
+    env:
+      SERVICE_IMAGE: ${{ inputs.image }}
+      DOCKERFILE_PATH: ${{ inputs.dockerfile }}
+      BUILD_CONTEXT: ${{ inputs.context }}
+      DB_IMAGE: ${{ inputs.db_image }}
+      CACHE_IMAGE: ${{ inputs.cache_image }}
+      TEST_COMMAND: ${{ inputs.test_command }}
+      HEALTHCHECK_PATH: ${{ inputs.healthcheck_path }}
+      HEALTHCHECK_TIMEOUT: ${{ inputs.healthcheck_timeout }}
+      APP_PORT: ${{ inputs.app_port }}
+      DB_PORT: ${{ inputs.db_port }}
+      ENABLE_CACHE_SERVICE: ${{ inputs.enable_cache_service }}
+      TEST_LANGUAGE: ${{ inputs.test_language }}
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Log integration-test configuration"
+        run: |
+          echo "Service image         : ${SERVICE_IMAGE}"
+          echo "Dockerfile path       : ${DOCKERFILE_PATH}"
+          echo "Build context         : ${BUILD_CONTEXT}"
+          echo "DB image              : ${DB_IMAGE}"
+          echo "Cache image           : ${CACHE_IMAGE}"
+          echo "Test command          : ${TEST_COMMAND}"
+          echo "Healthcheck path      : ${HEALTHCHECK_PATH}"
+          echo "Healthcheck timeout   : ${HEALTHCHECK_TIMEOUT}s"
+          echo "App port              : ${APP_PORT}"
+          echo "DB port               : ${DB_PORT}"
+          echo "Enable cache service  : ${ENABLE_CACHE_SERVICE}"
+          echo "Test language         : ${TEST_LANGUAGE}"
+
+      - name: "Login to GHCR (if using GitHub Container Registry)"
+        if: startsWith(env.SERVICE_IMAGE, 'ghcr.io/')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Ensure service image exists (pull or build)"
+        #
+        # This step implements:
+        #   - Preferred path: use Kaniko-built image (pull from registry).
+        #   - Fallback: if pull fails, build locally from Dockerfile/context.
+        #
+        run: |
+          set -euo pipefail
+
+          echo "Attempting to pull service image: ${SERVICE_IMAGE}"
+          if docker pull "${SERVICE_IMAGE}"; then
+            echo "Successfully pulled existing service image."
+          else
+            echo "WARNING: Failed to pull service image. Building locally using Dockerfile/context..."
+            docker build \
+              -f "${DOCKERFILE_PATH}" \
+              -t "${SERVICE_IMAGE}" \
+              "${BUILD_CONTEXT}"
+            echo "Local service image build complete."
+          fi
+
+      - name: "Build integration test runner image"
+        #
+        # Builds the generic integration test runner from the shared template.
+        #
+        run: |
+          set -euo pipefail
+          docker build \
+            -f .github/templates/integration-test-runner.Dockerfile \
+            -t brikpipe/integration-test-runner:latest \
+            .
+
+      - name: "Create dedicated Docker network"
+        #
+        # Create a dedicated bridge network so that app, DB, cache, and runner
+        # can communicate via container hostnames (db, cache, app, tests).
+        #
+        run: |
+          set -euo pipefail
+          NETWORK_NAME="brikpipe-integ-net"
+          if ! docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
+            docker network create "${NETWORK_NAME}"
+          fi
+          echo "NETWORK_NAME=${NETWORK_NAME}" >> "$GITHUB_ENV"
+
+      - name: "Start DB container"
+        #
+        # Starts the database container on the dedicated network.
+        #   - Hostname: db
+        #   - Port   : DB_PORT (exposed for local debugging if needed)
+        #
+        run: |
+          set -euo pipefail
+
+          NETWORK_NAME="${NETWORK_NAME}"
+
+          echo "Starting DB container using image: ${DB_IMAGE}"
+          docker run -d \
+            --name db \
+            --network "${NETWORK_NAME}" \
+            -e POSTGRES_USER=testuser \
+            -e POSTGRES_PASSWORD=testpass \
+            -e POSTGRES_DB=testdb \
+            -p "${DB_PORT}:5432" \
+            "${DB_IMAGE}"
+
+          docker ps
+
+      - name: "Start cache container (optional)"
+        #
+        # Starts a cache/messaging container if enabled.
+        #
+        if: env.ENABLE_CACHE_SERVICE == 'true'
+        run: |
+          set -euo pipefail
+
+          NETWORK_NAME="${NETWORK_NAME}"
+
+          if [ -z "${CACHE_IMAGE}" ]; then
+            echo "::error::ENABLE_CACHE_SERVICE is true but CACHE_IMAGE is empty."
+            exit 1
+          fi
+
+          echo "Starting cache container using image: ${CACHE_IMAGE}"
+          docker run -d \
+            --name cache \
+            --network "${NETWORK_NAME}" \
+            "${CACHE_IMAGE}"
+
+          docker ps
+
+      - name: "Start app container"
+        #
+        # Starts the service container under test:
+        #   - Hostname: app
+        #   - Port    : APP_PORT (for CI HTTP health checks)
+        #
+        run: |
+          set -euo pipefail
+
+          NETWORK_NAME="${NETWORK_NAME}"
+
+          echo "Starting app container using image: ${SERVICE_IMAGE}"
+          docker run -d \
+            --name app \
+            --network "${NETWORK_NAME}" \
+            -e DB_HOST=db \
+            -e DB_PORT="${DB_PORT}" \
+            -e CACHE_HOST=cache \
+            -e CACHE_PORT=6379 \
+            -p "${APP_PORT}:${APP_PORT}" \
+            "${SERVICE_IMAGE}"
+
+          docker ps
+
+      - name: "Run integration tests in test-runner container"
+        #
+        # Runs tests in the dedicated integration test runner container.
+        # Health checks (DB + app) and test execution happen inside the runner.
+        #
+        run: |
+          set -euo pipefail
+
+          NETWORK_NAME="${NETWORK_NAME}"
+
+          # Compose app base URL & healthcheck URL.
+          APP_BASE_URL="http://app:${APP_PORT}"
+          APP_HEALTH_URL="${APP_BASE_URL}${HEALTHCHECK_PATH}"
+
+          echo "Running integration tests with:"
+          echo "  APP_BASE_URL        : ${APP_BASE_URL}"
+          echo "  APP_HEALTH_URL      : ${APP_HEALTH_URL}"
+          echo "  DB_HOST             : db"
+          echo "  DB_PORT             : ${DB_PORT}"
+          echo "  HEALTHCHECK_TIMEOUT : ${HEALTHCHECK_TIMEOUT}"
+          echo "  TEST_LANGUAGE       : ${TEST_LANGUAGE}"
+          echo "  TEST_COMMAND        : ${TEST_COMMAND}"
+
+          docker run --rm \
+            --name tests \
+            --network "${NETWORK_NAME}" \
+            -e APP_BASE_URL="${APP_BASE_URL}" \
+            -e APP_HEALTH_URL="${APP_HEALTH_URL}" \
+            -e DB_HOST="db" \
+            -e DB_PORT="${DB_PORT}" \
+            -e HEALTHCHECK_TIMEOUT="${HEALTHCHECK_TIMEOUT}" \
+            -e TEST_LANGUAGE="${TEST_LANGUAGE}" \
+            -e TEST_COMMAND="${TEST_COMMAND}" \
+            brikpipe/integration-test-runner:latest
+
+      - name: "Dump logs on failure (diagnostic aid)"
+        if: failure()
+        run: |
+          set -euo pipefail
+          echo "==== Docker logs: db ===="
+          docker logs db || true
+          echo "==== Docker logs: cache ===="
+          docker logs cache || true
+          echo "==== Docker logs: app ===="
+          docker logs app || true
+
+      - name: "Tear down containers and network"
+        if: always()
+        run: |
+          set -euo pipefail
+
+          echo "Stopping containers (tests, app, db, cache)..."
+          docker stop app db cache 2>/dev/null || true
+
+          echo "Removing containers..."
+          docker rm -f app db cache 2>/dev/null || true
+
+          echo "Removing network..."
+          docker network rm "${NETWORK_NAME}" 2>/dev/null || true

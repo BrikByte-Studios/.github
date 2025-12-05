@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+#
+# BrikPipe Integration Test Runner
+# --------------------------------
+# Orchestrates containerized integration tests by:
+#   1. Waiting for DB (TCP) and app (HTTP) readiness with retries.
+#   2. Running language-specific or custom integration test commands.
+#   3. Exiting deterministically with a non-zero exit code on failure.
+#
+# Environment variables (set by the CI workflow):
+#   APP_BASE_URL        : Base URL for the app, e.g. http://app:3000
+#   APP_HEALTH_URL      : Health URL, e.g. http://app:3000/health
+#   DB_HOST             : Database hostname (e.g. db)
+#   DB_PORT             : Database port (e.g. 5432)
+#   HEALTHCHECK_TIMEOUT : Max seconds to wait for DB/app readiness (default: 60)
+#   TEST_LANGUAGE       : node | python | java (for default test commands)
+#   TEST_COMMAND        : Optional explicit test command; overrides defaults.
+#
+# This script is intended to be:
+#   - Shellcheck-friendly.
+#   - Clear in CI logs.
+#   - Reusable across Node, Python, and Java services.
+#
+
+set -euo pipefail
+
+# ------------------------
+# Logging helper
+# ------------------------
+
+log() {
+  # log LEVEL MESSAGE...
+  local level="$1"
+  shift
+  printf '[%s] %s\n' "${level}" "$*"
+}
+
+# ------------------------
+# DB readiness check
+# ------------------------
+
+wait_for_db() {
+  local host="${DB_HOST:-db}"
+  local port="${DB_PORT:-5432}"
+  local timeout="${HEALTHCHECK_TIMEOUT:-60}"
+  local elapsed=0
+
+  log INFO "Waiting for DB at ${host}:${port} (timeout: ${timeout}s)..."
+
+  # Keep probing until nc can open a TCP connection or timeout is hit.
+  while ! nc -z "${host}" "${port}" >/dev/null 2>&1; do
+    sleep 2
+    elapsed=$((elapsed + 2))
+
+    if [ "${elapsed}" -ge "${timeout}" ]; then
+      log ERROR "DB did not become ready within ${timeout}s."
+      return 1
+    fi
+
+    log INFO "DB not ready yet... (${elapsed}s elapsed)"
+  done
+
+  log INFO "DB is ready after ${elapsed}s."
+}
+
+# ------------------------
+# App readiness check
+# ------------------------
+
+wait_for_app() {
+  local url="${APP_HEALTH_URL:-http://app:3000/health}"
+  local timeout="${HEALTHCHECK_TIMEOUT:-60}"
+  local elapsed=0
+
+  log INFO "Waiting for app readiness at ${url} (timeout: ${timeout}s)..."
+
+  # Keep probing until curl returns 2xx or timeout is hit.
+  while ! curl -fsS "${url}" >/dev/null 2>&1; do
+    sleep 2
+    elapsed=$((elapsed + 2))
+
+    if [ "${elapsed}" -ge "${timeout}" ]; then
+      log ERROR "App did not become ready within ${timeout}s."
+      return 1
+    fi
+
+    log INFO "App not ready yet... (${elapsed}s elapsed)"
+  done
+
+  log INFO "App is ready after ${elapsed}s."
+}
+
+# ------------------------
+# Node.js integration tests
+# ------------------------
+
+run_node_tests() {
+  # If TEST_COMMAND is set, honour it as-is.
+  if [ -n "${TEST_COMMAND:-}" ]; then
+    log INFO "Running Node integration tests via TEST_COMMAND: ${TEST_COMMAND}"
+    # Use `sh -c` for compatibility with complex commands.
+    sh -c "${TEST_COMMAND}"
+    return
+  fi
+
+  if [ ! -f package.json ]; then
+    log ERROR "package.json not found; cannot run Node tests."
+    return 1
+  fi
+
+  # Prefer a dedicated "test:integration" script if available.
+  if npm run | grep -q "test:integration"; then
+    log INFO "Running Node integration tests via 'npm run test:integration'"
+    npm run test:integration
+  else
+    log INFO "Running Node tests via 'npm test'"
+    npm test
+  fi
+}
+
+# ------------------------
+# Python integration tests
+# ------------------------
+
+run_python_tests() {
+  if [ -n "${TEST_COMMAND:-}" ]; then
+    log INFO "Running Python integration tests via TEST_COMMAND: ${TEST_COMMAND}"
+    sh -c "${TEST_COMMAND}"
+    return
+  fi
+
+  if ! command -v pytest >/dev/null 2>&1; then
+    log ERROR "pytest not installed; cannot run Python integration tests."
+    return 1
+  fi
+
+  # Convention: use pytest mark "integration" by default.
+  log INFO "Running Python integration tests via 'pytest -m integration'"
+  pytest -m "integration"
+}
+
+# ------------------------
+# Java integration tests
+# ------------------------
+
+run_java_tests() {
+  if [ -n "${TEST_COMMAND:-}" ]; then
+    log INFO "Running Java integration tests via TEST_COMMAND: ${TEST_COMMAND}"
+    sh -c "${TEST_COMMAND}"
+    return
+  fi
+
+  # Prefer Maven wrapper if present.
+  if [ -f mvnw ]; then
+    chmod +x mvnw
+    log INFO "Running Java integration tests via './mvnw -B verify -Pintegration-tests'"
+    ./mvnw -B verify -Pintegration-tests
+  elif command -v mvn >/dev/null 2>&1; then
+    log INFO "Running Java integration tests via 'mvn -B verify -Pintegration-tests'"
+    mvn -B verify -Pintegration-tests
+  elif [ -f gradlew ]; then
+    chmod +x gradlew
+    log INFO "Running Java integration tests via './gradlew integrationTest'"
+    ./gradlew integrationTest
+  else
+    log ERROR "No Maven/Gradle wrapper or mvn/gradle found; cannot run Java tests."
+    return 1
+  fi
+}
+
+# ------------------------
+# Go integration tests
+# ------------------------
+
+run_go_tests() {
+  if [ -n "${TEST_COMMAND:-}" ]; then
+    log INFO "Running Go integration tests via TEST_COMMAND: ${TEST_COMMAND}"
+    sh -c "${TEST_COMMAND}"
+    return
+  fi
+
+  if ! command -v go >/dev/null 2>&1; then
+    log ERROR "go not installed; cannot run Go integration tests."
+    return 1
+  fi
+
+  # Convention: integration tests live in ./integration or are named *integration*_test.go
+  # Adjust to your agreed standard.
+  if [ -d "integration" ]; then
+    log INFO "Running Go integration tests via 'go test ./integration/...' "
+    go test ./integration/...
+  else
+    log INFO "Running Go integration tests via 'go test ./... -run Integration'"
+    go test ./... -run "Integration"
+  fi
+}
+
+# ------------------------
+# .NET integration tests
+# ------------------------
+
+run_dotnet_tests() {
+  if [ -n "${TEST_COMMAND:-}" ]; then
+    log INFO "Running .NET integration tests via TEST_COMMAND: ${TEST_COMMAND}"
+    sh -c "${TEST_COMMAND}"
+    return
+  fi
+
+  if ! command -v dotnet >/dev/null 2>&1; then
+    log ERROR "dotnet not installed; cannot run .NET integration tests."
+    return 1
+  fi
+
+  # Convention: integration test project under tests/*IntegrationTests*.csproj
+  # Adjust to your agreed naming pattern.
+  local default_project
+  default_project="$(find tests -maxdepth 2 -name '*IntegrationTests*.csproj' | head -n 1 || true)"
+
+  if [ -n "${default_project}" ]; then
+    log INFO "Running .NET integration tests via 'dotnet test ${default_project}'"
+    dotnet test "${default_project}"
+  else
+    log INFO "No default integration test project found; running 'dotnet test' in current directory"
+    dotnet test
+  fi
+}
+
+
+# ------------------------
+# Main flow
+# ------------------------
+
+main() {
+  log INFO "Starting BrikPipe integration test runner..."
+  log INFO "Configuration:"
+  log INFO "  APP_BASE_URL        : ${APP_BASE_URL:-<not-set>}"
+  log INFO "  APP_HEALTH_URL      : ${APP_HEALTH_URL:-<not-set>}"
+  log INFO "  DB_HOST             : ${DB_HOST:-<not-set>}"
+  log INFO "  DB_PORT             : ${DB_PORT:-<not-set>}"
+  log INFO "  HEALTHCHECK_TIMEOUT : ${HEALTHCHECK_TIMEOUT:-60}"
+  log INFO "  TEST_LANGUAGE       : ${TEST_LANGUAGE:-<not-set>}"
+  log INFO "  TEST_COMMAND        : ${TEST_COMMAND:-<none>} (if set, overrides language defaults)"
+
+  # 1) Explicit health checks to avoid startup race conditions.
+  wait_for_db
+  wait_for_app
+
+  # 2) Dispatch to appropriate test runner.
+  case "${TEST_LANGUAGE:-}" in
+    node)
+      run_node_tests
+      ;;
+    python)
+      run_python_tests
+      ;;
+    java)
+      run_java_tests
+      ;;
+    go)
+      run_go_tests
+      ;;
+    dotnet)
+      run_dotnet_tests
+      ;;
+    "")
+      # No language hint; fall back to explicit TEST_COMMAND, if provided.
+      if [ -n "${TEST_COMMAND:-}" ]; then
+        log INFO "TEST_LANGUAGE not set; running TEST_COMMAND only."
+        sh -c "${TEST_COMMAND}"
+      else
+        log ERROR "Neither TEST_LANGUAGE nor TEST_COMMAND set; nothing to run."
+        return 1
+      fi
+      ;;
+    *)
+      if [ -n "${TEST_COMMAND:-}" ]; then
+        log WARN "Unsupported TEST_LANGUAGE='${TEST_LANGUAGE}', but TEST_COMMAND is set. Running custom command."
+        sh -c "${TEST_COMMAND}"
+      else
+        log ERROR "Unsupported TEST_LANGUAGE='${TEST_LANGUAGE}' and TEST_COMMAND is empty."
+        return 1
+      fi
+      ;;
+  esac
+
+  log INFO "Integration tests completed successfully."
+}
+
+main "$@"
