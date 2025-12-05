@@ -232,6 +232,7 @@ jobs:
 
           docker build \
             -f .github/templates/integration-test-runner.Dockerfile \
+            --build-arg SERVICE_WORKDIR="${SERVICE_WORKDIR}" \
             -t brikpipe/integration-test-runner:latest \
             .
 

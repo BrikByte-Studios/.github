@@ -3,7 +3,7 @@
 # Stage 1 (builder):
 #   - Base: mcr.microsoft.com/dotnet/sdk (dotnet SDK pre-installed)
 #   - Install Node, Python, Java, Go tooling.
-#   - Install project-level test dependencies (npm, pip).
+#   - Install service-level test dependencies (npm, pip) in SERVICE_WORKDIR.
 #
 # Stage 2 (runner):
 #   - Base: mcr.microsoft.com/dotnet/sdk (dotnet CLI available for tests).
@@ -13,13 +13,17 @@
 #   - Use the script as ENTRYPOINT.
 #
 # This image is language-agnostic and controlled via environment variables
-# supplied by the CI workflow (TEST_LANGUAGE, TEST_COMMAND, etc.).
+# supplied by the CI workflow (TEST_LANGUAGE, TEST_COMMAND, SERVICE_WORKDIR, etc.).
 #
 
 ############################
 # Stage 1: Builder
 ############################
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
+
+# Service workdir inside the repo, e.g. "node-api-example" or "python-service-example".
+# The workflow passes this via --build-arg SERVICE_WORKDIR=...
+ARG SERVICE_WORKDIR="."
 
 # Install base tooling:
 # - Java JDK for Java tests
@@ -54,17 +58,29 @@ WORKDIR /workspace
 COPY . /workspace
 
 # Install language-specific test dependencies where applicable.
-# - Node: if package.json exists, install dev deps
-# - Python: if requirements.txt exists, pip install
+# Priority:
+#   - If SERVICE_WORKDIR has its own package.json / requirements.txt, install there.
+#   - Otherwise, fall back to repo root (for monorepo-style setups).
 RUN set -eux; \
-    if [ -f package.json ]; then \
-      echo "[builder] Installing Node dependencies..."; \
+    echo "[builder] SERVICE_WORKDIR='${SERVICE_WORKDIR}'"; \
+    # Node.js deps
+    if [ -n "${SERVICE_WORKDIR}" ] && [ -f "${SERVICE_WORKDIR}/package.json" ]; then \
+      echo "[builder] Installing Node dependencies in ${SERVICE_WORKDIR}..."; \
+      cd "${SERVICE_WORKDIR}"; \
+      npm install --ignore-scripts; \
+      cd - >/dev/null; \
+    elif [ -f package.json ]; then \
+      echo "[builder] Installing Node dependencies in repo root..."; \
       npm install --ignore-scripts; \
     else \
       echo "[builder] No package.json found; skipping Node dependencies."; \
     fi; \
-    if [ -f requirements.txt ]; then \
-      echo "[builder] Installing Python dependencies..."; \
+    # Python deps
+    if [ -n "${SERVICE_WORKDIR}" ] && [ -f "${SERVICE_WORKDIR}/requirements.txt" ]; then \
+      echo "[builder] Installing Python dependencies in ${SERVICE_WORKDIR}..."; \
+      pip3 install --no-cache-dir -r "${SERVICE_WORKDIR}/requirements.txt"; \
+    elif [ -f requirements.txt ]; then \
+      echo "[builder] Installing Python dependencies in repo root..."; \
       pip3 install --no-cache-dir -r requirements.txt; \
     else \
       echo "[builder] No requirements.txt found; skipping Python dependencies."; \
