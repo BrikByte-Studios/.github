@@ -75,13 +75,17 @@ RUN set -eux; \
     else \
       echo "[builder] No package.json found; skipping Node dependencies."; \
     fi; \
-    # Python deps
+    # Python deps (use a virtualenv to avoid PEP 668 "externally managed" errors)
     if [ -n "${SERVICE_WORKDIR}" ] && [ -f "${SERVICE_WORKDIR}/requirements.txt" ]; then \
-      echo "[builder] Installing Python dependencies in ${SERVICE_WORKDIR}..."; \
-      pip3 install --no-cache-dir -r "${SERVICE_WORKDIR}/requirements.txt"; \
+      echo "[builder] Creating Python venv and installing deps from ${SERVICE_WORKDIR}/requirements.txt ..."; \
+      python3 -m venv /venv; \
+      . /venv/bin/activate; \
+      pip install --no-cache-dir -r "${SERVICE_WORKDIR}/requirements.txt"; \
     elif [ -f requirements.txt ]; then \
-      echo "[builder] Installing Python dependencies in repo root..."; \
-      pip3 install --no-cache-dir -r requirements.txt; \
+      echo "[builder] Creating Python venv and installing deps from requirements.txt ..."; \
+      python3 -m venv /venv; \
+      . /venv/bin/activate; \
+      pip install --no-cache-dir -r requirements.txt; \
     else \
       echo "[builder] No requirements.txt found; skipping Python dependencies."; \
     fi
