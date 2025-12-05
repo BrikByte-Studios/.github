@@ -3,9 +3,10 @@
 # BrikPipe Integration Test Runner
 # --------------------------------
 # Orchestrates containerized integration tests by:
-#   1. Waiting for DB (TCP) and app (HTTP) readiness with retries.
-#   2. Running language-specific or custom integration test commands.
-#   3. Exiting deterministically with a non-zero exit code on failure.
+#   1. Optionally switching into the service workdir (e.g. node-api-example/).
+#   2. Waiting for DB (TCP) and app (HTTP) readiness with retries.
+#   3. Running language-specific or custom integration test commands.
+#   4. Exiting deterministically with a non-zero exit code on failure.
 #
 # Environment variables (set by the CI workflow):
 #   APP_BASE_URL        : Base URL for the app, e.g. http://app:3000
@@ -13,13 +14,15 @@
 #   DB_HOST             : Database hostname (e.g. db)
 #   DB_PORT             : Database port (e.g. 5432)
 #   HEALTHCHECK_TIMEOUT : Max seconds to wait for DB/app readiness (default: 60)
-#   TEST_LANGUAGE       : node | python | java (for default test commands)
+#   TEST_LANGUAGE       : node | python | java | go | dotnet (for default commands)
 #   TEST_COMMAND        : Optional explicit test command; overrides defaults.
+#   SERVICE_WORKDIR     : Optional relative path to the service (e.g. node-api-example).
+#                         If set and exists, the runner will cd into it before tests.
 #
 # This script is intended to be:
 #   - Shellcheck-friendly.
 #   - Clear in CI logs.
-#   - Reusable across Node, Python, and Java services.
+#   - Reusable across Node, Python, Java, Go, and .NET services.
 #
 
 set -euo pipefail
@@ -225,7 +228,6 @@ run_dotnet_tests() {
   fi
 }
 
-
 # ------------------------
 # Main flow
 # ------------------------
@@ -240,6 +242,16 @@ main() {
   log INFO "  HEALTHCHECK_TIMEOUT : ${HEALTHCHECK_TIMEOUT:-60}"
   log INFO "  TEST_LANGUAGE       : ${TEST_LANGUAGE:-<not-set>}"
   log INFO "  TEST_COMMAND        : ${TEST_COMMAND:-<none>} (if set, overrides language defaults)"
+  log INFO "  SERVICE_WORKDIR     : ${SERVICE_WORKDIR:-<not-set>}"
+
+  # If SERVICE_WORKDIR is set (e.g., node-api-example) and exists,
+  # switch into it so package.json, mvnw, etc. are in the current dir.
+  if [ -n "${SERVICE_WORKDIR:-}" ] && [ -d "${SERVICE_WORKDIR}" ]; then
+    log INFO "Changing working directory to SERVICE_WORKDIR='${SERVICE_WORKDIR}'"
+    cd "${SERVICE_WORKDIR}"
+  else
+    log INFO "SERVICE_WORKDIR not set or directory missing; staying in $(pwd)"
+  fi
 
   # 1) Explicit health checks to avoid startup race conditions.
   wait_for_db
