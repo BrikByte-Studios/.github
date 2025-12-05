@@ -141,6 +141,7 @@ jobs:
       DB_PORT: ${{ inputs.db_port }}
       ENABLE_CACHE_SERVICE: ${{ inputs.enable_cache_service }}
       TEST_LANGUAGE: ${{ inputs.test_language }}
+      SERVICE_WORKDIR: ${{ inputs.context }} 
 
     steps:
       - name: "Checkout caller repository (service under test)"
@@ -333,6 +334,7 @@ jobs:
           echo "  HEALTHCHECK_TIMEOUT : ${HEALTHCHECK_TIMEOUT}"
           echo "  TEST_LANGUAGE       : ${TEST_LANGUAGE}"
           echo "  TEST_COMMAND        : ${TEST_COMMAND}"
+          echo "  SERVICE_WORKDIR     : ${SERVICE_WORKDIR}"
 
           docker run --rm \
             --name tests \
@@ -344,6 +346,7 @@ jobs:
             -e HEALTHCHECK_TIMEOUT="${HEALTHCHECK_TIMEOUT}" \
             -e TEST_LANGUAGE="${TEST_LANGUAGE}" \
             -e TEST_COMMAND="${TEST_COMMAND}" \
+            -e SERVICE_WORKDIR="${SERVICE_WORKDIR}" \
             brikpipe/integration-test-runner:latest
 
       - name: "Dump service logs on failure (diagnostic aid)"
