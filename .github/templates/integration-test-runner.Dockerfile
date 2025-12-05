@@ -2,13 +2,13 @@
 # ----------------------------------------------
 # Stage 1 (builder):
 #   - Base: mcr.microsoft.com/dotnet/sdk (dotnet SDK pre-installed)
-#   - Install Node, Python, Java, Go tooling.
-#   - Install service-level test dependencies (npm, pip) in SERVICE_WORKDIR.
+#   - Install Node, Python (+venv), Java, Go tooling.
+#   - Install service-level test dependencies (npm, pip in venv) in SERVICE_WORKDIR.
 #
 # Stage 2 (runner):
 #   - Base: mcr.microsoft.com/dotnet/sdk (dotnet CLI available for tests).
 #   - Install minimal runtime deps for Node, Python, Java, Go.
-#   - Copy in installed tools and project files.
+#   - Copy in installed tools, venv, and project files.
 #   - Copy run-integration-tests.sh helper script.
 #   - Use the script as ENTRYPOINT.
 #
@@ -21,13 +21,13 @@
 ############################
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
 
-# Service workdir inside the repo, e.g. "node-api-example" or "python-service-example".
+# Service workdir inside the repo, e.g. "node-api-example" or "python-api-example".
 # The workflow passes this via --build-arg SERVICE_WORKDIR=...
 ARG SERVICE_WORKDIR="."
 
 # Install base tooling:
 # - Java JDK for Java tests
-# - Python (with pip) for Python tests
+# - Python (with pip + venv) for Python tests
 # - Go toolchain for Go tests
 # - curl/wget/gnupg/etc. for installing Node.js
 # - netcat for DB readiness checks in scripts (if needed in build phase)
@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openjdk-17-jdk \
     python3 \
     python3-pip \
+    python3-venv \
     golang-go \
     && rm -rf /var/lib/apt/lists/*
 
@@ -98,7 +99,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS runner
 # Minimal runtime dependencies for tests and health checks:
 # - curl/netcat for HTTP/TCP health checks
 # - Java JRE for Java tests
-# - Python + pip for Python tests
+# - Python for Python tests (venv copied from builder)
 # - Go toolchain for Go tests
 # - Node.js for Node tests
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -107,7 +108,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     openjdk-17-jre-headless \
     python3 \
-    python3-pip \
+    python3-venv \
     golang-go \
     && rm -rf /var/lib/apt/lists/*
 
@@ -122,6 +123,11 @@ WORKDIR /workspace
 # Copy project files and installed tooling from builder.
 COPY --from=builder /workspace /workspace
 COPY --from=builder /usr/local /usr/local
+
+# Copy Python virtualenv from builder so pytest + deps are available.
+COPY --from=builder /venv /venv
+ENV VIRTUAL_ENV=/venv
+ENV PATH="/venv/bin:${PATH}"
 
 # Copy the integration test runner script from the repo.
 # NOTE:
