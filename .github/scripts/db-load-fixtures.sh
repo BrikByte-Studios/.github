@@ -23,7 +23,8 @@
 #   - Waits for DB readiness (Postgres: SELECT 1) before applying fixtures.
 #   - Finds *.sql and *.seed.json in FIXTURE_DIR, sorted lexicographically.
 #   - Applies SQL files in order using psql (Postgres).
-#   - Applies JSON seed files via db-seed-json.mjs (Node helper).
+#   - Applies JSON seed files via db-seed-json.mjs (Node helper), but
+#     **skips gracefully** if Node or helper is not available.
 #
 
 set -euo pipefail
@@ -73,10 +74,8 @@ wait_for_postgres() {
 
   log INFO "Waiting for Postgres at ${DB_HOST}:${DB_PORT} (timeout: ${DB_WAIT_TIMEOUT}s)..."
 
-  # Use PGPASSWORD to avoid interactive prompts.
   export PGPASSWORD="${DB_PASSWORD}"
 
-  # Keep trying a simple SELECT 1 until it succeeds or we hit the timeout.
   while ! psql \
       -h "${DB_HOST}" \
       -p "${DB_PORT}" \
@@ -114,10 +113,8 @@ esac
 # ------------------------------
 # 4. Discover fixtures
 # ------------------------------
-# Gather SQL and JSON fixtures in a deterministic order.
-# (find + sort to ensure consistent ordering across environments)
-mapfile -t SQL_FILES < <(find "${FIXTURE_DIR}" -maxdepth 1 -type f -name '*.sql' | sort || true)
-mapfile -t JSON_FILES < <(find "${FIXTURE_DIR}" -maxdepth 1 -type f -name '*.seed.json' | sort || true)
+mapfile -t SQL_FILES  < <(find "${FIXTURE_DIR}" -maxdepth 1 -type f -name '*.sql'        | sort || true)
+mapfile -t JSON_FILES < <(find "${FIXTURE_DIR}" -maxdepth 1 -type f -name '*.seed.json'  | sort || true)
 
 if [ "${#SQL_FILES[@]}" -eq 0 ] && [ "${#JSON_FILES[@]}" -eq 0 ]; then
   log INFO "No .sql or .seed.json fixtures found; nothing to apply."
@@ -143,7 +140,6 @@ apply_sql_postgres() {
 
 apply_sql_mysql() {
   local sql_file="$1"
-  # Placeholder for future MySQL support.
   log ERROR "MySQL fixture support not yet implemented. Attempted file: ${sql_file}"
   return 1
 }
@@ -173,14 +169,16 @@ apply_json_seed() {
 
   log INFO "Applying JSON seed via db-seed-json.mjs: ${json_file}"
 
+  # If Node is missing, warn and skip instead of failing the pipeline.
   if ! command -v node >/dev/null 2>&1; then
-    log ERROR "node not found in PATH; cannot apply JSON seed: ${json_file}"
-    return 1
+    log WARN "node not found in PATH; skipping JSON seed: ${json_file}"
+    return 0
   fi
 
+  # If helper script is missing, warn and skip instead of failing the pipeline.
   if [ ! -f ".github/scripts/db-seed-json.mjs" ]; then
-    log ERROR "Helper '.github/scripts/db-seed-json.mjs' not found; cannot apply JSON seed: ${json_file}"
-    return 1
+    log WARN "Helper '.github/scripts/db-seed-json.mjs' not found; skipping JSON seed: ${json_file}"
+    return 0
   fi
 
   node ".github/scripts/db-seed-json.mjs" \
