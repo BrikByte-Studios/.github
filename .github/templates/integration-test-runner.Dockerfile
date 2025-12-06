@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     golang-go \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x (for Node-based tests)
@@ -121,6 +122,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     golang-go \
     maven \
     gradle \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x again in runner stage (runtime needs node as well)
