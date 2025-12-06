@@ -274,6 +274,22 @@ jobs:
           echo "Currently running containers:"
           docker ps
 
+      # Added: Load DB fixtures for integration tests
+      - name: "Load DB fixtures for integration tests"
+        run: |
+          set -euo pipefail
+          echo "🔧 Loading DB fixtures for integration tests..."
+          .github/scripts/db-load-fixtures.sh
+        env:
+          ENABLE_DB_FIXTURES: "true"
+          DB_ENGINE: "postgres"
+          DB_HOST: "localhost"
+          DB_PORT: "${{ env.DB_PORT }}"
+          DB_USER: "testuser"
+          DB_PASSWORD: "testpass"
+          DB_NAME: "testdb"
+          FIXTURE_DIR: "${{ env.BUILD_CONTEXT }}/tests/integration/fixtures/db"
+
       - name: "Start cache/message broker container (optional)"
         if: env.ENABLE_CACHE_SERVICE == 'true'
         run: |
