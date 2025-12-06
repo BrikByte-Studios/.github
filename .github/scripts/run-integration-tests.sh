@@ -239,14 +239,10 @@ run_go_tests() {
   export CGO_ENABLED="${CGO_ENABLED:-0}"
   log INFO "Running Go tests with CGO_ENABLED=${CGO_ENABLED}"
 
-  # Convention: integration tests live in ./integration or are named *Integration*_test.go
-  if [ -d "integration" ]; then
-    log INFO "Running Go integration tests via 'go test ./integration/...' "
-    go test ./integration/...
-  else
-    log INFO "Running Go integration tests via 'go test ./... -run Integration'"
-    go test ./... -run "Integration"
-  fi
+  # Convention: integration tests live behind the `integration` build tag
+  # and use function names containing "Integration".
+  log INFO "Running Go integration tests via 'go test -tags=integration ./... -run Integration'"
+  go test -tags=integration ./... -run "Integration"
 }
 
 # ------------------------
