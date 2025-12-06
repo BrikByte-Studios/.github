@@ -234,8 +234,12 @@ run_go_tests() {
     return 1
   fi
 
-  # Convention: integration tests live in ./integration or are named *integration*_test.go
-  # Adjust to your agreed standard.
+  # Disable cgo by default so we don't need a full C toolchain (stdlib headers).
+  # You can override this per-workflow by setting CGO_ENABLED=1 in env if needed.
+  export CGO_ENABLED="${CGO_ENABLED:-0}"
+  log INFO "Running Go tests with CGO_ENABLED=${CGO_ENABLED}"
+
+  # Convention: integration tests live in ./integration or are named *Integration*_test.go
   if [ -d "integration" ]; then
     log INFO "Running Go integration tests via 'go test ./integration/...' "
     go test ./integration/...
