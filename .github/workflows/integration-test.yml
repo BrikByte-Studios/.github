@@ -169,14 +169,24 @@ jobs:
 
           mkdir -p .github/scripts .github/templates
 
+          # Core runner script
           cp org-dotgithub/.github/scripts/run-integration-tests.sh \
              .github/scripts/run-integration-tests.sh
 
+          # DB fixture loader script (NEW)
+          cp org-dotgithub/.github/scripts/db-load-fixtures.sh \
+             .github/scripts/db-load-fixtures.sh
+
+          # Runner Dockerfile template
           cp org-dotgithub/.github/templates/integration-test-runner.Dockerfile \
              .github/templates/integration-test-runner.Dockerfile
 
+          # Ensure scripts are executable
+          chmod +x .github/scripts/*.sh
+
           echo "Shared integration-test templates synced into caller workspace:"
           ls -R .github
+
 
       - name: "Log integration-test configuration"
         run: |
@@ -278,19 +288,20 @@ jobs:
         run: |
           set -euo pipefail
           echo "🔧 Loading DB fixtures for integration tests..."
-          ./\.github/scripts/db-load-fixtures.sh
+          echo "Working directory: $(pwd)"
+          echo "Listing .github/scripts:"
+          ls -la .github/scripts || echo "No .github/scripts directory!"
+          ./.github/scripts/db-load-fixtures.sh
         env:
           ENABLE_DB_FIXTURES: "true"
           DB_ENGINE: "postgres"
-          # DB container is exposed on host via -p "${DB_PORT}:5432"
-          DB_HOST: "localhost"
+          DB_HOST: "localhost"            # host port is mapped via -p "${DB_PORT}:5432"
           DB_PORT: "${{ env.DB_PORT }}"
           DB_USER: "testuser"
           DB_PASSWORD: "testpass"
           DB_NAME: "testdb"
           FIXTURE_DIR: "${{ env.BUILD_CONTEXT }}/tests/integration/fixtures/db"
 
-          
       - name: "Start cache/message broker container (optional)"
         if: env.ENABLE_CACHE_SERVICE == 'true'
         run: |
