@@ -45,6 +45,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     golang-go \
     gcc \
+    # (optional) psql in builder in case future scripts use it here
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x (for Node-based tests)
@@ -112,6 +114,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS runner
 # - Python for Python tests (venv copied from builder)
 # - Go toolchain for Go tests
 # - Node.js for Node tests
+# - postgresql-client (psql) for DB fixture loader scripts
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -123,6 +126,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     maven \
     gradle \
     gcc \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x again in runner stage (runtime needs node as well)
