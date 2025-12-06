@@ -173,28 +173,44 @@ run_java_tests() {
     return
   fi
 
+  # Helper: does the integration-tests profile exist?
+  has_integration_profile="false"
+  if [ -f pom.xml ] && grep -q "<id>integration-tests</id>" pom.xml; then
+    has_integration_profile="true"
+  fi
+
   # Prefer Maven wrapper if present.
   if [ -f mvnw ]; then
     chmod +x mvnw
-    log INFO "Running Java integration tests via './mvnw -B verify -Pintegration-tests'"
-    ./mvnw -B verify -Pintegration-tests
+
+    if [ "${has_integration_profile}" = "true" ]; then
+      log INFO "Running Java integration tests via './mvnw -B verify -Pintegration-tests'"
+      ./mvnw -B verify -Pintegration-tests
+    else
+      log INFO "No 'integration-tests' profile found; running './mvnw -B test'"
+      ./mvnw -B test
+    fi
+
   elif command -v mvn >/dev/null 2>&1; then
-    # Try profile-based verify first, then fall back to plain test.
-    log INFO "Running Java integration tests via 'mvn -B verify -Pintegration-tests' (with fallback to 'mvn -B test')"
-
-    set +e
-    mvn -B verify -Pintegration-tests
-    status=$?
-    set -e
-
-    if [ "${status}" -ne 0 ]; then
-      log WARN "mvn verify -Pintegration-tests failed (maybe profile missing); falling back to 'mvn -B test'"
+    if [ "${has_integration_profile}" = "true" ]; then
+      log INFO "Running Java integration tests via 'mvn -B verify -Pintegration-tests'"
+      mvn -B verify -Pintegration-tests
+    else
+      log INFO "No 'integration-tests' profile found; running 'mvn -B test'"
       mvn -B test
     fi
+
   elif [ -f gradlew ]; then
     chmod +x gradlew
-    log INFO "Running Java integration tests via './gradlew integrationTest'"
-    ./gradlew integrationTest
+
+    # Optionally detect integrationTest task; otherwise fall back to test.
+    if grep -q "integrationTest" build.gradle* 2>/dev/null; then
+      log INFO "Running Java integration tests via './gradlew integrationTest'"
+      ./gradlew integrationTest
+    else
+      log INFO "No 'integrationTest' task detected; running './gradlew test'"
+      ./gradlew test
+    fi
   else
     log ERROR "No Maven/Gradle wrapper or mvn/gradle found; cannot run Java tests."
     return 1
