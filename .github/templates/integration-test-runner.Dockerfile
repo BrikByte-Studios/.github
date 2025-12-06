@@ -3,7 +3,7 @@
 # Stage 1 (builder):
 #   - Base: mcr.microsoft.com/dotnet/sdk (dotnet SDK pre-installed)
 #   - Install Node, Python (+venv), Java, Go tooling.
-#   - Install service-level test dependencies (npm, pip in venv) in SERVICE_WORKDIR.
+#   - Always create /venv, and install service-level test deps (npm, pip) in SERVICE_WORKDIR.
 #
 # Stage 2 (runner):
 #   - Base: mcr.microsoft.com/dotnet/sdk (dotnet CLI available for tests).
@@ -62,9 +62,15 @@ COPY . /workspace
 # Priority:
 #   - If SERVICE_WORKDIR has its own package.json / requirements.txt, install there.
 #   - Otherwise, fall back to repo root (for monorepo-style setups).
+# NOTE:
+#   - We ALWAYS create /venv so that COPY --from=builder /venv /venv
+#     in the runner stage never fails, even for Java-only services.
 RUN set -eux; \
     echo "[builder] SERVICE_WORKDIR='${SERVICE_WORKDIR}'"; \
-    # Node.js deps
+    \
+    # ----------------------------------------------------
+    # Node.js deps (only if package.json exists somewhere)
+    # ----------------------------------------------------
     if [ -n "${SERVICE_WORKDIR}" ] && [ -f "${SERVICE_WORKDIR}/package.json" ]; then \
       echo "[builder] Installing Node dependencies in ${SERVICE_WORKDIR}..."; \
       cd "${SERVICE_WORKDIR}"; \
@@ -76,19 +82,22 @@ RUN set -eux; \
     else \
       echo "[builder] No package.json found; skipping Node dependencies."; \
     fi; \
-    # Python deps (use a virtualenv to avoid PEP 668 "externally managed" errors)
+    \
+    # ----------------------------------------------------
+    # Python deps — always create a venv, then conditionally pip install
+    # This avoids PEP 668 "externally managed" issues AND guarantees /venv exists.
+    # ----------------------------------------------------
+    echo "[builder] Creating Python virtualenv at /venv (even if no requirements.txt)..."; \
+    python3 -m venv /venv; \
+    . /venv/bin/activate; \
     if [ -n "${SERVICE_WORKDIR}" ] && [ -f "${SERVICE_WORKDIR}/requirements.txt" ]; then \
-      echo "[builder] Creating Python venv and installing deps from ${SERVICE_WORKDIR}/requirements.txt ..."; \
-      python3 -m venv /venv; \
-      . /venv/bin/activate; \
+      echo "[builder] Installing Python deps from ${SERVICE_WORKDIR}/requirements.txt ..."; \
       pip install --no-cache-dir -r "${SERVICE_WORKDIR}/requirements.txt"; \
     elif [ -f requirements.txt ]; then \
-      echo "[builder] Creating Python venv and installing deps from requirements.txt ..."; \
-      python3 -m venv /venv; \
-      . /venv/bin/activate; \
+      echo "[builder] Installing Python deps from requirements.txt ..."; \
       pip install --no-cache-dir -r requirements.txt; \
     else \
-      echo "[builder] No requirements.txt found; skipping Python dependencies."; \
+      echo "[builder] No requirements.txt found; Python venv created but no deps installed."; \
     fi
 
 ############################
@@ -125,6 +134,7 @@ COPY --from=builder /workspace /workspace
 COPY --from=builder /usr/local /usr/local
 
 # Copy Python virtualenv from builder so pytest + deps are available.
+# /venv is now guaranteed to exist because we always created it in builder.
 COPY --from=builder /venv /venv
 ENV VIRTUAL_ENV=/venv
 ENV PATH="/venv/bin:${PATH}"
