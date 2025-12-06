@@ -119,6 +119,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-venv \
     golang-go \
+    maven \
+    gradle \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x again in runner stage (runtime needs node as well)
