@@ -192,8 +192,6 @@ jobs:
           echo "Shared integration-test templates synced into caller workspace:"
           ls -R .github
 
-
-
       - name: "Log integration-test configuration"
         run: |
           echo "Service image         : ${SERVICE_IMAGE}"
