@@ -287,6 +287,19 @@ jobs:
 
           echo "Currently running containers:"
           docker ps
+      
+      - name: "Install JSON seeding dependencies (pg)"
+        run: |
+          set -euo pipefail
+          echo "📦 Installing JSON seeding dependencies under .github/scripts..."
+          cd .github/scripts
+
+          if [ ! -f package.json ]; then
+            echo "Initializing package.json in .github/scripts..."
+            npm init -y >/dev/null 2>&1
+          fi
+
+          npm install pg
 
       - name: "Load DB fixtures for integration tests"
         run: |
