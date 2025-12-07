@@ -173,19 +173,25 @@ jobs:
           cp org-dotgithub/.github/scripts/run-integration-tests.sh \
              .github/scripts/run-integration-tests.sh
 
-          # DB fixture loader script (NEW)
+          # DB fixtures loader (single source of truth in org .github repo)
           cp org-dotgithub/.github/scripts/db-load-fixtures.sh \
              .github/scripts/db-load-fixtures.sh
 
-          # Runner Dockerfile template
+          # JSON seed helper (the one you said lives in the home .github repo)
+          cp org-dotgithub/.github/scripts/db-seed-json.mjs \
+             .github/scripts/db-seed-json.mjs
+
+          # Integration test runner Dockerfile
           cp org-dotgithub/.github/templates/integration-test-runner.Dockerfile \
              .github/templates/integration-test-runner.Dockerfile
 
-          # Ensure scripts are executable
-          chmod +x .github/scripts/*.sh
+          # Ensure shell scripts are executable
+          chmod +x .github/scripts/run-integration-tests.sh
+          chmod +x .github/scripts/db-load-fixtures.sh
 
           echo "Shared integration-test templates synced into caller workspace:"
           ls -R .github
+
 
 
       - name: "Log integration-test configuration"
