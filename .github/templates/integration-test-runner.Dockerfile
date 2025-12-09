@@ -45,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     golang-go \
     gcc \
+    maven \
     # (optional) psql in builder in case future scripts use it here
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
