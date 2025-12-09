@@ -146,7 +146,7 @@ jobs:
       TEST_LANGUAGE: ${{ inputs.test_language }}
       SERVICE_WORKDIR: ${{ inputs.context }}
 
-      # 🔐 Standardized integration secrets (INTEG_* naming)
+      # Standardized integration secrets (INTEG_* naming)
       INTEG_DB_USER: ${{ secrets.INTEG_DB_USER }}
       INTEG_DB_PASS: ${{ secrets.INTEG_DB_PASS }}
       INTEG_DB_NAME: ${{ secrets.INTEG_DB_NAME }}
@@ -196,6 +196,10 @@ jobs:
           cp org-dotgithub/.github/scripts/wait-for-health.sh \
              .github/scripts/wait-for-health.sh
 
+          # integration env generator (NEW)
+          cp org-dotgithub/.github/scripts/env-generate-integration.sh \
+            .github/scripts/env-generate-integration.sh
+
           # Integration test runner Dockerfile
           cp org-dotgithub/.github/templates/integration-test-runner.Dockerfile \
              .github/templates/integration-test-runner.Dockerfile
@@ -204,6 +208,7 @@ jobs:
           chmod +x .github/scripts/run-integration-tests.sh
           chmod +x .github/scripts/db-load-fixtures.sh
           chmod +x .github/scripts/wait-for-health.sh
+          chmod +x .github/scripts/env-generate-integration.sh 
 
           echo "Shared integration-test templates synced into caller workspace:"
           ls -R .github
