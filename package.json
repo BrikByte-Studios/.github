@@ -18,8 +18,7 @@
     "policy:test": "node tests/policy/policy-valid.smoke.js && node tests/policy/policy-invalid.smoke.js",
     "policy:merge:test": "node tests/policy/policy-merge.inherit-only.js && node tests/policy/policy-merge-tightening.js && node tests/policy/policy-merge-illegal-relax.js && node tests/policy/policy-merge-unknown-field.js",
     "policy:test:all": "npm run policy:test && npm run policy:merge:test",
-    "policy:reviews:test":
-      "node tests/policy/reviews-main-insufficient.js && node tests/policy/reviews-hotfix-missing-platform.js && node tests/policy/reviews-happy-path.js",
+    "policy:reviews:test": "node tests/policy/reviews-main-insufficient.js && node tests/policy/reviews-hotfix-missing-platform.js && node tests/policy/reviews-happy-path.js",
     "coverage:test": "node tests/policy/coverage.absolute-fail.js && node tests/policy/coverage.delta.js",
     "policy:security:test": "node tests/policy/security-eval.smoke.mjs",
     "policy:adr:test": "node tests/policy/adr-checks.smoke.mjs",
@@ -27,13 +26,12 @@
     "gate:test": "npm run gate:unit && npm run gate:int",
     "gate:unit": "node tests/policy-gate/gate-engine.unit.test.mjs && node --test tests/policy-gate/summary.test.mjs",
     "gate:int": "node tests/policy-gate/gate-engine.integration.test.mjs"
-
   },
   "dependencies": {
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "chalk": "^5.6.2",
-    "glob": "^11.0.0",
+    "glob": "^11.1.0",
     "js-yaml": "^4.1.1",
     "yaml": "^2.6.0"
   }
