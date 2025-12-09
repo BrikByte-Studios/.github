@@ -128,6 +128,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5  # DoD: sample repos under 5 minutes
 
+    # Use GitHub Environment "integration"
+    environment: integration
+
     env:
       SERVICE_IMAGE: ${{ inputs.image }}
       DOCKERFILE_PATH: ${{ inputs.dockerfile }}
@@ -142,6 +145,14 @@ jobs:
       ENABLE_CACHE_SERVICE: ${{ inputs.enable_cache_service }}
       TEST_LANGUAGE: ${{ inputs.test_language }}
       SERVICE_WORKDIR: ${{ inputs.context }}
+
+      # 🔐 Standardized integration secrets (INTEG_* naming)
+      INTEG_DB_USER: ${{ secrets.INTEG_DB_USER }}
+      INTEG_DB_PASS: ${{ secrets.INTEG_DB_PASS }}
+      INTEG_DB_NAME: ${{ secrets.INTEG_DB_NAME }}
+      INTEG_DB_HOST: ${{ secrets.INTEG_DB_HOST }}
+      INTEG_DB_PORT: ${{ secrets.INTEG_DB_PORT }}
+      JWT_SECRET_TEST: ${{ secrets.JWT_SECRET_TEST }}
 
     steps:
       - name: "Checkout caller repository (service under test)"
@@ -325,6 +336,20 @@ jobs:
           DB_PASSWORD: "testpass"
           DB_NAME: "testdb"
           FIXTURE_DIR: "${{ env.BUILD_CONTEXT }}/tests/integration/fixtures/db"
+      - name: "Generate integration runtime env file"
+        #
+        # Builds .env.integ.runtime from INTEG_* env vars (in this job).
+        # Fails fast if any required secret is missing.
+        #
+        run: |
+          set -euo pipefail
+          echo "🔒 Generating integration runtime env file for service..."
+          SERVICE_WORKDIR="${BUILD_CONTEXT}" \
+          .github/scripts/env-generate-integration.sh
+
+          echo "Generated files in ${BUILD_CONTEXT}:"
+          ls -la "${BUILD_CONTEXT}"
+
 
       - name: "Start cache/message broker container (optional)"
         if: env.ENABLE_CACHE_SERVICE == 'true'
@@ -357,9 +382,18 @@ jobs:
           set -euo pipefail
 
           echo "Starting app container using image: ${SERVICE_IMAGE}"
+
+          RUNTIME_ENV_FILE="${BUILD_CONTEXT}/.env.integ.runtime"
+          if [ ! -f "${RUNTIME_ENV_FILE}" ]; then
+            echo "::error::Expected runtime env file not found: ${RUNTIME_ENV_FILE}"
+            exit 1
+          fi
+
+          echo "Starting app container using image: ${SERVICE_IMAGE}"
           docker run -d \
             --name app \
             --network "${NETWORK_NAME}" \
+            --env-file "${RUNTIME_ENV_FILE}" \
             -e DB_HOST=db \
             -e DB_PORT="${DB_PORT}" \
             -e CACHE_HOST=cache \
