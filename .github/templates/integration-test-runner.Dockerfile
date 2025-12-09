@@ -151,9 +151,14 @@ ENV PATH="/venv/bin:${PATH}"
 # NOTE:
 #   - Build context is the repo root (CI uses:
 #       docker build -f .github/templates/integration-test-runner.Dockerfile .)
-#   - Script path in repo: .github/scripts/run-integration-tests.sh
+#   - Script paths in repo:
+#       .github/scripts/run-integration-tests.sh
+#       .github/scripts/wait-for-health.sh  <-- new shared health helper
 COPY .github/scripts/run-integration-tests.sh /usr/local/bin/run-integration-tests.sh
+COPY .github/scripts/wait-for-health.sh      /usr/local/bin/wait-for-health.sh
 
-RUN chmod +x /usr/local/bin/run-integration-tests.sh
+RUN chmod +x /usr/local/bin/run-integration-tests.sh \
+             /usr/local/bin/wait-for-health.sh
 
 ENTRYPOINT ["/usr/local/bin/run-integration-tests.sh"]
+

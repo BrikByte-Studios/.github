@@ -71,26 +71,21 @@ wait_for_db() {
 # ------------------------
 
 wait_for_app() {
+  # Default health URL if not explicitly set.
+  # The workflow usually sets APP_HEALTH_URL already.
   local url="${APP_HEALTH_URL:-http://app:3000/health}"
   local timeout="${HEALTHCHECK_TIMEOUT:-60}"
-  local elapsed=0
+  local interval="2"
 
-  log INFO "Waiting for app readiness at ${url} (timeout: ${timeout}s)..."
+  log INFO "Delegating app health check to wait-for-health.sh"
+  log INFO "  TARGET_URL      : ${url}"
+  log INFO "  TIMEOUT_SECONDS : ${timeout}"
+  log INFO "  SLEEP_SECONDS   : ${interval}"
 
-  # Keep probing until curl returns 2xx or timeout is hit.
-  while ! curl -fsS "${url}" >/dev/null 2>&1; do
-    sleep 2
-    elapsed=$((elapsed + 2))
-
-    if [ "${elapsed}" -ge "${timeout}" ]; then
-      log ERROR "App did not become ready within ${timeout}s."
-      return 1
-    fi
-
-    log INFO "App not ready yet... (${elapsed}s elapsed)"
-  done
-
-  log INFO "App is ready after ${elapsed}s."
+  TARGET_URL="${url}" \
+  TIMEOUT_SECONDS="${timeout}" \
+  SLEEP_SECONDS="${interval}" \
+    /usr/local/bin/wait-for-health.sh
 }
 
 # ------------------------

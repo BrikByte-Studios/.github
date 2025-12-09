@@ -283,6 +283,8 @@ jobs:
             -e POSTGRES_PASSWORD=testpass \
             -e POSTGRES_DB=testdb \
             -p "${DB_PORT}:5432" \
+            --cpus="1.0" \
+            --memory="512m" \
             "${DB_IMAGE}"
 
           echo "Currently running containers:"
@@ -333,6 +335,8 @@ jobs:
           docker run -d \
             --name cache \
             --network "${NETWORK_NAME}" \
+            --cpus="0.5" \
+            --memory="256m" \
             "${CACHE_IMAGE}"
 
           echo "Currently running containers (after cache start):"
@@ -356,6 +360,8 @@ jobs:
             -e CACHE_HOST=cache \
             -e CACHE_PORT=6379 \
             -p "${APP_PORT}:${APP_PORT}" \
+            --cpus="1.0" \
+            --memory="512m" \
             "${SERVICE_IMAGE}"
 
           echo "Currently running containers (after app start):"
