@@ -44,11 +44,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     golang-go \
-    gcc \
+    build-essential \
     maven \
-    # (optional) psql in builder in case future scripts use it here
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Install Node.js 20.x (for Node-based tests)
 RUN set -eux; \
@@ -126,7 +126,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     golang-go \
     maven \
     gradle \
-    gcc \
+    build-essential \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
