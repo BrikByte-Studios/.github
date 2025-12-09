@@ -129,7 +129,8 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         # If caller provided a name, honour it; otherwise derive a stable one.
-        name: ${{ inputs.artifact-name != '' && inputs.artifact-name || format('unit-tests-audit-{0}-{1}', github.job, github.run_attempt) }}
+        name: ${{ inputs.artifact-name != '' && inputs.artifact-name 
+          || format('unit-tests-audit-{0}-{1}', github.job, github.run_attempt) }}
         # Upload the entire audit root for this repo/project.
         # Using ** ensures nested timestamp folders are included.
         path: |

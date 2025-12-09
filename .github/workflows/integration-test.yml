@@ -141,7 +141,7 @@ jobs:
       DB_PORT: ${{ inputs.db_port }}
       ENABLE_CACHE_SERVICE: ${{ inputs.enable_cache_service }}
       TEST_LANGUAGE: ${{ inputs.test_language }}
-      SERVICE_WORKDIR: ${{ inputs.context }} 
+      SERVICE_WORKDIR: ${{ inputs.context }}
 
     steps:
       - name: "Checkout caller repository (service under test)"
@@ -289,7 +289,7 @@ jobs:
 
           echo "Currently running containers:"
           docker ps
-      
+
       - name: "Install JSON seeding dependencies (pg)"
         run: |
           set -euo pipefail

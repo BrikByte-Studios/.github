@@ -193,8 +193,6 @@ jobs:
           echo "✅ coverage.json after normalization:"
           cat out/coverage.json
 
-
-
       - name: Upload Node coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4

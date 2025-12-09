@@ -25,7 +25,7 @@ reviews:
   default:
     required_approvals: 2
     require_code_owner_review: true
-    required_roles: [] # None globally by default
+    required_roles: []  # None globally by default
 
   branches:
     main:
