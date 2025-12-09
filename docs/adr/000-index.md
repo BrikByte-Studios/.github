@@ -16,6 +16,7 @@
 | ADR-0005 | 5 | [Enforce SAST/SCA severity thresholds via policy gate (PIPE-GOV-7.3.3)](005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md) | 2025-11-19 | PIPE, GOV, SEC | `005-enforce-sast-sca-severity-thresholds-via-policy-gate-pipe-gov-7-3-3.md` |
 | ADR-0006 | 6 | [Enforce ADR & documentation checks via policy gate (PIPE-GOV-7.3.4)](006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md) | 2025-11-19 | PIPE, GOV, ARCH | `006-enforce-adr-documentation-checks-via-policy-gate-pipe-gov-7-3-4.md` |
 | ADR-0009 | 9 | [Standardized DB Fixtures and Service Mocks for Integration Tests](009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md) | 2025-12-09 | integration-tests, ci-cd, brikpipe | `009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md` |
+| ADR-0010 | 10 | [Integration Secrets & Environment Provisioning Strategy](010-integration-secrets-environment-provisioning-strategy.md) | 2025-12-09 | security, ci-cd, integration-tests, brikpipe | `010-integration-secrets-environment-provisioning-strategy.md` |
 
 ### Accepted
 
@@ -26,11 +27,12 @@
 
 ## By Area
 
-### integration-tests
+### security
 
 | ID | Seq | Title | Status | Date | File |
 | --- | --- | --- | --- | --- | --- |
-| ADR-0009 | 9 | [Standardized DB Fixtures and Service Mocks for Integration Tests](009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md) | Proposed | 2025-12-09 | `009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md` |
+| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | Accepted | 2025-11-26 | `008-container-build-strategy-docker-vs-kaniko.md` |
+| ADR-0010 | 10 | [Integration Secrets & Environment Provisioning Strategy](010-integration-secrets-environment-provisioning-strategy.md) | Proposed | 2025-12-09 | `010-integration-secrets-environment-provisioning-strategy.md` |
 
 ### ci-cd
 
@@ -39,20 +41,23 @@
 | ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | Accepted | 2025-11-22 | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
 | ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | Accepted | 2025-11-26 | `008-container-build-strategy-docker-vs-kaniko.md` |
 | ADR-0009 | 9 | [Standardized DB Fixtures and Service Mocks for Integration Tests](009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md) | Proposed | 2025-12-09 | `009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md` |
+| ADR-0010 | 10 | [Integration Secrets & Environment Provisioning Strategy](010-integration-secrets-environment-provisioning-strategy.md) | Proposed | 2025-12-09 | `010-integration-secrets-environment-provisioning-strategy.md` |
+
+### integration-tests
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0009 | 9 | [Standardized DB Fixtures and Service Mocks for Integration Tests](009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md) | Proposed | 2025-12-09 | `009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md` |
+| ADR-0010 | 10 | [Integration Secrets & Environment Provisioning Strategy](010-integration-secrets-environment-provisioning-strategy.md) | Proposed | 2025-12-09 | `010-integration-secrets-environment-provisioning-strategy.md` |
 
 ### brikpipe
 
 | ID | Seq | Title | Status | Date | File |
 | --- | --- | --- | --- | --- | --- |
 | ADR-0009 | 9 | [Standardized DB Fixtures and Service Mocks for Integration Tests](009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md) | Proposed | 2025-12-09 | `009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md` |
+| ADR-0010 | 10 | [Integration Secrets & Environment Provisioning Strategy](010-integration-secrets-environment-provisioning-strategy.md) | Proposed | 2025-12-09 | `010-integration-secrets-environment-provisioning-strategy.md` |
 
 ### containers
-
-| ID | Seq | Title | Status | Date | File |
-| --- | --- | --- | --- | --- | --- |
-| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | Accepted | 2025-11-26 | `008-container-build-strategy-docker-vs-kaniko.md` |
-
-### security
 
 | ID | Seq | Title | Status | Date | File |
 | --- | --- | --- | --- | --- | --- |
