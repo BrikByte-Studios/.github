@@ -181,6 +181,10 @@ jobs:
           cp org-dotgithub/.github/scripts/db-seed-json.mjs \
              .github/scripts/db-seed-json.mjs
 
+          # shared HTTP health helper
+          cp org-dotgithub/.github/scripts/wait-for-health.sh \
+             .github/scripts/wait-for-health.sh
+
           # Integration test runner Dockerfile
           cp org-dotgithub/.github/templates/integration-test-runner.Dockerfile \
              .github/templates/integration-test-runner.Dockerfile
@@ -188,6 +192,7 @@ jobs:
           # Ensure shell scripts are executable
           chmod +x .github/scripts/run-integration-tests.sh
           chmod +x .github/scripts/db-load-fixtures.sh
+          chmod +x .github/scripts/wait-for-health.sh
 
           echo "Shared integration-test templates synced into caller workspace:"
           ls -R .github
