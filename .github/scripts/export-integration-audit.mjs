@@ -229,7 +229,7 @@ async function main() {
   const runtime = process.env.TEST_LANGUAGE || "unknown";
   const serviceImage = process.env.SERVICE_IMAGE || "unknown";
 
-  // 🔹 Resolve repo root from GITHUB_WORKSPACE (preferred) or CWD as fallback.
+  // Resolve repo root from GITHUB_WORKSPACE (preferred) or CWD as fallback.
   const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
 
   // Defaults based on SERVICE_WORKDIR layout used in examples:
@@ -252,7 +252,7 @@ async function main() {
     args.coverage ||
     path.join(serviceWorkdir, "out", "coverage-integration.json");
 
-  // 🔹 ALWAYS anchor .audit at the repo root
+  // ALWAYS anchor .audit at the repo root
   const outRoot =
     args["out-root"] || path.join(repoRoot, ".audit");
 
