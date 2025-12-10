@@ -534,9 +534,6 @@ jobs:
             --results "${RESULTS_PATH}" \
             --logs-dir "${LOGS_DIR}" \
             --coverage "${COVERAGE_PATH}"
-
-          echo "After exporter, listing .audit at repo root..."
-          ls -R .audit || echo "⚠️ .audit not found after exporter!"
         env:
           SERVICE_IMAGE: "${{ env.SERVICE_IMAGE }}"
           SERVICE_WORKDIR: "${{ env.SERVICE_WORKDIR }}"
