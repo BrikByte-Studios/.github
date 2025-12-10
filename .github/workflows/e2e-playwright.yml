@@ -85,6 +85,12 @@ jobs:
       # Current browser project (used in Playwright config / debugging).
       PW_BROWSER: ${{ matrix.browser }}
 
+      # ----------------------------------------------------------
+      # Audit configuration (BrikByteOS standard)
+      # ----------------------------------------------------------
+      AUDIT_ROOT: ".audit"
+      AUDIT_E2E_SUBPATH: "PIPE-E2E"
+
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
@@ -111,6 +117,7 @@ jobs:
             npm install
           fi
         working-directory: ${{ inputs.service_workdir }}
+
       - name: "Install Playwright browsers"
         # Installs browser binaries + system deps needed for Playwright on Ubuntu.
         run: |
@@ -137,6 +144,78 @@ jobs:
         continue-on-error: false
         working-directory: ${{ inputs.service_workdir }}
 
+      # --------------------------------------------------------------
+      # .audit hook: copy Playwright artifacts into .audit/PIPE-E2E/…
+      # --------------------------------------------------------------
+      - name: "Prepare E2E audit bundle path"
+        if: always()
+        id: e2e_audit_path
+        working-directory: ${{ inputs.service_workdir }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          # Construct a run identifier that is unique per browser:
+          #   <GITHUB_RUN_ID>-<JOB_NAME>-<BROWSER>
+          RUN_ID="${GITHUB_RUN_ID}-${GITHUB_JOB}-${PW_BROWSER}"
+
+          # Final audit path, e.g.:
+          #   .audit/PIPE-E2E/123456789-playwright-e2e-chromium/
+          AUDIT_PATH="${AUDIT_ROOT}/${AUDIT_E2E_SUBPATH}/${RUN_ID}"
+
+          echo "AUDIT_PATH=${AUDIT_PATH}" >> "$GITHUB_ENV"
+          echo "[PLAYWRIGHT-E2E] E2E audit path: ${AUDIT_PATH}"
+
+          # Also emit a simple marker file at the root of .audit for quick scanning.
+          mkdir -p "${AUDIT_PATH}"
+          echo "PIPE-E2E Playwright evidence for ${PW_BROWSER}" > "${AUDIT_PATH}/.audit-e2e-marker"
+
+      - name: "Copy Playwright report into .audit/PIPE-E2E"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          # AUDIT_PATH was set in the previous step and exported via GITHUB_ENV
+          echo "[PLAYWRIGHT-E2E] Copying Playwright artifacts to ${AUDIT_PATH}"
+
+          mkdir -p "${AUDIT_PATH}"
+
+          # Copy HTML report if present
+          if [ -d "playwright-report" ]; then
+            cp -R "playwright-report" "${AUDIT_PATH}/playwright-report"
+          else
+            echo "[PLAYWRIGHT-E2E] No playwright-report directory found."
+          fi
+
+          # Copy raw test-results (traces, screenshots, etc.) if present
+          if [ -d "test-results" ]; then
+            cp -R "test-results" "${AUDIT_PATH}/test-results"
+          else
+            echo "[PLAYWRIGHT-E2E] No test-results directory found."
+          fi
+
+          # Write machine-readable metadata for policy gate & auditors
+          cat > "${AUDIT_PATH}/metadata.json" << EOF
+          {
+            "type": "e2e-playwright",
+            "spec": "PIPE-E2E-PLAYWRIGHT-BUILD-001",
+            "run_id": "${GITHUB_RUN_ID}",
+            "job": "${GITHUB_JOB}",
+            "browser": "${PW_BROWSER}",
+            "repo": "${GITHUB_REPOSITORY}",
+            "ref": "${GITHUB_REF}",
+            "sha": "${GITHUB_SHA}",
+            "status": "${JOB_STATUS}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "run_number": "${GITHUB_RUN_NUMBER}"
+          }
+          EOF
+
+          echo "[PLAYWRIGHT-E2E] E2E audit bundle prepared at: ${AUDIT_PATH}"
+
+      # --------------------------------------------------------------
+      # Upload raw Playwright report (still useful for debugging)
+      # --------------------------------------------------------------
       - name: "Upload Playwright HTML report"
         # Even on failure, we want the report + traces as an artifact.
         if: always()
@@ -144,5 +223,5 @@ jobs:
         with:
           name: "playwright-report-${{ matrix.browser }}"
           path: |
-            playwright-report/
+            ${{ inputs.service_workdir }}/playwright-report/
           if-no-files-found: "ignore"
