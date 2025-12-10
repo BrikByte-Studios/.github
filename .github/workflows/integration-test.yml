@@ -520,8 +520,8 @@ jobs:
           set -euo pipefail
 
           echo "Exporting integration audit bundle..."
-
-          node .github/scripts/export-integration-audit.mjs \
+          cd "${SERVICE_WORKDIR}"
+          node ../.github/scripts/export-integration-audit.mjs \
             --junit "${SERVICE_WORKDIR}/out/junit-integration.xml" \
             --results "${SERVICE_WORKDIR}/out/integration-results.json" \
             --logs-dir "${SERVICE_WORKDIR}/out/integration-logs" \
