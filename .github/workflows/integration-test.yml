@@ -212,7 +212,7 @@ jobs:
           chmod +x .github/scripts/run-integration-tests.sh
           chmod +x .github/scripts/db-load-fixtures.sh
           chmod +x .github/scripts/wait-for-health.sh
-          chmod +x .github/scripts/env-generate-integration.sh 
+          chmod +x .github/scripts/env-generate-integration.sh
 
           echo "Shared integration-test templates synced into caller workspace:"
           ls -R .github
@@ -537,7 +537,7 @@ jobs:
         env:
           SERVICE_IMAGE: "${{ env.SERVICE_IMAGE }}"
           SERVICE_WORKDIR: "${{ env.SERVICE_WORKDIR }}"
-          
+
       - name: "Upload integration audit artifact"
         if: always()
         uses: actions/upload-artifact@v4
@@ -546,5 +546,3 @@ jobs:
           path: .audit
           if-no-files-found: warn
           retention-days: 14
-
-
