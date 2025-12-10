@@ -444,10 +444,7 @@ jobs:
           docker run --rm \
             --name tests \
             --network "${NETWORK_NAME}" \
-            \
-            # Bind-mount service workdir for integration artifacts (out/, junit, etc.)
             -v "${PWD}/${SERVICE_WORKDIR}:/workspace/${SERVICE_WORKDIR}" \
-            \
             -e APP_BASE_URL="${APP_BASE_URL}" \
             -e APP_HEALTH_URL="${APP_HEALTH_URL}" \
             -e DB_HOST="db" \
