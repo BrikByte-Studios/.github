@@ -18,6 +18,7 @@
  *
  * Expected environment variables (from GitHub Actions):
  *   SERVICE_WORKDIR           : Service root within repo (e.g. "node-api-example")
+ *   GITHUB_WORKSPACE          : Repo root on CI runner (ALWAYS set in Actions)
  *   GITHUB_REPOSITORY         : "owner/repo"
  *   GITHUB_ACTOR              : Actor that triggered the run
  *   GITHUB_SHA                : Commit SHA
@@ -228,6 +229,9 @@ async function main() {
   const runtime = process.env.TEST_LANGUAGE || "unknown";
   const serviceImage = process.env.SERVICE_IMAGE || "unknown";
 
+  // 🔹 Resolve repo root from GITHUB_WORKSPACE (preferred) or CWD as fallback.
+  const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+
   // Defaults based on SERVICE_WORKDIR layout used in examples:
   //   node-api-example/out/junit-integration.xml
   //   python-api-example/out/junit-integration.xml
@@ -248,12 +252,15 @@ async function main() {
     args.coverage ||
     path.join(serviceWorkdir, "out", "coverage-integration.json");
 
-  const outRoot = args["out-root"] || ".audit";
+  // 🔹 ALWAYS anchor .audit at the repo root
+  const outRoot =
+    args["out-root"] || path.join(repoRoot, ".audit");
 
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
   const auditBaseDir = path.join(outRoot, dateStr, "integration");
 
+  log(`Repo root         : ${repoRoot}`);
   log(`Service workdir   : ${serviceWorkdir}`);
   log(`JUnit XML source  : ${junitPath}`);
   log(`Results JSON src  : ${resultsPath}`);
