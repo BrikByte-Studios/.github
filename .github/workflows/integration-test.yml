@@ -524,7 +524,7 @@ jobs:
             --junit "${SERVICE_WORKDIR}/out/junit-integration.xml" \
             --results "${SERVICE_WORKDIR}/out/integration-results.json" \
             --logs-dir "${SERVICE_WORKDIR}/out/integration-logs" \
-            --coverage "${SERVICEWORKDIR}/out/coverage-integration.json"
+            --coverage "${SERVICE_WORKDIR}/out/coverage-integration.json"
         env:
           SERVICE_IMAGE: "${{ env.SERVICE_IMAGE }}"
           SERVICE_WORKDIR: "${{ env.SERVICE_WORKDIR }}"
