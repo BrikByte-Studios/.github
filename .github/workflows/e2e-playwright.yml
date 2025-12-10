@@ -124,6 +124,36 @@ jobs:
           npx playwright install --with-deps
         working-directory: ${{ inputs.service_workdir }}
 
+      - name: "Start UI app for E2E (background)"
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          echo "[PLAYWRIGHT-E2E] Starting UI app on PORT=3000..."
+          export PORT=3000
+
+          # Start the app in the background
+          node src/server.mjs &
+          APP_PID=$!
+
+          echo "APP_PID=${APP_PID}" >> "$GITHUB_ENV"
+
+          # Wait for it to be up (simple curl loop)
+          echo "[PLAYWRIGHT-E2E] Waiting for http://localhost:3000/login to be ready..."
+          for i in $(seq 1 30); do
+            if curl -fsS "http://localhost:3000/login" > /dev/null 2>&1; then
+              echo "[PLAYWRIGHT-E2E] UI is up."
+              break
+            fi
+            echo "[PLAYWRIGHT-E2E] Still waiting (${i})..."
+            sleep 2
+          done
+
+          # As a sanity check, fail if still not up after loop
+          if ! curl -fsS "http://localhost:3000/login" > /dev/null 2>&1; then
+            echo "[PLAYWRIGHT-E2E] ERROR: UI did not become ready in time."
+            exit 1
+          fi
+
+
       - name: "Run Playwright tests"
         # Skip Firefox/WebKit if not enabled via inputs – Chromium always runs.
         if: >
