@@ -520,11 +520,23 @@ jobs:
           set -euo pipefail
 
           echo "Exporting integration audit bundle..."
+          echo "Repo root: $(pwd)"
+          echo "SERVICE_WORKDIR: ${SERVICE_WORKDIR}"
+
+          # Paths are relative to repo root.
+          JUNIT_PATH="${SERVICE_WORKDIR}/out/junit-integration.xml"
+          RESULTS_PATH="${SERVICE_WORKDIR}/out/integration-results.json"
+          LOGS_DIR="${SERVICE_WORKDIR}/out/integration-logs"
+          COVERAGE_PATH="${SERVICE_WORKDIR}/out/coverage-integration.json"
+
           node .github/scripts/export-integration-audit.mjs \
-            --junit "${SERVICE_WORKDIR}/out/junit-integration.xml" \
-            --results "${SERVICE_WORKDIR}/out/integration-results.json" \
-            --logs-dir "${SERVICE_WORKDIR}/out/integration-logs" \
-            --coverage "${SERVICE_WORKDIR}/out/coverage-integration.json"
+            --junit "${JUNIT_PATH}" \
+            --results "${RESULTS_PATH}" \
+            --logs-dir "${LOGS_DIR}" \
+            --coverage "${COVERAGE_PATH}"
+
+          echo "After exporter, listing .audit at repo root..."
+          ls -R .audit || echo "⚠️ .audit not found after exporter!"
         env:
           SERVICE_IMAGE: "${{ env.SERVICE_IMAGE }}"
           SERVICE_WORKDIR: "${{ env.SERVICE_WORKDIR }}"
