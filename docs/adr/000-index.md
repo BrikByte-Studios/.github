@@ -5,6 +5,14 @@
 
 ## By Status
 
+### Accepted
+
+| ID | Seq | Title | Date | Areas | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | 2025-11-22 | governance, policy-gate, ci-cd, devx | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
+| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | 2025-11-26 | containers, ci-cd, security, platform | `008-container-build-strategy-docker-vs-kaniko.md` |
+| ADR-0011 | 11 | [Integration Test Audit Export Strategy](011-integration-test-audit-export-strategy.md) | 2025-12-10 | CI/CD • QA Automation • Governance | `011-integration-test-audit-export-strategy.md` |
+
 ### Proposed
 
 | ID | Seq | Title | Date | Areas | File |
@@ -18,14 +26,13 @@
 | ADR-0009 | 9 | [Standardized DB Fixtures and Service Mocks for Integration Tests](009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md) | 2025-12-09 | integration-tests, ci-cd, brikpipe | `009-standardized-db-fixtures-and-service-mocks-for-integration-tests.md` |
 | ADR-0010 | 10 | [Integration Secrets & Environment Provisioning Strategy](010-integration-secrets-environment-provisioning-strategy.md) | 2025-12-09 | security, ci-cd, integration-tests, brikpipe | `010-integration-secrets-environment-provisioning-strategy.md` |
 
-### Accepted
-
-| ID | Seq | Title | Date | Areas | File |
-| --- | --- | --- | --- | --- | --- |
-| ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | 2025-11-22 | governance, policy-gate, ci-cd, devx | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
-| ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | 2025-11-26 | containers, ci-cd, security, platform | `008-container-build-strategy-docker-vs-kaniko.md` |
-
 ## By Area
+
+### CI/CD • QA Automation • Governance
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0011 | 11 | [Integration Test Audit Export Strategy](011-integration-test-audit-export-strategy.md) | Accepted | 2025-12-10 | `011-integration-test-audit-export-strategy.md` |
 
 ### security
 

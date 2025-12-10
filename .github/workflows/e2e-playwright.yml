@@ -1,0 +1,141 @@
+# Reusable Playwright E2E workflow for BrikByteOS.
+# - Designed to be called from product/demo repos via `workflow_call`.
+# - Provides:
+#   * Multi-browser matrix (Chromium mandatory; Firefox/WebKit optional)
+#   * Environment targeting via E2E_TARGET_URL
+#   * Parallelism via Playwright workers
+#   * Basic retry + trace-on-retry
+#   * HTML report + traces exported as GitHub Actions artifact
+#
+# NOTE:
+# - This workflow runs in the context of the *calling* repo.
+# - Product repos must supply Node version + dependencies (package.json, etc.).
+# - No secrets or credentials are defined here.
+
+name: "E2E - Playwright (Reusable)"
+
+on:
+  # This workflow is *reusable* – it must be invoked from other workflows.
+  workflow_call:
+    inputs:
+      target_url:
+        description: "Base URL for E2E tests (staging by default)."
+        type: string
+        required: false
+        default: "https://staging.example.com"
+      enable_firefox:
+        description: "Include Firefox project in the browser matrix."
+        type: boolean
+        required: false
+        default: false
+      enable_webkit:
+        description: "Include WebKit project in the browser matrix."
+        type: boolean
+        required: false
+        default: false
+      workers:
+        description: "Playwright workers (e.g. '50%', '4'). Controls parallelism/sharding."
+        type: string
+        required: false
+        default: "50%"
+      retries:
+        description: "Global retry count for Playwright tests."
+        type: number
+        required: false
+        default: 1
+      trace_mode:
+        description: "Playwright trace mode (on, on-first-retry, retain-on-failure, off)."
+        type: string
+        required: false
+        default: "on-first-retry"
+
+jobs:
+  playwright-e2e:
+    name: "Playwright E2E (${{ matrix.browser }})"
+    runs-on: ubuntu-latest
+
+    # Browser matrix:
+    # - Chromium always enabled.
+    # - Firefox/WebKit can be logically skipped via env flags.
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+
+    env:
+      # Base URL for tests – consumed by Playwright config.
+      E2E_TARGET_URL: ${{ inputs.target_url }}
+
+      # Flags for conditional browser projects in config:
+      PW_ENABLE_FIREFOX: ${{ inputs.enable_firefox && '1' || '0' }}
+      PW_ENABLE_WEBKIT: ${{ inputs.enable_webkit && '1' || '0' }}
+
+      # Parallelism / sharding (via Playwright workers).
+      PW_WORKERS: ${{ inputs.workers }}
+
+      # Retry + trace behaviour.
+      PW_RETRIES: ${{ inputs.retries }}
+      PW_TRACE_MODE: ${{ inputs.trace_mode }}
+
+      # Current browser project (used in Playwright config / debugging).
+      PW_BROWSER: ${{ matrix.browser }}
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          # Shallow clone is enough for E2E tests in most cases.
+          fetch-depth: 1
+
+      - name: "Use Node.js 20 LTS"
+        # Caller repos can change this by editing this workflow in future versions.
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: "Install dependencies"
+        # This keeps the workflow generic across repos:
+        # - If package-lock.json exists, npm ci is preferred.
+        # - You can customize this in your own fork if you use pnpm/yarn.
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "[PLAYWRIGHT-E2E] Using npm ci"
+            npm ci
+          else
+            echo "[PLAYWRIGHT-E2E] Using npm install"
+            npm install
+          fi
+
+      - name: "Install Playwright browsers"
+        # Installs browser binaries + system deps needed for Playwright on Ubuntu.
+        run: |
+          npx playwright install --with-deps
+
+      - name: "Run Playwright tests"
+        # Skip Firefox/WebKit if not enabled via inputs – Chromium always runs.
+        if: >
+          matrix.browser == 'chromium' ||
+          (matrix.browser == 'firefox' && inputs.enable_firefox) ||
+          (matrix.browser == 'webkit' && inputs.enable_webkit)
+        run: |
+          echo "[PLAYWRIGHT-E2E] Running project: $PW_BROWSER"
+          echo "[PLAYWRIGHT-E2E] Base URL: $E2E_TARGET_URL"
+          echo "[PLAYWRIGHT-E2E] Workers: $PW_WORKERS"
+          echo "[PLAYWRIGHT-E2E] Retries: $PW_RETRIES"
+          echo "[PLAYWRIGHT-E2E] Trace mode: $PW_TRACE_MODE"
+
+          # PW_* env vars are read by playwright.config.ts
+          # Reporter 'html' writes to ./playwright-report
+          npx playwright test \
+            --project="$PW_BROWSER"
+        continue-on-error: false
+
+      - name: "Upload Playwright HTML report"
+        # Even on failure, we want the report + traces as an artifact.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "playwright-report-${{ matrix.browser }}"
+          path: |
+            playwright-report/
+          if-no-files-found: "ignore"
