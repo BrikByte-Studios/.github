@@ -48,6 +48,11 @@ on:
         type: string
         required: false
         default: "on-first-retry"
+      service_workdir:
+        description: "Relative path to the service under test (e.g. node-ui-example)"
+        type: string
+        required: false
+        default: "."
 
 jobs:
   playwright-e2e:
@@ -105,11 +110,12 @@ jobs:
             echo "[PLAYWRIGHT-E2E] Using npm install"
             npm install
           fi
-
+        working-directory: ${{ inputs.service_workdir }}
       - name: "Install Playwright browsers"
         # Installs browser binaries + system deps needed for Playwright on Ubuntu.
         run: |
           npx playwright install --with-deps
+        working-directory: ${{ inputs.service_workdir }}
 
       - name: "Run Playwright tests"
         # Skip Firefox/WebKit if not enabled via inputs – Chromium always runs.
@@ -129,6 +135,7 @@ jobs:
           npx playwright test \
             --project="$PW_BROWSER"
         continue-on-error: false
+        working-directory: ${{ inputs.service_workdir }}
 
       - name: "Upload Playwright HTML report"
         # Even on failure, we want the report + traces as an artifact.
