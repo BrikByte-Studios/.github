@@ -196,7 +196,11 @@ jobs:
           cp org-dotgithub/.github/scripts/wait-for-health.sh \
              .github/scripts/wait-for-health.sh
 
-          # integration env generator (NEW)
+          # Integration audit exporter
+          cp org-dotgithub/.github/scripts/export-integration-audit.mjs \
+             .github/scripts/export-integration-audit.mjs
+
+          # integration env generator
           cp org-dotgithub/.github/scripts/env-generate-integration.sh \
             .github/scripts/env-generate-integration.sh
 
@@ -433,9 +437,17 @@ jobs:
           echo "  TEST_COMMAND        : ${TEST_COMMAND}"
           echo "  SERVICE_WORKDIR     : ${SERVICE_WORKDIR}"
 
+          # Mark job start time for audit metadata
+          INTEG_JOB_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "INTEG_JOB_STARTED_AT=${INTEG_JOB_STARTED_AT}" >> "$GITHUB_ENV"
+
           docker run --rm \
             --name tests \
             --network "${NETWORK_NAME}" \
+            \
+            # Bind-mount service workdir for integration artifacts (out/, junit, etc.)
+            -v "${PWD}/${SERVICE_WORKDIR}:/workspace/${SERVICE_WORKDIR}" \
+            \
             -e APP_BASE_URL="${APP_BASE_URL}" \
             -e APP_HEALTH_URL="${APP_HEALTH_URL}" \
             -e DB_HOST="db" \
@@ -460,6 +472,35 @@ jobs:
           echo "==== Docker logs: app ===="
           docker logs app || true
 
+      - name: "Capture integration container logs to workspace"
+        if: always()
+        run: |
+          set -euo pipefail
+
+          LOG_DIR="${SERVICE_WORKDIR}/out/integration-logs"
+          mkdir -p "${LOG_DIR}"
+
+          echo "Capturing container logs into ${LOG_DIR}..."
+
+          # App container logs
+          docker logs app > "${LOG_DIR}/app.log" 2>&1 || echo "No app logs."
+
+          # DB container logs
+          docker logs db > "${LOG_DIR}/db.log" 2>&1 || echo "No db logs."
+
+          # Cache / mocks container logs (optional)
+          if docker ps -a --format '{{.Names}}' | grep -q '^cache$'; then
+            docker logs cache > "${LOG_DIR}/cache.log" 2>&1 || echo "No cache logs."
+          fi
+
+          # Test runner container logs (if still present)
+          if docker ps -a --format '{{.Names}}' | grep -q '^tests$'; then
+            docker logs tests > "${LOG_DIR}/tests.log" 2>&1 || echo "No tests logs."
+          fi
+
+          echo "Log capture complete. Files:"
+          ls -la "${LOG_DIR}"
+
       - name: "Tear down containers and network"
         if: always()
         run: |
@@ -475,3 +516,31 @@ jobs:
           docker network rm "${NETWORK_NAME}" 2>/dev/null || true
 
           echo "Cleanup completed."
+
+      - name: "Export integration audit bundle"
+        if: always()
+        run: |
+          set -euo pipefail
+
+          echo "Exporting integration audit bundle..."
+
+          node .github/scripts/export-integration-audit.mjs \
+            --junit "${SERVICE_WORKDIR}/out/junit-integration.xml" \
+            --results "${SERVICE_WORKDIR}/out/integration-results.json" \
+            --logs-dir "${SERVICE_WORKDIR}/out/integration-logs" \
+            --coverage "${SERVICE_WORKDIR}/out/coverage-integration.json" \
+            --out-root ".audit"
+        env:
+          SERVICE_IMAGE: "${{ env.SERVICE_IMAGE }}"
+          SERVICE_WORKDIR: "${{ env.SERVICE_WORKDIR }}"
+          
+      - name: "Upload integration audit artifact"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "integration-audit-${{ github.run_id }}"
+          path: .audit
+          if-no-files-found: warn
+          retention-days: 14
+
+
