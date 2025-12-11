@@ -89,11 +89,13 @@ We will adopt a **standardized, mandatory integration test audit export mechanis
 ### Core Mechanism
 
 - Canonical exporter:
+
 ```text
 .github/scripts/export-integration-audit.mjs
 ```
 
 - Canonical storage format:
+
 ```text
 .audit/YYYY-MM-DD/integration/
 ├─ junit.xml
@@ -107,11 +109,12 @@ We will adopt a **standardized, mandatory integration test audit export mechanis
 └─ metadata.json
 ```
 
-
 - Export is executed with:
+
 ```bash
 if: always()
 ```
+
 - Output is uploaded as a **GitHub artifact**
 
 ### Rationale
@@ -137,16 +140,19 @@ This aligns with BrikByte’s principles of:
 ### 3.1 Option A — Console Logs Only
 
 **Pros:**
+
 - Zero implementation cost
 - Native GitHub UI support
 
 **Cons:**
+
 - Logs disappear after run
 - No standardized structure
 - Impossible to fully reconstruct failures
 - No machine-readable artifacts
 
 **Why Rejected:**
+
 - Fails governance, audit, and forensics requirements.
 
 ---
@@ -154,33 +160,40 @@ This aligns with BrikByte’s principles of:
 ### 3.2 Option B — Partial Artifact Uploads (JUnit Only)
 
 **Pros:**
+
 - Simple
 - Provides pass/fail visibility
 
 **Cons:**
+
 - No container logs
 - No DB or cache insight
 - No runtime metadata
 - No security guarantees
 
 **Why Rejected:**
+
 - Insufficient for root-cause analysis and compliance.
+
 
 ---
 
 ### 3.3 Option C — External Log Aggregation Only
 
 **Pros:**
+
 - Long-term storage
 - Centralized dashboards
 
 **Cons:**
+
 - External dependency
 - Cost overhead
 - Not guaranteed per-repo traceability
 - Risk of secret propagation
 
 **Why Rejected:**
+
 - Violates zero-trust CI design at early stage.
 
 ---
@@ -188,6 +201,7 @@ This aligns with BrikByte’s principles of:
 ### 3.4 ✅ **Option D — Structured Local `.audit` Bundle + Artifact Upload (Chosen)**
 
 **Pros:**
+
 - Complete forensic trail
 - Immutable per-run snapshot
 - Secret sanitization guaranteed
@@ -196,17 +210,18 @@ This aligns with BrikByte’s principles of:
 - Enables AI-based root-cause analysis later
 
 **Cons / Trade-offs:**
+
 - Slight CI runtime overhead
 - Requires developer onboarding
 - Requires storage planning
 
 **Why Accepted:**
+
 - Best balance of:
 - Governance enforceability
 - Developer experience
 - Security
 - Automation readiness
-
 
 ---
 
@@ -242,15 +257,19 @@ This aligns with BrikByte’s principles of:
 ## 5. Implementation Notes
 
 - Export is executed from **repo root** using:
+
 ```bash
 node .github/scripts/export-integration-audit.mjs
 ```
+
 - `.audit` directory is **always anchored at repo root**
 - Export runs **after container teardown**
 - All logs are captured using:
+
 ```nginx
 docker logs
 ```
+
 - Metadata includes:
   - Repo
   - Actor
@@ -268,6 +287,7 @@ docker logs
   - QA Automation Lead — correctness of test artifacts
   - DevOps Engineer — pipeline orchestration
   - Platform Lead — governance enforcement
+
 ---
 
 ## 6. References
@@ -276,4 +296,3 @@ docker logs
 - PIPE-CORE-2.2 — Integration Test Stage
 - D-007 — Governance Blueprints
 - brik-pipe-docs/security/integration-secrets.md
-

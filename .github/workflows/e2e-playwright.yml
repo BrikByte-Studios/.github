@@ -155,6 +155,7 @@ jobs:
 
 
       - name: "Run Playwright tests"
+        id: run_playwright
         # Skip Firefox/WebKit if not enabled via inputs – Chromium always runs.
         if: >
           matrix.browser == 'chromium' ||
@@ -167,10 +168,21 @@ jobs:
           echo "[PLAYWRIGHT-E2E] Retries: $PW_RETRIES"
           echo "[PLAYWRIGHT-E2E] Trace mode: $PW_TRACE_MODE"
 
+          START_TS=$(date +%s)
+
           # PW_* env vars are read by playwright.config.ts
           # Reporter 'html' writes to ./playwright-report
           npx playwright test \
             --project="$PW_BROWSER"
+
+          END_TS=$(date +%s)
+          DURATION_SEC=$((END_TS - START_TS))
+
+          echo "[PLAYWRIGHT-E2E] E2E duration (s): ${DURATION_SEC}"
+
+          # Export so later steps + callers can see it
+          echo "DURATION_SECONDS=${DURATION_SEC}" >> "$GITHUB_ENV"
+          echo "duration_seconds=${DURATION_SEC}" >> "$GITHUB_OUTPUT"
         continue-on-error: false
         working-directory: ${{ inputs.service_workdir }}
 
@@ -204,6 +216,7 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
         env:
           JOB_STATUS: ${{ job.status }}
+          RUN_DURATION: ${{ steps.run_playwright.outputs.duration_seconds }}
         run: |
           # AUDIT_PATH was set in the previous step and exported via GITHUB_ENV
           echo "[PLAYWRIGHT-E2E] Copying Playwright artifacts to ${AUDIT_PATH}"
