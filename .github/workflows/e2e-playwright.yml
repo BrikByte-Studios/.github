@@ -192,7 +192,7 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
 
       # --------------------------------------------------------------
-      # .audit hook: copy Playwright artifacts into .audit/PIPE-E2E/…
+      # .audit hook: create E2E audit path
       # --------------------------------------------------------------
       - name: "Prepare E2E audit bundle path"
         if: always()
@@ -201,12 +201,7 @@ jobs:
         env:
           JOB_STATUS: ${{ job.status }}
         run: |
-          # Construct a run identifier that is unique per browser + workers:
-          #   <RUN_ID>-playwright-e2e-<BROWSER>-workers-<WORKERS>
           RUN_ID="${GITHUB_RUN_ID}-playwright-e2e-${PW_BROWSER}-workers-${PW_WORKERS}"
-
-          # Final audit path, e.g.:
-          #   .audit/PIPE-E2E/123456789-playwright-e2e-chromium-workers-1/
           AUDIT_PATH="${AUDIT_ROOT}/${AUDIT_E2E_SUBPATH}/${RUN_ID}"
 
           echo "AUDIT_PATH=${AUDIT_PATH}" >> "$GITHUB_ENV"
@@ -215,13 +210,57 @@ jobs:
           mkdir -p "${AUDIT_PATH}"
           echo "PIPE-E2E Playwright evidence for ${PW_BROWSER}" > "${AUDIT_PATH}/.audit-e2e-marker"
 
+      - name: "Copy Playwright report into .audit/PIPE-E2E"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+          RUN_DURATION: ${{ steps.run_playwright.outputs.duration_seconds }}
+        run: |
+          echo "[PLAYWRIGHT-E2E] Copying Playwright artifacts to ${AUDIT_PATH}"
+
+          mkdir -p "${AUDIT_PATH}"
+
+          if [ -d "playwright-report" ]; then
+            cp -R "playwright-report" "${AUDIT_PATH}/playwright-report"
+          else
+            echo "[PLAYWRIGHT-E2E] No playwright-report directory found."
+          fi
+
+          if [ -d "test-results" ]; then
+            cp -R "test-results" "${AUDIT_PATH}/test-results"
+          else
+            echo "[PLAYWRIGHT-E2E] No test-results directory found."
+          fi
+
+          DURATION_VALUE="${RUN_DURATION:-${DURATION_SECONDS:-0}}"
+
+          cat > "${AUDIT_PATH}/metadata.json" << EOF
+          {
+            "type": "e2e-playwright",
+            "spec": "PIPE-E2E-PLAYWRIGHT-BUILD-001",
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "job": "${GITHUB_JOB}",
+            "browser": "${PW_BROWSER}",
+            "workers": "${PW_WORKERS}",
+            "duration_seconds": ${DURATION_VALUE},
+            "repo": "${GITHUB_REPOSITORY}",
+            "ref": "${GITHUB_REF}",
+            "sha": "${GITHUB_SHA}",
+            "status": "${JOB_STATUS}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "run_number": "${GITHUB_RUN_NUMBER}"
+          }
+          EOF
+
+          echo "[PLAYWRIGHT-E2E] E2E audit bundle prepared at: ${AUDIT_PATH}"
+
       - name: "Upload E2E audit slice"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Example:
-          #   e2e-audit-node-ui-example-chromium-workers-1-baseline
-          #   e2e-audit-node-ui-example-chromium-workers-50%-sharded
+          # e.g. e2e-audit-node-ui-example-chromium-workers-1-baseline
           name: "e2e-audit-${{ inputs.service_workdir }}-${{ matrix.browser }}-workers-${{ env.PW_WORKERS }}${{ inputs.artifact_suffix }}"
           path: |
             ${{ inputs.service_workdir }}/${{ env.AUDIT_ROOT }}/${{ env.AUDIT_E2E_SUBPATH }}/${{ github.run_id }}-playwright-e2e-${{ env.PW_BROWSER }}-workers-${{ env.PW_WORKERS }}/
@@ -229,6 +268,7 @@ jobs:
           compression-level: 6
           overwrite: false
           include-hidden-files: false
+
 
 
       - name: "Copy Playwright report into .audit/PIPE-E2E"
