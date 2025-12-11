@@ -1,41 +1,41 @@
-# -------------------------------------------------------------------
-# BrikByteOS CODEOWNERS
-#
-# Purpose:
-# - Enforce mandatory human review for sensitive areas of the platform.
-# - Ensure Integration & E2E test changes are reviewed by:
-#     - QA Automation Lead
-#     - Platform Lead (or delegate)
-#
-# This directly enforces the governance requirement:
-#   “Code reviewed and merged by @qa-automation and @platform-leads
-#    for integration tests.”
-#
-# This file is enforced by GitHub Branch Protection Rules.
-# -------------------------------------------------------------------
+# ==== BrikByte Studios — CODEOWNERS (specific → general) ====
+# Deterministic order: specific FIRST, general LAST. "Last match wins".
 
-# -------------------------------
-# Integration Tests (ALL LANGUAGES)
-# -------------------------------
-**/tests/integration/**         @BrikByte-Studios/qa-automation @BrikByte-Studios/platform-leads
+# Security-critical & governance files
+/.github/workflows/**                @BrikByte-Studios/devops @BrikByte-Studios/security
+/.gitattributes                      @BrikByte-Studios/devops
+/.gitignore                          @BrikByte-Studios/devops
+/LICENSE                             @BrikByte-Studios/devops @BrikByte-Studios/docs-platform
+# .archlint.yml                      @BrikByte-Studios/devops   # use '#' for comments, not HTML
+/.governance/**                      @BrikByte-Studios/devops @BrikByte-Studios/security
+/.audit/**                           @BrikByte-Studios/devops
+/rulepacks/**                        @BrikByte-Studios/devops @BrikByte-Studios/security
 
-# -------------------------------
-# E2E / Playwright Tests
-# -------------------------------
-**/tests/e2e/**                 @BrikByte-Studios/qa-automation @BrikByte-Studios/platform-leads
-**/tests/e2e/playwright/**      @BrikByte-Studios/qa-automation @BrikByte-Studios/platform-leads
+# Root docs & config (present in .github)
+README.md                            @BrikByte-Studios/docs-platform @BrikByte-Studios/devops
+SECURITY.md                          @BrikByte-Studios/security
+CONTRIBUTING.md                      @BrikByte-Studios/docs-platform
+PULL_REQUEST_TEMPLATE.md             @BrikByte-Studios/devops @BrikByte-Studios/docs-platform
+CODEOWNERS                           @BrikByte-Studios/devops @BrikByte-Studios/docs-platform
+Makefile                             @BrikByte-Studios/devops
+package.json                         @BrikByte-Studios/devops
+package-lock.json                    @BrikByte-Studios/devops
 
-# -------------------------------
-# CI / Pipeline Governance
-# -------------------------------
-.github/workflows/**           @BrikByte-Studios/platform-leads
-.github/policy.yml             @BrikByte-Studios/platform-leads
+# Org profile and helper scripts (exist in this repo)
+/profile/**                          @BrikByte-Studios/docs-platform
+/scripts/**                          @BrikByte-Studios/devops
 
-# -------------------------------
-# Audit & Compliance Evidence
-# -------------------------------
-.audit/**                      @BrikByte-Studios/platform-leads @BrikByte-Studios/devops
-
+# (Templates for app/service repos — OK to keep or remove in .github if you want zero warnings)
+/app/web/**                          @BrikByte-Studios/devops @BrikByte-Studios/sre
+/app/api/**                          @BrikByte-Studios/devops
+/services/payments/**                @BrikByte-Studios/devops
+/services/identity/**                @BrikByte-Studios/devops
+/libs/**                             @BrikByte-Studios/devops
+/infra/**                            @BrikByte-Studios/devops @BrikByte-Studios/sre
+/charts/**                           @BrikByte-Studios/devops @BrikByte-Studios/sre
+/tests/**                            @BrikByte-Studios/qa-automation
+/docs/**                             @BrikByte-Studios/docs-platform
+/security/**                         @BrikByte-Studios/security
 
 # Catch-all (REQUIRED and must be last)
 *                                    @BrikByte-Studios/platform-leads @BrikByte-Studios/sre
