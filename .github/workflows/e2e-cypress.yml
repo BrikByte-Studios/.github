@@ -1,0 +1,153 @@
+# Reusable Cypress E2E workflow for BrikByteOS.
+#
+# Responsibilities:
+# - Run Cypress E2E in CI using the official Cypress Docker image.
+# - Accept base URL via env (CYPRESS_BASE_URL / E2E_TARGET_URL).
+# - Wait for service readiness before executing tests.
+# - Capture screenshots & videos on failure and export as artifacts.
+# - Work fully offline (no Cypress Cloud).
+#
+# Usage (from a product repo):
+#   jobs:
+#     e2e-cypress:
+#       uses: BrikByte-Studios/.github/.github/workflows/e2e-cypress.yml@main
+#       with:
+#         target_url: "https://staging.example.com"
+#         health_path: "/health"
+#         service_workdir: "."
+#         cypress_image: "cypress/included:13.12.0"
+
+name: "E2E - Cypress (Reusable)"
+
+on:
+  # This workflow is reusable – it must be invoked via `workflow_call`.
+  workflow_call:
+    inputs:
+      target_url:
+        description: "Base URL for E2E tests (e.g. https://staging.example.com)"
+        type: string
+        required: false
+        default: "https://staging.example.com"
+      health_path:
+        description: "Relative health path used for readiness checks (e.g. /health or /)"
+        type: string
+        required: false
+        default: "/health"
+      service_workdir:
+        description: "Working directory for the service under test (e.g. node-ui-example)"
+        type: string
+        required: false
+        default: "."
+      cypress_image:
+        description: "Official Cypress Docker image tag to use."
+        type: string
+        required: false
+        default: "cypress/included:13.12.0"
+      spec_pattern:
+        description: "Override Cypress spec filter (e.g. tests/e2e/cypress/e2e/**/*.cy.ts)"
+        type: string
+        required: false
+        default: ""
+      run_mode_retries:
+        description: "Number of retries in CI (runMode)."
+        type: number
+        required: false
+        default: 2
+      open_mode_retries:
+        description: "Number of retries when running locally via Cypress open (openMode)."
+        type: number
+        required: false
+        default: 0
+      artifact_name:
+        description: "Artifact base name for Cypress outputs."
+        type: string
+        required: false
+        default: "cypress-artifacts"
+
+jobs:
+  cypress-e2e:
+    name: "Cypress E2E"
+    runs-on: ubuntu-latest
+
+    env:
+      # Base URL is passed into Cypress via env (CYPRESS_BASE_URL).
+      CYPRESS_BASE_URL: ${{ inputs.target_url }}
+      E2E_TARGET_URL: ${{ inputs.target_url }}
+      CYPRESS_RUN_MODE_RETRIES: ${{ inputs.run_mode_retries }}
+      CYPRESS_OPEN_MODE_RETRIES: ${{ inputs.open_mode_retries }}
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Optional: if product repo wants to build / start its own service in this workflow,
+      # it can do so in a wrapper workflow BEFORE calling this reusable one.
+      # Here we only perform a readiness check against the target URL.
+
+      - name: "Wait for service readiness"
+        working-directory: ${{ inputs.service_workdir }}
+        env:
+          HEALTH_URL: ${{ inputs.target_url }}${{ inputs.health_path }}
+        run: |
+          echo "[CYPRESS-E2E] Waiting for service to be ready at: ${HEALTH_URL}"
+
+          timeout_seconds=120
+          sleep_interval=5
+          elapsed=0
+
+          while ! curl -sSf "${HEALTH_URL}" > /dev/null 2>&1; do
+            echo "[CYPRESS-E2E] Service not ready yet... (${elapsed}s elapsed)"
+            sleep "${sleep_interval}"
+            elapsed=$((elapsed + sleep_interval))
+
+            if [ "${elapsed}" -ge "${timeout_seconds}" ]; then
+              echo "[CYPRESS-E2E] ERROR: Service did not become ready within ${timeout_seconds}s."
+              exit 1
+            fi
+          done
+
+          echo "[CYPRESS-E2E] Service is healthy at ${HEALTH_URL}."
+
+      - name: "Run Cypress E2E via official Docker image"
+        working-directory: ${{ inputs.service_workdir }}
+        env:
+          CYPRESS_IMAGE: ${{ inputs.cypress_image }}
+        run: |
+          echo "[CYPRESS-E2E] Using Cypress image: ${CYPRESS_IMAGE}"
+          echo "[CYPRESS-E2E] Base URL: ${CYPRESS_BASE_URL}"
+
+          # If a spec pattern was provided, pass it to Cypress.
+          SPEC_ARG=""
+          if [ -n "${{ inputs.spec_pattern }}" ]; then
+            SPEC_ARG="--spec '${{ inputs.spec_pattern }}'"
+          fi
+
+          # NOTE:
+          # - Mount the repo into /e2e inside the Docker container.
+          # - Use cypress.config.ts to configure baseUrl, retries, folders, etc.
+          docker run --rm \
+            -e CYPRESS_BASE_URL="${CYPRESS_BASE_URL}" \
+            -e E2E_TARGET_URL="${E2E_TARGET_URL}" \
+            -e CYPRESS_RUN_MODE_RETRIES="${CYPRESS_RUN_MODE_RETRIES}" \
+            -e CYPRESS_OPEN_MODE_RETRIES="${CYPRESS_OPEN_MODE_RETRIES}" \
+            -v "$PWD:/e2e" \
+            -w /e2e \
+            "${CYPRESS_IMAGE}" \
+            /bin/bash -lc "npx cypress run --config-file cypress.config.ts ${SPEC_ARG}"
+
+      - name: "Upload Cypress artifacts"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # This picks up screenshots & videos from the standard Cypress structure
+          # we define in cypress.config.ts (see below).
+          name: ${{ inputs.artifact_name }}
+          path: |
+            tests/e2e/cypress/screenshots
+            tests/e2e/cypress/videos
+          if-no-files-found: "ignore"
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
