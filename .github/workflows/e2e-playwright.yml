@@ -260,11 +260,14 @@ jobs:
       # Upload raw Playwright report (still useful for debugging)
       # --------------------------------------------------------------
       - name: "Upload Playwright HTML report"
-        # Even on failure, we want the report + traces as an artifact.
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: "playwright-report-${{ matrix.browser }}"
+          # Include service_workdir and browser so names are unique per service + browser.
+          name: "playwright-report-${{ inputs.service_workdir }}-${{ matrix.browser }}"
           path: |
             ${{ inputs.service_workdir }}/playwright-report/
           if-no-files-found: "ignore"
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
