@@ -38,6 +38,10 @@ on:
       target_url:
         type: string
         required: true
+      health_url:
+        type: string
+        required: false
+        default: ""
 
       # Path for app readiness checks (recommended: /health)
       health_path:
@@ -99,7 +103,7 @@ jobs:
     env:
       # App under test
       E2E_TARGET_URL: ${{ inputs.target_url }}
-      HEALTH_URL: ${{ inputs.target_url }}${{ inputs.health_path }}
+      HEALTH_URL: ${{ inputs.health_url != '' && inputs.health_url || format('{0}{1}', 'http://localhost:3000', inputs.health_path) }}
 
       # Selenium Grid endpoint (host network; Compose publishes 4444)
       SELENIUM_REMOTE_URL: "http://localhost:4444/wd/hub"
