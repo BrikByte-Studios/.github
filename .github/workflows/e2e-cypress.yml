@@ -163,14 +163,11 @@ jobs:
         run: |
           echo "[CYPRESS-E2E] Using Cypress image: ${CYPRESS_IMAGE}"
           echo "[CYPRESS-E2E] Base URL: ${CYPRESS_BASE_URL}"
-          echo "[CYPRESS-E2E] RunMode retries: ${CYPRESS_RUN_MODE_RETRIES}"
-          echo "[CYPRESS-E2E] OpenMode retries: ${CYPRESS_OPEN_MODE_RETRIES}"
 
           SPEC_ARG=""
-          # If a spec pattern was provided, pass it to Cypress.
           if [ -n "${{ inputs.spec_pattern }}" ]; then
-            SPEC_ARG="--spec '${{ inputs.spec_pattern }}'"
-            echo "[CYPRESS-E2E] Using spec filter: $SPEC_ARG"
+            SPEC_ARG="--spec=${{ inputs.spec_pattern }}"
+            echo "[CYPRESS-E2E] Using spec filter: ${SPEC_ARG}"
           fi
 
           docker run --rm \
@@ -181,7 +178,8 @@ jobs:
             -v "$PWD:/e2e" \
             -w /e2e \
             "${CYPRESS_IMAGE}" \
-            /bin/bash -lc "npx cypress run --config-file cypress.config.ts ${SPEC_ARG}"
+            run --config-file cypress.config.ts ${SPEC_ARG}
+
 
       # -------------------------------------------------------------
       # Upload Cypress artifacts (screenshots + videos)
