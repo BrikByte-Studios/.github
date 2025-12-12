@@ -181,19 +181,18 @@ jobs:
       # - Container hostname is `app`
       # - Cypress connects via http://app:<docker_port>
       # ------------------------------------------------------------------------
-      - name: "Start UI Docker container"
+      - name: "Build UI Docker image"
         if: ${{ inputs.start_with_docker }}
+        working-directory: ${{ inputs.service_workdir }}
         env:
           DOCKER_IMAGE_NAME: ${{ inputs.docker_image_name }}
-          DOCKER_PORT: ${{ inputs.docker_port }}
         run: |
           set -euo pipefail
-          echo "[CYPRESS-E2E] Starting UI on port ${DOCKER_PORT}"
-          docker run -d --rm \
-            --name app \
-            --network e2e-net \
-            -e PORT="${DOCKER_PORT}" \
-            "${DOCKER_IMAGE_NAME}"
+          echo "[CYPRESS-E2E] Building image '${DOCKER_IMAGE_NAME}' from '${PWD}'"
+          docker build -t "${DOCKER_IMAGE_NAME}" .
+          echo "[CYPRESS-E2E] Built images:"
+          docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}" | head -n 20
+
 
       # ------------------------------------------------------------------------
       # Wait for service readiness
