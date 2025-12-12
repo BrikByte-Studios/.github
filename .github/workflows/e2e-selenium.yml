@@ -169,6 +169,13 @@ jobs:
 
           docker ps -a
 
+      - name: "Checkout shared .github repo scripts"
+        uses: actions/checkout@v4
+        with:
+            repository: BrikByte-Studios/.github
+            ref: main
+            path: _shared_github
+
       # ------------------------------------------------------------------------
       # Selenium Grid readiness check (hub ready + nodes registered)
       # ------------------------------------------------------------------------
@@ -176,9 +183,9 @@ jobs:
         env:
           ENABLE_EDGE: ${{ inputs.enable_edge }}
         run: |
-          set -euo pipefail
-          chmod +x .github/scripts/selenium-grid-healthcheck.sh
-          .github/scripts/selenium-grid-healthcheck.sh
+            set -euo pipefail
+            chmod +x _shared_github/.github/scripts/selenium-grid-healthcheck.sh
+            _shared_github/.github/scripts/selenium-grid-healthcheck.sh
 
       # ------------------------------------------------------------------------
       # Run tests
