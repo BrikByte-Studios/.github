@@ -220,15 +220,13 @@ jobs:
           docker compose -f "${{ inputs.compose_file }}" ps
 
       - name: "Wait for Selenium Grid readiness + node registration"
-        run: |
-          set -euo pipefail
-          chmod +x .github/scripts/selenium-grid-healthcheck.sh
-          .github/scripts/selenium-grid-healthcheck.sh \
-            --remote-url "${SELENIUM_REMOTE_URL}" \
-            --timeout-seconds "${{ inputs.grid_wait_seconds }}" \
-            --require-chrome "true" \
-            --require-firefox "true" \
-            --require-edge "false"
+        uses: BrikByte-Studios/.github/actions/selenium-grid-healthcheck
+        with:
+            remote_url: ${{ env.SELENIUM_REMOTE_URL }}
+            timeout_seconds: ${{ inputs.grid_wait_seconds }}
+            require_chrome: "true"
+            require_firefox: "true"
+            require_edge: "false"
 
       - name: "Expose Remote WebDriver URL (workflow output)"
         id: set-remote
@@ -383,15 +381,14 @@ jobs:
           docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
 
       - name: "Wait for Selenium Grid readiness + node registration"
-        run: |
-          set -euo pipefail
-          chmod +x .github/scripts/selenium-grid-healthcheck.sh
-          .github/scripts/selenium-grid-healthcheck.sh \
-            --remote-url "${SELENIUM_REMOTE_URL}" \
-            --timeout-seconds "${{ inputs.grid_wait_seconds }}" \
-            --require-chrome "true" \
-            --require-firefox "true" \
-            --require-edge "true"
+        uses: BrikByte-Studios/.github/actions/selenium-grid-healthcheck
+        with:
+            remote_url: ${{ env.SELENIUM_REMOTE_URL }}
+            timeout_seconds: ${{ inputs.grid_wait_seconds }}
+            require_chrome: "true"
+            require_firefox: "true"
+            require_edge: "true"
+
 
       - name: "Run E2E tests (Edge)"
         working-directory: ${{ inputs.service_workdir }}
