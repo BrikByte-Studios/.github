@@ -178,6 +178,12 @@ on:
         required: false
         default: false
       
+      disable_cypress_e2e:
+        description: "If true, skip Cypress run (repo emergency stop)."
+        type: boolean
+        required: false
+        default: false
+      
     secrets: {}  
 
 jobs:
@@ -214,16 +220,16 @@ jobs:
       # - If inputs.allow_disable=true AND a repo sets DISABLE_CYPRESS_E2E=1
       #   (as an env/variable in the calling wrapper), this job exits early.
       # ------------------------------------------------------------------------
-      - name: "Honor DISABLE_CYPRESS_E2E"
+      - name: "Honor disable flag"
         env:
           ALLOW_DISABLE: ${{ inputs.allow_disable }}
-          DISABLE_CYPRESS_E2E: ${{ env.DISABLE_CYPRESS_E2E }}
+          DISABLE: ${{ inputs.disable_cypress_e2e }}
         run: |
           set -euo pipefail
           echo "[CYPRESS-E2E] allow_disable=${ALLOW_DISABLE}"
-          echo "[CYPRESS-E2E] DISABLE_CYPRESS_E2E=${DISABLE_CYPRESS_E2E:-<unset>}"
+          echo "[CYPRESS-E2E] disable_cypress_e2e=${DISABLE}"
 
-          if [ "${ALLOW_DISABLE}" = "true" ] && [ "${DISABLE_CYPRESS_E2E:-0}" = "1" ]; then
+          if [ "${ALLOW_DISABLE}" = "true" ] && [ "${DISABLE}" = "true" ]; then
             echo "[CYPRESS-E2E] Cypress E2E disabled by repo flag. Exiting early."
             exit 0
           fi
