@@ -157,16 +157,34 @@ jobs:
       # Run Cypress E2E via official Docker image
       # -------------------------------------------------------------
       - name: "Run Cypress E2E via official Docker image"
-        working-directory: ${{ inputs.service_workdir }}
         env:
           CYPRESS_IMAGE: ${{ inputs.cypress_image }}
+          SERVICE_WORKDIR: ${{ inputs.service_workdir }}
+          SPEC_PATTERN: ${{ inputs.spec_pattern }}
         run: |
+          set -euo pipefail
+
           echo "[CYPRESS-E2E] Using Cypress image: ${CYPRESS_IMAGE}"
           echo "[CYPRESS-E2E] Base URL: ${CYPRESS_BASE_URL}"
+          echo "[CYPRESS-E2E] service_workdir: ${SERVICE_WORKDIR}"
+
+          # IMPORTANT:
+          # - Mount the *repo root* into /e2e
+          # - Run Cypress from /e2e/<service_workdir>
+          # - Point --config-file explicitly to avoid "not found" issues
+
+          PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
+          CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
+
+          if [ ! -f "${SERVICE_WORKDIR}/cypress.config.cjs" ]; then
+            echo "[CYPRESS-E2E] ERROR: Expected ${SERVICE_WORKDIR}/cypress.config.cjs to exist in the repo."
+            echo "[CYPRESS-E2E] Tip: make sure it’s committed and the name matches exactly."
+            exit 1
+          fi
 
           SPEC_ARG=""
-          if [ -n "${{ inputs.spec_pattern }}" ]; then
-            SPEC_ARG="--spec=${{ inputs.spec_pattern }}"
+          if [ -n "${SPEC_PATTERN}" ]; then
+            SPEC_ARG="--spec ${SPEC_PATTERN}"
             echo "[CYPRESS-E2E] Using spec filter: ${SPEC_ARG}"
           fi
 
@@ -175,10 +193,10 @@ jobs:
             -e E2E_TARGET_URL="${E2E_TARGET_URL}" \
             -e CYPRESS_RUN_MODE_RETRIES="${CYPRESS_RUN_MODE_RETRIES}" \
             -e CYPRESS_OPEN_MODE_RETRIES="${CYPRESS_OPEN_MODE_RETRIES}" \
-            -v "$PWD:/e2e" \
-            -w /e2e \
+            -v "${GITHUB_WORKSPACE}:/e2e" \
+            -w "${PROJECT_DIR}" \
             "${CYPRESS_IMAGE}" \
-            run --config-file cypress.config.ts ${SPEC_ARG}
+            npx cypress run --config-file "${CONFIG_FILE}" ${SPEC_ARG}
 
 
       # -------------------------------------------------------------
