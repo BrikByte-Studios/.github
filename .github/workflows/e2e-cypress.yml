@@ -97,6 +97,7 @@ on:
 
       # ------------------------------------------------------------------------
       # Official Cypress Docker image (includes browsers + Cypress binary).
+      # NOTE: cypress/included images ship with their own Node version.
       # ------------------------------------------------------------------------
       cypress_image:
         description: "Cypress Docker image to run tests."
@@ -162,6 +163,23 @@ on:
         required: false
         default: "brikbyte-e2e-app"
 
+      # ---------------------------
+      # Contingency controls
+      # ---------------------------
+      allow_disable:
+        description: "If true, repo can disable Cypress via DISABLE_CYPRESS_E2E=1."
+        type: boolean
+        required: false
+        default: true
+
+      non_blocking:
+        description: "If true, Cypress failures won't fail the workflow (stabilization)."
+        type: boolean
+        required: false
+        default: false
+      
+    secrets: {}  
+
 jobs:
   cypress-e2e:
     name: "Cypress E2E"
@@ -176,7 +194,9 @@ jobs:
     # --------------------------------------------------------------------------
     env:
       CYPRESS_BASE_URL: ${{ inputs.target_url }}
+      # Shared convention for other tooling.
       E2E_TARGET_URL: ${{ inputs.target_url }}
+      # Retry controls (read by your cypress.config.cjs).
       CYPRESS_RUN_MODE_RETRIES: ${{ inputs.run_mode_retries }}
       CYPRESS_OPEN_MODE_RETRIES: ${{ inputs.open_mode_retries }}
 
@@ -186,6 +206,27 @@ jobs:
       # ------------------------------------------------------------------------
       - name: "Checkout repository"
         uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------------
+      # Contingency: allow a repo to disable Cypress without deleting workflow.
+      #
+      # Docstring:
+      # - If inputs.allow_disable=true AND a repo sets DISABLE_CYPRESS_E2E=1
+      #   (as an env/variable in the calling wrapper), this job exits early.
+      # ------------------------------------------------------------------------
+      - name: "Honor DISABLE_CYPRESS_E2E"
+        env:
+          ALLOW_DISABLE: ${{ inputs.allow_disable }}
+          DISABLE_CYPRESS_E2E: ${{ env.DISABLE_CYPRESS_E2E }}
+        run: |
+          set -euo pipefail
+          echo "[CYPRESS-E2E] allow_disable=${ALLOW_DISABLE}"
+          echo "[CYPRESS-E2E] DISABLE_CYPRESS_E2E=${DISABLE_CYPRESS_E2E:-<unset>}"
+
+          if [ "${ALLOW_DISABLE}" = "true" ] && [ "${DISABLE_CYPRESS_E2E:-0}" = "1" ]; then
+            echo "[CYPRESS-E2E] Cypress E2E disabled by repo flag. Exiting early."
+            exit 0
+          fi
 
       # ------------------------------------------------------------------------
       # Create shared Docker network (Docker mode only)
@@ -265,13 +306,12 @@ jobs:
           set -euo pipefail
 
           if [ "${START_WITH_DOCKER}" = "true" ]; then
-            HEALTH_URL="http://app:${DOCKER_PORT}${HEALTH_PATH}"
+            echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
+            echo "[CYPRESS-E2E] HEALTH_URL (docker) = http://app:${DOCKER_PORT}${HEALTH_PATH}"
           else
-            HEALTH_URL="${TARGET_URL}${HEALTH_PATH}"
+            echo "health_url=${TARGET_URL}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
+            echo "[CYPRESS-E2E] HEALTH_URL (external) = ${TARGET_URL}${HEALTH_PATH}"
           fi
-
-          echo "[CYPRESS-E2E] HEALTH_URL resolved to: ${HEALTH_URL}"
-          echo "health_url=${HEALTH_URL}" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------------
       # Wait for service readiness
@@ -350,29 +390,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "[CYPRESS-E2E] Using Cypress image: ${CYPRESS_IMAGE}"
-          echo "[CYPRESS-E2E] CYPRESS_BASE_URL: ${CYPRESS_BASE_URL}"
-          echo "[CYPRESS-E2E] service_workdir: ${SERVICE_WORKDIR}"
+          echo "[CYPRESS-E2E] non_blocking=${{ inputs.non_blocking }}"
+          echo "[CYPRESS-E2E] RunMode retries=${CYPRESS_RUN_MODE_RETRIES}"
+          echo "[CYPRESS-E2E] OpenMode retries=${CYPRESS_OPEN_MODE_RETRIES}"
+          echo "[CYPRESS-E2E] Base URL=${CYPRESS_BASE_URL}"
+          echo "[CYPRESS-E2E] Cypress image=${CYPRESS_IMAGE}"
 
           PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
           CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
 
-          # Ensure the config exists (prevents confusing Cypress errors)
-          if [ ! -f "${SERVICE_WORKDIR}/cypress.config.cjs" ]; then
-            echo "[CYPRESS-E2E] ERROR: Expected ${SERVICE_WORKDIR}/cypress.config.cjs to exist in the repo."
-            echo "[CYPRESS-E2E] Tip: commit it and ensure the filename matches exactly."
+          if [ ! -f "${GITHUB_WORKSPACE}/${SERVICE_WORKDIR}/cypress.config.cjs" ]; then
+            echo "[CYPRESS-E2E] ERROR: Missing ${SERVICE_WORKDIR}/cypress.config.cjs"
             exit 1
-          fi
-
-          NET_ARGS=""
-          if [ "${START_WITH_DOCKER}" = "true" ]; then
-            NET_ARGS="--network e2e-net"
           fi
 
           SPEC_ARG=""
           if [ -n "${SPEC_PATTERN}" ]; then
             SPEC_ARG="--spec ${SPEC_PATTERN}"
-            echo "[CYPRESS-E2E] Using spec filter: ${SPEC_ARG}"
+            echo "[CYPRESS-E2E] Spec filter: ${SPEC_ARG}"
+          fi
+
+          NET_ARGS=""
+          if [ "${START_WITH_DOCKER}" = "true" ]; then
+            NET_ARGS="--network e2e-net"
           fi
 
           docker run --rm ${NET_ARGS} \
