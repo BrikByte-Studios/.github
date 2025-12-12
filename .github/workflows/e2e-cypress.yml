@@ -175,19 +175,6 @@ jobs:
         run: docker network create e2e-net
 
       # ------------------------------------------------------------------------
-      # Build UI Docker image
-      # ------------------------------------------------------------------------
-      - name: "Build UI Docker image"
-        if: ${{ inputs.start_with_docker }}
-        working-directory: ${{ inputs.service_workdir }}
-        env:
-          DOCKER_IMAGE_NAME: ${{ inputs.docker_image_name }}
-        run: |
-          set -euo pipefail
-          echo "[CYPRESS-E2E] Building UI image: ${DOCKER_IMAGE_NAME}"
-          docker build -t "${DOCKER_IMAGE_NAME}" .
-
-      # ------------------------------------------------------------------------
       # Start UI Docker container
       #
       # IMPORTANT:
@@ -271,9 +258,9 @@ jobs:
             "${CYPRESS_IMAGE}" \
             npx cypress run --config-file "${CONFIG_FILE}"
 
-      # ------------------------------------------------------------------------
-      # Upload Cypress artifacts
-      # ------------------------------------------------------------------------
+      # -------------------------------------------------------------
+      # Upload Cypress artifacts (screenshots + videos)
+      # -------------------------------------------------------------
       - name: "Upload Cypress artifacts"
         if: always()
         uses: actions/upload-artifact@v4
@@ -282,7 +269,10 @@ jobs:
           path: |
             ${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots
             ${{ inputs.service_workdir }}/tests/e2e/cypress/videos
-          if-no-files-found: ignore
+          if-no-files-found: "ignore"
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
 
       # ------------------------------------------------------------------------
       # Cleanup Docker resources
