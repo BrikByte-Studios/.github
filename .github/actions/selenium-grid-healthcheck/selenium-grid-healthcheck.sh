@@ -134,8 +134,8 @@ while true; do
   elapsed=$((elapsed + sleep_step))
   if (( elapsed >= TIMEOUT_SECONDS )); then
     echo "[GRID] ERROR: Grid not ready within ${TIMEOUT_SECONDS}s"
-    echo "[GRID] Diagnostic: dumping /status (best effort)"
-    curl -fsS "${STATUS_URL}" || true
+    echo "[GRID] Diagnostic: printing first nodes array (best effort)"
+    curl -fsS "${STATUS_URL}" | (command -v jq >/dev/null 2>&1 && jq '.value.nodes' || head -c 4000) || true
     exit 1
   fi
 done

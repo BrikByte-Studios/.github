@@ -218,7 +218,15 @@ jobs:
             docker compose -f "${{ inputs.compose_file }}" up -d
           fi
           docker compose -f "${{ inputs.compose_file }}" ps
-          
+
+      - name: "Debug: hub logs (early)"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+            set -euo pipefail
+            docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub | tail -n 200 || true
+
+
 
       - name: "Install jq (for reliable /status parsing)"
         run: |
@@ -388,6 +396,13 @@ jobs:
         run: |
           set -euo pipefail
           docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
+
+      - name: "Debug: hub logs (early)"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+            set -euo pipefail
+            docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub | tail -n 200 || true
     
       - name: "Install jq (for reliable /status parsing)"
         run: |
