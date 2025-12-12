@@ -36,15 +36,13 @@
 name: "E2E - Cypress (Reusable)"
 
 on:
-  # This workflow is ONLY invoked by other workflows
   workflow_call:
     inputs:
       # ------------------------------------------------------------------------
-      # Target URL that Cypress will test against.
-      #
+      # Base URL Cypress will test against.
       # Examples:
       # - https://staging.example.com
-      # - http://app:3000   (when using Docker network mode)
+      # - http://app:3000 (Docker network mode)
       # ------------------------------------------------------------------------
       target_url:
         type: string
@@ -52,8 +50,8 @@ on:
         default: "https://staging.example.com"
 
       # ------------------------------------------------------------------------
-      # Health endpoint used for readiness checks.
-      # Must return HTTP 200 when the service is ready.
+      # Health endpoint path used for readiness checks.
+      # Must return HTTP 200.
       # ------------------------------------------------------------------------
       health_path:
         type: string
@@ -61,8 +59,8 @@ on:
         default: "/health"
 
       # ------------------------------------------------------------------------
-      # Directory containing:
-      # - Dockerfile (if start_with_docker=true)
+      # Service directory containing:
+      # - Dockerfile
       # - cypress.config.cjs
       # - tests/e2e/cypress/*
       # ------------------------------------------------------------------------
@@ -72,8 +70,24 @@ on:
         default: "."
 
       # ------------------------------------------------------------------------
-      # Cypress Docker image (official).
-      # Includes browsers + Cypress binary.
+      # Port exposed by the UI service **inside the container**.
+      #
+      # This must match:
+      # - EXPOSE in Dockerfile
+      # - PORT env used by the app
+      #
+      # Examples:
+      # - Node / Express: 3000
+      # - Vite: 5173
+      # - Next.js: 3000
+      # ------------------------------------------------------------------------
+      docker_port:
+        type: number
+        required: false
+        default: 3000
+
+      # ------------------------------------------------------------------------
+      # Official Cypress Docker image (includes browsers + Cypress binary).
       # ------------------------------------------------------------------------
       cypress_image:
         type: string
@@ -92,8 +106,8 @@ on:
 
       # ------------------------------------------------------------------------
       # Retry behavior
-      # - runMode   → CI
-      # - openMode  → local developer use
+      # - runMode  → CI
+      # - openMode → local developer runs
       # ------------------------------------------------------------------------
       run_mode_retries:
         type: number
@@ -106,7 +120,7 @@ on:
         default: 0
 
       # ------------------------------------------------------------------------
-      # Artifact name prefix for screenshots/videos
+      # Artifact name prefix for Cypress outputs.
       # ------------------------------------------------------------------------
       artifact_name:
         type: string
@@ -125,7 +139,7 @@ on:
         default: false
 
       # ------------------------------------------------------------------------
-      # Docker image name used when building the UI
+      # Docker image name used when building the UI service.
       # ------------------------------------------------------------------------
       docker_image_name:
         type: string
@@ -154,19 +168,14 @@ jobs:
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------------------
-      # Create a shared Docker network
-      #
-      # This allows:
-      # - UI container (hostname: app)
-      # - Cypress container
-      # to talk to each other deterministically.
+      # Create shared Docker network (UI + Cypress)
       # ------------------------------------------------------------------------
       - name: "Create Docker network"
         if: ${{ inputs.start_with_docker }}
         run: docker network create e2e-net
 
       # ------------------------------------------------------------------------
-      # Build the UI Docker image
+      # Build UI Docker image
       # ------------------------------------------------------------------------
       - name: "Build UI Docker image"
         if: ${{ inputs.start_with_docker }}
@@ -179,30 +188,28 @@ jobs:
           docker build -t "${DOCKER_IMAGE_NAME}" .
 
       # ------------------------------------------------------------------------
-      # Start the UI container
+      # Start UI Docker container
       #
       # IMPORTANT:
-      # - Container name is hard-coded to `app`
-      # - Cypress will access it via http://app:3000
+      # - Container hostname is `app`
+      # - Cypress connects via http://app:<docker_port>
       # ------------------------------------------------------------------------
       - name: "Start UI Docker container"
         if: ${{ inputs.start_with_docker }}
         env:
           DOCKER_IMAGE_NAME: ${{ inputs.docker_image_name }}
+          DOCKER_PORT: ${{ inputs.docker_port }}
         run: |
           set -euo pipefail
+          echo "[CYPRESS-E2E] Starting UI on port ${DOCKER_PORT}"
           docker run -d --rm \
             --name app \
             --network e2e-net \
-            -e PORT=3000 \
+            -e PORT="${DOCKER_PORT}" \
             "${DOCKER_IMAGE_NAME}"
 
       # ------------------------------------------------------------------------
       # Wait for service readiness
-      #
-      # Uses:
-      # - curl from host   (external URL mode)
-      # - curl from Docker (container network mode)
       # ------------------------------------------------------------------------
       - name: "Wait for service readiness"
         env:
@@ -235,7 +242,7 @@ jobs:
           fi
 
       # ------------------------------------------------------------------------
-      # Run Cypress inside official Docker image
+      # Run Cypress E2E
       # ------------------------------------------------------------------------
       - name: "Run Cypress E2E"
         env:
