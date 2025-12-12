@@ -1,254 +1,334 @@
-# ==============================================================================
-# Reusable Selenium Grid E2E Workflow — BrikByteOS
-# ==============================================================================
-#
-# PURPOSE
-# -------
-# Provide a standardized, CI-friendly Selenium Grid runner for cross-browser E2E:
-# - Bring up Selenium Grid via docker-compose
-# - Wait for grid readiness (hub + node registration)
-# - Run a test runner (Java or Python) against Remote WebDriver
-# - Execute in a per-browser matrix: chrome + firefox (+ edge optional)
-# - Always export logs and tear down cleanly
-#
-# WHY SELENIUM?
-# -------------
-# - Cross-browser coverage for environments where Playwright/Cypress isn’t sufficient
-# - Compatibility with enterprise/legacy WebDriver tests
-#
-# CONVENTIONS (env vars)
-# ----------------------
-# - SELENIUM_REMOTE_URL: Remote WebDriver endpoint (default http://localhost:4444/wd/hub)
-# - E2E_TARGET_URL:      Base URL for app under test (staging or container)
-# - BROWSER:             chrome | firefox | edge
-#
-# AUDITABILITY
-# ------------
-# - Collects docker compose logs even on failure
-# - Uploads logs as workflow artifacts
-#
-# ==============================================================================
+name: "E2E (Selenium Grid • Cross-Browser)"
 
-name: "E2E - Selenium Grid (Reusable)"
+# -----------------------------------------------------------------------------
+# Reusable workflow: Selenium Grid E2E
+#
+# This workflow is designed to be called from any repo via workflow_call.
+# It starts a Selenium Grid (docker-compose), waits for:
+#   1) app readiness (optional)
+#   2) grid readiness + node registration
+# then runs E2E tests against the RemoteWebDriver endpoint.
+#
+# Standardized env contracts for test runners:
+#   - SELENIUM_REMOTE_URL (RemoteWebDriver URL)
+#   - E2E_TARGET_URL      (Base URL of app under test)
+#   - BROWSER             (chrome | firefox | edge)
+#
+# Audit-friendly behavior:
+#   - Always collect hub/node logs and grid status JSON to .audit/selenium-grid/
+#   - Always tear down docker-compose, even on failures
+# -----------------------------------------------------------------------------
 
 on:
   workflow_call:
     inputs:
-      # Base URL of the app under test (staging URL, preview URL, etc.)
       target_url:
-        type: string
+        description: "Base URL of the app under test (e.g., http://localhost:3000)"
         required: true
-      health_url:
         type: string
+
+      health_url:
+        description: "Optional health endpoint to wait for (e.g., http://localhost:3000/health)"
         required: false
+        type: string
         default: ""
 
-      # Path for app readiness checks (recommended: /health)
-      health_path:
-        type: string
-        required: false
-        default: "/health"
-
-      # Directory where:
-      # - docker-compose.selenium.yml lives
-      # - runner code lives (java/python demo repo) OR where command is executed
-      service_workdir:
-        type: string
-        required: false
-        default: "."
-
-      # Path to docker-compose file (relative to repo root).
       compose_file:
-        type: string
+        description: "Path to docker-compose Selenium Grid definition in the caller repo"
         required: false
+        type: string
         default: "docker-compose.selenium.yml"
 
-      # Enable Edge in addition to Chrome + Firefox.
-      enable_edge:
-        type: boolean
+      service_workdir:
+        description: "Working directory in the caller repo where compose + tests live"
         required: false
+        type: string
+        default: "."
+
+      runner_language:
+        description: "java | python"
+        required: true
+        type: string
+
+      test_command:
+        description: "Command to run E2E tests (e.g., mvn test or pytest -q)"
+        required: true
+        type: string
+
+      enable_edge:
+        description: "Enable Edge node in grid and run Edge tests"
+        required: false
+        type: boolean
         default: false
 
-      # Which runner to use (governance-friendly labeling only).
-      runner_language:
-        type: string
+      grid_wait_seconds:
+        description: "Max seconds to wait for Selenium Grid + node registration"
         required: false
-        default: "python" # "python" | "java" | "custom"
+        type: number
+        default: 120
 
-      # Command to execute tests. Must read:
-      # - SELENIUM_REMOTE_URL
-      # - E2E_TARGET_URL
-      # - BROWSER
-      test_command:
-        type: string
-        required: true
+      app_wait_seconds:
+        description: "Max seconds to wait for app health endpoint (if health_url provided)"
+        required: false
+        type: number
+        default: 120
 
-      # Artifact base name for logs.
       artifact_name:
-        type: string
+        description: "Base name for uploaded logs/artifacts"
         required: false
-        default: "selenium-grid-artifacts"
+        type: string
+        default: "selenium-grid-e2e"
+
+    outputs:
+      selenium_remote_url:
+        description: "Remote WebDriver URL for test runners"
+        value: ${{ jobs.e2e.outputs.selenium_remote_url }}
 
 jobs:
-  selenium-grid-e2e:
-    name: "Selenium Grid E2E"
+  # ---------------------------------------------------------------------------
+  # Main job: runs Chrome + Firefox in a matrix (required browsers).
+  # Edge is intentionally in a separate job to keep the YAML predictable.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: "Selenium E2E • ${{ matrix.browser }}"
     runs-on: ubuntu-latest
+
+    # Hard timeout to prevent hung sessions from consuming runner time forever.
     timeout-minutes: 30
 
     strategy:
+      # Do not stop the matrix just because one browser fails.
+      # We want all browsers to report (audit-friendly + debugging-friendly).
       fail-fast: false
       matrix:
         browser: [chrome, firefox]
 
+    outputs:
+      selenium_remote_url: ${{ steps.set-remote.outputs.selenium_remote_url }}
+
     env:
-      # App under test
+      # Standardized runner contracts (safe to print: localhost URL + app URL)
       E2E_TARGET_URL: ${{ inputs.target_url }}
-      HEALTH_URL: ${{ inputs.health_url != '' && inputs.health_url || format('{0}{1}', 'http://localhost:3000', inputs.health_path) }}
-
-      # Selenium Grid endpoint (host network; Compose publishes 4444)
-      SELENIUM_REMOTE_URL: "http://localhost:4444/wd/hub"
-
-      # Matrix browser value
+      SELENIUM_REMOTE_URL: http://localhost:4444/wd/hub
       BROWSER: ${{ matrix.browser }}
 
-      # Feature toggles
-      ENABLE_EDGE: ${{ inputs.enable_edge }}
+      # Keep logs less noisy in CI.
+      FORCE_COLOR: "0"
 
     steps:
-      - name: "Checkout repository"
+      - name: "Checkout (caller repo)"
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------------------
-      # App readiness (staging/preview must already be live)
-      # ------------------------------------------------------------------------
-      - name: "Wait for app readiness"
+      # Language setup is optional but helps repos that run Java/Python tests.
+      - name: "Setup Java (if runner_language=java)"
+        if: ${{ inputs.runner_language == 'java' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: "Setup Python (if runner_language=python)"
+        if: ${{ inputs.runner_language == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: "Docker info (diagnostics)"
         run: |
           set -euo pipefail
-          echo "[SELENIUM] Waiting for app at: ${HEALTH_URL}"
+          docker version
+          docker compose version
 
-          timeout=120
+      - name: "Start Selenium Grid (docker compose)"
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
+          # Edge is behind a compose profile "edge" to keep v1 simple and optional.
+          if [[ "${{ inputs.enable_edge }}" == "true" ]]; then
+            echo "[GRID] Starting Selenium Grid with Edge profile enabled"
+            docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
+          else
+            echo "[GRID] Starting Selenium Grid without Edge profile"
+            docker compose -f "${{ inputs.compose_file }}" up -d
+          fi
+
+      - name: "Wait for app readiness (optional)"
+        if: ${{ inputs.health_url != '' }}
+        run: |
+          set -euo pipefail
+          echo "[APP] Waiting for health endpoint: ${{ inputs.health_url }}"
+          timeout=${{ inputs.app_wait_seconds }}
           elapsed=0
-
-          while ! curl -fsS "${HEALTH_URL}" > /dev/null; do
-            sleep 5
-            elapsed=$((elapsed + 5))
-            echo "[SELENIUM] App not ready yet... ${elapsed}s"
-            if [ "${elapsed}" -ge "${timeout}" ]; then
-              echo "[SELENIUM] ERROR: App did not become ready within ${timeout}s."
+          until curl -fsS "${{ inputs.health_url }}" >/dev/null 2>&1; do
+            sleep 2
+            elapsed=$((elapsed+2))
+            if (( elapsed >= timeout )); then
+              echo "[APP] ERROR: health endpoint not ready within ${timeout}s"
               exit 1
             fi
           done
+          echo "[APP] Ready ✅"
 
-          echo "[SELENIUM] ✅ App is healthy."
-
-      # ------------------------------------------------------------------------
-      # Start Selenium Grid
-      # ------------------------------------------------------------------------
-      - name: "Start Selenium Grid (docker compose)"
-        working-directory: ${{ inputs.service_workdir }}
-        env:
-          COMPOSE_FILE_PATH: ${{ inputs.compose_file }}
-          ENABLE_EDGE: ${{ inputs.enable_edge }}
+      - name: "Wait for Selenium Grid readiness + node registration"
         run: |
           set -euo pipefail
+          chmod +x .github/scripts/selenium-grid-healthcheck.sh
 
-          echo "[SELENIUM] Starting Selenium Grid using compose file: ${COMPOSE_FILE_PATH}"
-          if [ ! -f "${COMPOSE_FILE_PATH}" ]; then
-            echo "[SELENIUM] ERROR: Compose file not found: ${PWD}/${COMPOSE_FILE_PATH}"
-            exit 1
-          fi
+          # Edge is not required in this Chrome/Firefox matrix job.
+          # Chrome + Firefox are required per REQ-E2E-SEL-001.
+          .github/scripts/selenium-grid-healthcheck.sh \
+            --remote-url "${SELENIUM_REMOTE_URL}" \
+            --timeout-seconds "${{ inputs.grid_wait_seconds }}" \
+            --require-chrome "true" \
+            --require-firefox "true" \
+            --require-edge "false"
 
-          # Start base grid (hub + chrome + firefox)
-          docker compose -f "${COMPOSE_FILE_PATH}" up -d selenium-hub chrome firefox
-
-          # Optionally start edge node
-          if [ "${ENABLE_EDGE}" = "true" ]; then
-            echo "[SELENIUM] ENABLE_EDGE=true — starting Edge node..."
-            docker compose -f "${COMPOSE_FILE_PATH}" up -d edge
-          fi
-
-          docker ps -a
-
-      - name: "Checkout shared .github repo scripts"
-        uses: actions/checkout@v4
-        with:
-            repository: BrikByte-Studios/.github
-            ref: main
-            path: _shared_github
-
-      # ------------------------------------------------------------------------
-      # Selenium Grid readiness check (hub ready + nodes registered)
-      # ------------------------------------------------------------------------
-      - name: "Wait for Selenium Grid readiness"
-        env:
-          ENABLE_EDGE: ${{ inputs.enable_edge }}
+      - name: "Expose Remote WebDriver URL (workflow output)"
+        id: set-remote
         run: |
-            set -euo pipefail
-            chmod +x _shared_github/.github/scripts/selenium-grid-healthcheck.sh
-            _shared_github/.github/scripts/selenium-grid-healthcheck.sh
+          set -euo pipefail
+          # Safe to output because this is localhost (no secrets).
+          echo "selenium_remote_url=${SELENIUM_REMOTE_URL}" >> "${GITHUB_OUTPUT}"
+          echo "[GRID] SELENIUM_REMOTE_URL=${SELENIUM_REMOTE_URL}"
 
-      # ------------------------------------------------------------------------
-      # Run tests
-      # ------------------------------------------------------------------------
       - name: "Run E2E tests"
         working-directory: ${{ inputs.service_workdir }}
-        env:
-          RUNNER_LANGUAGE: ${{ inputs.runner_language }}
-          TEST_COMMAND: ${{ inputs.test_command }}
         run: |
           set -euo pipefail
-          echo "[SELENIUM] Runner language: ${RUNNER_LANGUAGE}"
-          echo "[SELENIUM] Browser: ${BROWSER}"
-          echo "[SELENIUM] Remote URL: ${SELENIUM_REMOTE_URL}"
-          echo "[SELENIUM] Target URL: ${E2E_TARGET_URL}"
-          echo "[SELENIUM] Executing: ${TEST_COMMAND}"
-          eval "${TEST_COMMAND}"
+          echo "[E2E] Running for BROWSER=${BROWSER}"
+          echo "[E2E] Target URL: ${E2E_TARGET_URL}"
 
-      # ------------------------------------------------------------------------
-      # Collect logs (always)
-      # ------------------------------------------------------------------------
-      - name: "Collect Grid logs"
+          # IMPORTANT:
+          # - Do NOT print secret env vars.
+          # - Keep test_command in the caller repo (so this workflow stays generic).
+          eval "${{ inputs.test_command }}"
+
+      # Always capture logs for audit + debugging, even if tests fail.
+      - name: "Collect Selenium Grid logs (always)"
         if: always()
         working-directory: ${{ inputs.service_workdir }}
-        env:
-          COMPOSE_FILE_PATH: ${{ inputs.compose_file }}
         run: |
           set -euo pipefail
+
+          # Audit folder is created inside the caller repo workdir.
+          # This makes artifact uploads simple and consistent across repos.
           mkdir -p .audit/selenium-grid
 
-          echo "[SELENIUM] Collecting docker compose logs..."
-          docker compose -f "${COMPOSE_FILE_PATH}" logs --no-color > .audit/selenium-grid/docker-compose.log || true
+          echo "[AUDIT] Capturing docker compose status..."
+          docker compose -f "${{ inputs.compose_file }}" ps > .audit/selenium-grid/compose-ps.txt || true
 
-          echo "[SELENIUM] Collecting container list..."
-          docker ps -a > .audit/selenium-grid/docker-ps.txt || true
+          echo "[AUDIT] Capturing hub + node logs..."
+          docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub > .audit/selenium-grid/selenium-hub.log || true
+          docker compose -f "${{ inputs.compose_file }}" logs --no-color chrome        > .audit/selenium-grid/node-chrome.log || true
+          docker compose -f "${{ inputs.compose_file }}" logs --no-color firefox       > .audit/selenium-grid/node-firefox.log || true
 
-          echo "[SELENIUM] Collecting hub status snapshot..."
-          curl -fsS "http://localhost:4444/wd/hub/status" > .audit/selenium-grid/grid-status.json || true
+          if [[ "${{ inputs.enable_edge }}" == "true" ]]; then
+            docker compose -f "${{ inputs.compose_file }}" logs --no-color edge > .audit/selenium-grid/node-edge.log || true
+          fi
 
-          echo "[SELENIUM] Collected artifacts in .audit/selenium-grid"
+          echo "[AUDIT] Capturing hub status JSON (best effort)..."
+          curl -fsS "http://localhost:4444/status" > .audit/selenium-grid/grid-status.json || true
 
-      # ------------------------------------------------------------------------
-      # Tear down (always)
-      # ------------------------------------------------------------------------
-      - name: "Teardown Selenium Grid"
+      - name: "Teardown Selenium Grid (always)"
         if: always()
         working-directory: ${{ inputs.service_workdir }}
-        env:
-          COMPOSE_FILE_PATH: ${{ inputs.compose_file }}
         run: |
           set -euo pipefail
-          echo "[SELENIUM] Tearing down Selenium Grid..."
-          docker compose -f "${COMPOSE_FILE_PATH}" down -v || true
+          echo "[GRID] Tearing down (docker compose down -v)..."
+          docker compose -f "${{ inputs.compose_file }}" down -v || true
 
-      # ------------------------------------------------------------------------
-      # Upload logs as artifacts (always)
-      # ------------------------------------------------------------------------
-      - name: "Upload Selenium artifacts"
+      - name: "Upload audit artifacts (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          # Include browser name in artifact name for clarity.
           name: ${{ inputs.artifact_name }}-${{ matrix.browser }}
           path: |
-            ${{ inputs.service_workdir }}/.audit/selenium-grid
-          if-no-files-found: ignore
-          compression-level: 6
+            ${{ inputs.service_workdir }}/.audit/selenium-grid/**
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Optional Edge job:
+  # Runs only when enable_edge=true.
+  # This keeps the main matrix minimal and avoids dynamic matrix complexity.
+  # ---------------------------------------------------------------------------
+  e2e-edge:
+    name: "Selenium E2E • edge"
+    if: ${{ inputs.enable_edge == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      E2E_TARGET_URL: ${{ inputs.target_url }}
+      SELENIUM_REMOTE_URL: http://localhost:4444/wd/hub
+      BROWSER: edge
+
+    steps:
+      - name: "Checkout (caller repo)"
+        uses: actions/checkout@v4
+
+      - name: "Setup Java (if runner_language=java)"
+        if: ${{ inputs.runner_language == 'java' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: "Setup Python (if runner_language=python)"
+        if: ${{ inputs.runner_language == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: "Start Selenium Grid (with Edge profile)"
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
+          docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
+
+      - name: "Wait for Selenium Grid readiness + node registration"
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/selenium-grid-healthcheck.sh
+          .github/scripts/selenium-grid-healthcheck.sh \
+            --remote-url "${SELENIUM_REMOTE_URL}" \
+            --timeout-seconds "${{ inputs.grid_wait_seconds }}" \
+            --require-chrome "true" \
+            --require-firefox "true" \
+            --require-edge "true"
+
+      - name: "Run E2E tests (Edge)"
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
+          echo "[E2E] Running for BROWSER=${BROWSER}"
+          eval "${{ inputs.test_command }}"
+
+      - name: "Collect Selenium Grid logs (always)"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
+          mkdir -p .audit/selenium-grid
+          docker compose -f "${{ inputs.compose_file }}" ps > .audit/selenium-grid/compose-ps.txt || true
+          docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub > .audit/selenium-grid/selenium-hub.log || true
+          docker compose -f "${{ inputs.compose_file }}" logs --no-color chrome        > .audit/selenium-grid/node-chrome.log || true
+          docker compose -f "${{ inputs.compose_file }}" logs --no-color firefox       > .audit/selenium-grid/node-firefox.log || true
+          docker compose -f "${{ inputs.compose_file }}" logs --no-color edge          > .audit/selenium-grid/node-edge.log || true
+          curl -fsS "http://localhost:4444/status" > .audit/selenium-grid/grid-status.json || true
+
+      - name: "Teardown Selenium Grid (always)"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
+          docker compose -f "${{ inputs.compose_file }}" down -v || true
+
+      - name: "Upload audit artifacts (always)"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}-edge
+          path: |
+            ${{ inputs.service_workdir }}/.audit/selenium-grid/**
+          if-no-files-found: warn
