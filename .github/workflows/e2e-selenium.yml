@@ -220,7 +220,7 @@ jobs:
           docker compose -f "${{ inputs.compose_file }}" ps
 
       - name: "Wait for Selenium Grid readiness + node registration"
-        uses: BrikByte-Studios/.github/actions/selenium-grid-healthcheck
+        uses: BrikByte-Studios/.github/.github/actions/selenium-grid-healthcheck@main
         with:
             remote_url: ${{ env.SELENIUM_REMOTE_URL }}
             timeout_seconds: ${{ inputs.grid_wait_seconds }}
@@ -381,7 +381,7 @@ jobs:
           docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
 
       - name: "Wait for Selenium Grid readiness + node registration"
-        uses: BrikByte-Studios/.github/actions/selenium-grid-healthcheck
+        uses: BrikByte-Studios/.github/.github/actions/selenium-grid-healthcheck@main
         with:
             remote_url: ${{ env.SELENIUM_REMOTE_URL }}
             timeout_seconds: ${{ inputs.grid_wait_seconds }}
