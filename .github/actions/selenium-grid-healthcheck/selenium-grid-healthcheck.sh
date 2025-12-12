@@ -78,28 +78,58 @@ get_node_counts() {
   fi
 
   if command -v jq >/dev/null 2>&1; then
-    # Selenium Grid 4 status JSON patterns observed:
-    # - .value.nodes[]?.stereotypes[]?.browserName
-    # - sometimes node capabilities appear under other keys, but stereotypes is most consistent for Grid 4.
+    # Selenium Grid 4 status JSON varies by version:
+    # - .value.nodes[].slots[].stereotype.browserName  (common in Grid 4.x)
+    # - .value.nodes[].stereotypes[].browserName       (seen in some variants)
     #
-    # We count occurrences of browserName per stereotype entry.
+    # We'll count occurrences across BOTH.
     local chrome firefox edge
-    chrome="$(echo "${json}" | jq -r '[.value.nodes[]?.stereotypes[]? | select(.browserName=="chrome")] | length' 2>/dev/null || echo "0")"
-    firefox="$(echo "${json}" | jq -r '[.value.nodes[]?.stereotypes[]? | select(.browserName=="firefox")] | length' 2>/dev/null || echo "0")"
-    edge="$(echo "${json}" | jq -r '[.value.nodes[]?.stereotypes[]? | select(.browserName=="MicrosoftEdge" or .browserName=="edge")] | length' 2>/dev/null || echo "0")"
+
+    chrome="$(echo "${json}" | jq -r '
+      [
+        .value.nodes[]? |
+        (
+          .slots[]?.stereotype.browserName?,
+          .stereotypes[]?.browserName?
+        )
+        | select(. == "chrome")
+      ] | length
+    ' 2>/dev/null || echo "0")"
+
+    firefox="$(echo "${json}" | jq -r '
+      [
+        .value.nodes[]? |
+        (
+          .slots[]?.stereotype.browserName?,
+          .stereotypes[]?.browserName?
+        )
+        | select(. == "firefox")
+      ] | length
+    ' 2>/dev/null || echo "0")"
+
+    edge="$(echo "${json}" | jq -r '
+      [
+        .value.nodes[]? |
+        (
+          .slots[]?.stereotype.browserName?,
+          .stereotypes[]?.browserName?
+        )
+        | select(. == "MicrosoftEdge" or . == "edge")
+      ] | length
+    ' 2>/dev/null || echo "0")"
+
     echo "${chrome} ${firefox} ${edge}"
     return
   fi
 
-  # Fallback: "jq missing" path — do a more tolerant search:
-  # - accept whitespace after colon
-  # - case-insensitive
+  # Fallback: "jq missing" path — tolerant grep
   local chrome firefox edge
   chrome="$(echo "${json}" | grep -Eio '"browserName"\s*:\s*"chrome"' | wc -l | tr -d ' ')"
   firefox="$(echo "${json}" | grep -Eio '"browserName"\s*:\s*"firefox"' | wc -l | tr -d ' ')"
   edge="$(echo "${json}" | grep -Eio '"browserName"\s*:\s*"MicrosoftEdge"|"browserName"\s*:\s*"edge"' | wc -l | tr -d ' ')"
   echo "${chrome} ${firefox} ${edge}"
 }
+
 
 
 while true; do
