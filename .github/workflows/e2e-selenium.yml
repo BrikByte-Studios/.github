@@ -315,10 +315,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}
-          path: |
-            ${{ inputs.service_workdir }}/.audit/**
-          if-no-files-found: warn
+            name: ${{ inputs.artifact_name }}-${{ matrix.browser }}
+            path: |
+                ${{ inputs.service_workdir }}/.audit/**
+            if-no-files-found: warn
+            include-hidden-files: true
+
 
   e2e-edge:
     name: "Selenium E2E • edge"
@@ -457,7 +459,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}-edge
-          path: |
-            ${{ inputs.service_workdir }}/.audit/**
-          if-no-files-found: warn
+            name: ${{ inputs.artifact_name }}-edge
+            path: |
+                ${{ inputs.service_workdir }}/.audit/**
+            if-no-files-found: warn
+            include-hidden-files: true
