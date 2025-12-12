@@ -208,8 +208,8 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}
           path: |
-            tests/e2e/cypress/screenshots
-            tests/e2e/cypress/videos
+            ${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots
+            ${{ inputs.service_workdir }}/tests/e2e/cypress/videos
           if-no-files-found: "ignore"
           compression-level: 6
           overwrite: false
