@@ -218,6 +218,15 @@ jobs:
             docker compose -f "${{ inputs.compose_file }}" up -d
           fi
           docker compose -f "${{ inputs.compose_file }}" ps
+          
+
+      - name: "Install jq (for reliable /status parsing)"
+        run: |
+            set -euo pipefail
+            sudo apt-get update -y
+            sudo apt-get install -y jq
+            jq --version
+
 
       - name: "Wait for Selenium Grid readiness + node registration"
         uses: BrikByte-Studios/.github/.github/actions/selenium-grid-healthcheck@main
@@ -379,6 +388,14 @@ jobs:
         run: |
           set -euo pipefail
           docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
+    
+      - name: "Install jq (for reliable /status parsing)"
+        run: |
+            set -euo pipefail
+            sudo apt-get update -y
+            sudo apt-get install -y jq
+            jq --version
+
 
       - name: "Wait for Selenium Grid readiness + node registration"
         uses: BrikByte-Studios/.github/.github/actions/selenium-grid-healthcheck@main

@@ -78,22 +78,29 @@ get_node_counts() {
   fi
 
   if command -v jq >/dev/null 2>&1; then
-    # Selenium Grid 4 status JSON: value.nodes[] array with stereotypes.
-    # We'll infer browser presence by matching stereotype "browserName".
+    # Selenium Grid 4 status JSON patterns observed:
+    # - .value.nodes[]?.stereotypes[]?.browserName
+    # - sometimes node capabilities appear under other keys, but stereotypes is most consistent for Grid 4.
+    #
+    # We count occurrences of browserName per stereotype entry.
     local chrome firefox edge
     chrome="$(echo "${json}" | jq -r '[.value.nodes[]?.stereotypes[]? | select(.browserName=="chrome")] | length' 2>/dev/null || echo "0")"
     firefox="$(echo "${json}" | jq -r '[.value.nodes[]?.stereotypes[]? | select(.browserName=="firefox")] | length' 2>/dev/null || echo "0")"
     edge="$(echo "${json}" | jq -r '[.value.nodes[]?.stereotypes[]? | select(.browserName=="MicrosoftEdge" or .browserName=="edge")] | length' 2>/dev/null || echo "0")"
     echo "${chrome} ${firefox} ${edge}"
-  else
-    # Fallback: rough grep (less accurate, but enough for basic readiness in CI).
-    local chrome firefox edge
-    chrome="$(echo "${json}" | grep -o '"browserName":"chrome"' | wc -l | tr -d ' ')"
-    firefox="$(echo "${json}" | grep -o '"browserName":"firefox"' | wc -l | tr -d ' ')"
-    edge="$(echo "${json}" | grep -Eo '"browserName":"MicrosoftEdge"|"browserName":"edge"' | wc -l | tr -d ' ')"
-    echo "${chrome} ${firefox} ${edge}"
+    return
   fi
+
+  # Fallback: "jq missing" path — do a more tolerant search:
+  # - accept whitespace after colon
+  # - case-insensitive
+  local chrome firefox edge
+  chrome="$(echo "${json}" | grep -Eio '"browserName"\s*:\s*"chrome"' | wc -l | tr -d ' ')"
+  firefox="$(echo "${json}" | grep -Eio '"browserName"\s*:\s*"firefox"' | wc -l | tr -d ' ')"
+  edge="$(echo "${json}" | grep -Eio '"browserName"\s*:\s*"MicrosoftEdge"|"browserName"\s*:\s*"edge"' | wc -l | tr -d ' ')"
+  echo "${chrome} ${firefox} ${edge}"
 }
+
 
 while true; do
   if curl -fsS "${STATUS_URL}" >/dev/null 2>&1; then
