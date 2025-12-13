@@ -412,10 +412,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../.audit/app-under-test
-          docker compose -f "${{ inputs.app_compose_file }}" ps > ../.audit/app-under-test/compose-ps.txt || true
-          docker compose -f "${{ inputs.app_compose_file }}" logs --no-color > ../.audit/app-under-test/compose.log || true
-          if [[ "${{ inputs.health_url }}" != "" ]]; then
-            curl -fsS "${{ inputs.health_url }}" > ../.audit/app-under-test/health.json || true
+
+          APP_COMPOSE_FILE="${{ inputs.app_compose_file }}"
+          HEALTH_URL="${{ inputs.health_url }}"
+
+          docker compose -f "$APP_COMPOSE_FILE" ps \
+            > ../.audit/app-under-test/compose-ps.txt || true
+
+          docker compose -f "$APP_COMPOSE_FILE" logs --no-color \
+            > ../.audit/app-under-test/compose.log || true
+
+          if [[ -n "$HEALTH_URL" ]]; then
+            curl -fsS "$HEALTH_URL" \
+              > ../.audit/app-under-test/health.json || true
           fi
 
       # -----------------------------------------------------------------------
