@@ -583,11 +583,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-            name: ${{ inputs.artifact_name }}-edge
-            path: |
-                ${{ inputs.service_workdir }}/.audit/**
-            if-no-files-found: warn
-            include-hidden-files: true
+          name: ${{ inputs.artifact_name }}-edge
+          path: |
+              ${{ inputs.service_workdir }}/.audit/**
+          if-no-files-found: warn
+          include-hidden-files: true
 
       - name: "FINALIZER: enforce teardown (grid + app) (always)"
         if: ${{ always() && inputs.enforce_teardown == true }}
@@ -601,11 +601,22 @@ jobs:
           DOCSTRING
 
           echo "[FINALIZER] Cleaning Selenium Grid..."
-          (cd "${{ inputs.service_workdir }}" && docker compose -f "${{ inputs.compose_file }}" down -v) || true
+          (
+            cd "${{ inputs.service_workdir }}" \
+            && docker compose \
+              -f "${{ inputs.compose_file }}" \
+              down -v
+          ) || true
 
           if [[ "${{ inputs.start_app }}" == "true" ]]; then
             echo "[FINALIZER] Cleaning App Under Test..."
-            (cd "${{ inputs.app_service_workdir }}" && docker compose -f "${{ inputs.app_compose_file }}" down -v) || true
+            (
+              cd "${{ inputs.app_service_workdir }}" \
+              && docker compose \
+                -f "${{ inputs.app_compose_file }}" \
+                down -v
+            ) || true
           fi
 
           echo "[FINALIZER] Done ✅"
+
