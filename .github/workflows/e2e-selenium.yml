@@ -321,7 +321,6 @@ jobs:
             "http://localhost:4444/status" \
             > .audit/selenium-grid/grid-status.json || true
 
-
       - name: "Collect app-under-test logs (always)"
         if: ${{ always() && inputs.start_app == true }}
         working-directory: ${{ inputs.app_service_workdir }}
@@ -330,12 +329,21 @@ jobs:
           mkdir -p ../.audit/app-under-test
 
           # Capture compose status + logs for the app stack.
-          docker compose -f "${{ inputs.app_compose_file }}" ps > ../.audit/app-under-test/compose-ps.txt || true
-          docker compose -f "${{ inputs.app_compose_file }}" logs --no-color > ../.audit/app-under-test/compose.log || true
+          docker compose \
+            -f "${{ inputs.app_compose_file }}" \
+            ps \
+            > ../.audit/app-under-test/compose-ps.txt || true
+
+          docker compose \
+            -f "${{ inputs.app_compose_file }}" \
+            logs --no-color \
+            > ../.audit/app-under-test/compose.log || true
 
           # Best-effort health snapshot
           if [[ "${{ inputs.health_url }}" != "" ]]; then
-            curl -fsS "${{ inputs.health_url }}" > ../.audit/app-under-test/health.json || true
+            curl -fsS \
+              "${{ inputs.health_url }}" \
+              > ../.audit/app-under-test/health.json || true
           fi
 
       # -----------------------------------------------------------------------
