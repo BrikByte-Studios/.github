@@ -7,26 +7,68 @@ name: "E2E (Playwright • Cross-Browser)"
 #   Required:
 #     - E2E_TARGET_URL
 #
-#   Exporter / Audit:
-#     - E2E_RUNNER=playwright
-#     - E2E_STATUS=success|failed
-#     - E2E_VIDEO=true|false
-#     - E2E_TRACE=true|false
-#     - E2E_ARTIFACTS_ALWAYS=true|false
+# Exporter / Audit:
+#   - E2E_RUNNER=playwright
+#   - E2E_STATUS=success|failed
+#   - E2E_VIDEO=true|false
+#   - E2E_TRACE=true|false
+#   - E2E_ARTIFACTS_ALWAYS=true|false
+#
+# Optional app lifecycle (CI localhost mode):
+#   - start_app=true runs docker compose up -d --build
+#   - health_url can be used to wait for readiness
 #
 # Always-on guarantees:
-#   - Export artifacts (best-effort)
-#   - Upload .audit evidence
+#   - Always set E2E_STATUS
+#   - Always export artifacts (best-effort, non-fatal)
+#   - Always upload .audit evidence
+#   - Always teardown app (if started here)
 # -----------------------------------------------------------------------------
 
 on:
   workflow_call:
     inputs:
+      # -----------------------------------------------------------------------
+      # App under test
+      # -----------------------------------------------------------------------
       target_url:
         description: "Base URL of the app under test"
         type: string
         required: true
 
+      health_url:
+        description: "Optional health endpoint to wait for (e.g., http://localhost:3000/health)"
+        type: string
+        required: false
+        default: ""
+
+      start_app:
+        description: "If true, start the app under test via docker-compose (localhost CI)"
+        type: boolean
+        required: false
+        default: false
+
+      app_compose_file:
+        description: "Path to app docker-compose file (required if start_app=true)"
+        type: string
+        required: false
+        default: ""
+
+      app_service_workdir:
+        description: "Working directory where app_compose_file lives"
+        type: string
+        required: false
+        default: "."
+
+      app_wait_seconds:
+        description: "Max seconds to wait for app health endpoint (if health_url provided)"
+        type: number
+        required: false
+        default: 120
+
+      # -----------------------------------------------------------------------
+      # Playwright project
+      # -----------------------------------------------------------------------
       service_workdir:
         description: "Working directory of the UI project"
         type: string
@@ -69,6 +111,9 @@ on:
         required: false
         default: "playwright-e2e"
 
+      # -----------------------------------------------------------------------
+      # Cross-runner artifact export toggles (BrikByteOS standard)
+      # -----------------------------------------------------------------------
       e2e_video:
         description: "Always export video when supported"
         type: boolean
@@ -87,10 +132,17 @@ on:
         required: false
         default: false
 
+      job_timeout_minutes:
+        description: "Job timeout in minutes to avoid hung sessions"
+        type: number
+        required: false
+        default: 30
+
 jobs:
   e2e:
     name: "Playwright E2E • ${{ matrix.browser }}"
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.job_timeout_minutes }}
 
     strategy:
       fail-fast: false
@@ -126,6 +178,75 @@ jobs:
         with:
           node-version: "20"
 
+      - name: "Docker info (diagnostics)"
+        if: ${{ inputs.start_app }}
+        run: |
+          set -euo pipefail
+          docker version
+          docker compose version
+
+      # -----------------------------------------------------------------------
+      # OPTIONAL: Start app under test (docker compose) for localhost CI
+      # -----------------------------------------------------------------------
+      - name: "Validate app inputs (if start_app=true)"
+        if: ${{ inputs.start_app }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${{ inputs.app_compose_file }}" ]]; then
+            echo "[APP] ERROR: app_compose_file is required when start_app=true"
+            exit 1
+          fi
+          echo "[APP] start_app=true"
+          echo "[APP] workdir=${{ inputs.app_service_workdir }}"
+          echo "[APP] compose=${{ inputs.app_compose_file }}"
+
+      - name: "Start app under test (docker compose)"
+        if: ${{ inputs.start_app }}
+        working-directory: ${{ inputs.app_service_workdir }}
+        run: |
+          set -euo pipefail
+          : <<'DOCSTRING'
+          Start app under test (docker compose)
+
+          Purpose:
+            Bring up the UI service so Playwright can hit E2E_TARGET_URL.
+
+          Notes:
+            - Use inputs.target_url pointing to this runner host, e.g. http://localhost:3000
+            - This step must not print secrets.
+          DOCSTRING
+          docker compose -f "${{ inputs.app_compose_file }}" up -d --build
+          docker compose -f "${{ inputs.app_compose_file }}" ps
+
+      - name: "Wait for app readiness (optional)"
+        if: ${{ inputs.health_url != '' }}
+        run: |
+          set -euo pipefail
+          : <<'DOCSTRING'
+          Wait for app readiness
+
+          Purpose:
+            Ensure health endpoint responds before Playwright starts.
+          DOCSTRING
+
+          echo "[APP] Waiting for: ${{ inputs.health_url }}"
+          timeout=${{ inputs.app_wait_seconds }}
+          elapsed=0
+
+          until curl -fsS "${{ inputs.health_url }}" >/dev/null 2>&1; do
+            sleep 2
+            elapsed=$((elapsed+2))
+            if (( elapsed >= timeout )); then
+              echo "[APP] ERROR: not ready within ${timeout}s"
+              exit 1
+            fi
+          done
+
+          echo "[APP] Ready ✅"
+
+      # -----------------------------------------------------------------------
+      # Playwright install + run
+      # -----------------------------------------------------------------------
       - name: "Install dependencies"
         working-directory: ${{ inputs.service_workdir }}
         run: |
@@ -152,7 +273,9 @@ jobs:
           set -euo pipefail
           echo "[E2E] Browser=${PW_BROWSER}"
           echo "[E2E] Target=${E2E_TARGET_URL}"
-          npx playwright test --project="${PW_BROWSER}"
+
+          npx playwright test \
+            --project="${PW_BROWSER}"
 
       # -----------------------------------------------------------------------
       # ALWAYS: normalize status for exporter
@@ -184,6 +307,16 @@ jobs:
         env:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
+
+      # -----------------------------------------------------------------------
+      # ALWAYS: teardown app under test (if started here)
+      # -----------------------------------------------------------------------
+      - name: "Teardown app under test (always)"
+        if: ${{ always() && inputs.start_app }}
+        working-directory: ${{ inputs.app_service_workdir }}
+        run: |
+          set -euo pipefail
+          docker compose -f "${{ inputs.app_compose_file }}" down -v || true
 
       # -----------------------------------------------------------------------
       # ALWAYS: upload audit artifacts
