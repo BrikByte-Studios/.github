@@ -39,7 +39,13 @@
 import fs from "fs";
 import path from "path";
 
-const cwd = process.cwd();
+/**
+ * Always resolve paths relative to the GitHub workspace when running in Actions.
+ * This prevents writing .audit into the action folder instead of the repo root.
+ */
+const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+const cwd = workspace;
+
 
 function envBool(name, defaultValue = "false") {
   const v = (process.env[name] ?? defaultValue).toString().toLowerCase().trim();
@@ -402,6 +408,23 @@ function exportType(kind, sourceDirs, outDir) {
   return { copied, skipped: false };
 }
 
+/**
+ * Always write a manifest so CI uploads never warn about "no files found".
+ *
+ * Security:
+ * - Only includes non-secret metadata (runner/browser/status/toggles/counts/paths).
+ * - Never prints or stores secret env values.
+ */
+function writeManifest(auditRoot, payload) {
+  try {
+    const p = path.join(auditRoot, "_export-manifest.json");
+    fs.writeFileSync(p, JSON.stringify(payload, null, 2), "utf-8");
+  } catch (e) {
+    warn(`Failed to write manifest: ${(e && e.message) ? e.message : e}`);
+  }
+}
+
+
 function main() {
   info(`Runner=${E2E_RUNNER || "unknown"}, Browser=${E2E_BROWSER}, Status=${E2E_STATUS || "unknown"}`);
   info(`Audit root: ${AUDIT_ROOT}`);
@@ -475,6 +498,36 @@ function main() {
   info(`  screenshots: ${results.screenshots.copied} -> ${OUT_SCREENSHOTS}`);
   info(`  videos:      ${results.videos.copied} -> ${OUT_VIDEOS}`);
   info(`  traces:      ${results.traces.copied} -> ${OUT_TRACES}`);
+
+  // Always persist a manifest file so the audit upload path has at least one file.
+  writeManifest(AUDIT_ROOT, {
+    runner: E2E_RUNNER || "unknown",
+    browser: E2E_BROWSER,
+    status: E2E_STATUS || "unknown",
+    toggles: {
+      video: E2E_VIDEO,
+      trace: E2E_TRACE,
+      artifactsAlways: E2E_ARTIFACTS_ALWAYS,
+    },
+    exportDecision: {
+      screenshots: exportScreenshots,
+      videos: exportVideos,
+      traces: exportTraces,
+    },
+    copied: {
+      screenshots: results.screenshots.copied ?? 0,
+      videos: results.videos.copied ?? 0,
+      traces: results.traces.copied ?? 0,
+    },
+    outputDirs: {
+      auditRoot: AUDIT_ROOT,
+      screenshots: OUT_SCREENSHOTS,
+      videos: OUT_VIDEOS,
+      traces: OUT_TRACES,
+    },
+    stamp,
+  });
+
 
   process.exit(0);
 }
