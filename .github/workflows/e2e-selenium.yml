@@ -112,6 +112,28 @@ on:
         type: string
         default: "selenium-grid-e2e"
 
+      # -----------------------------------------------------------------------
+      # Safeguards / Job Timeouts
+      # -----------------------------------------------------------------------
+      job_timeout_minutes:
+        description: "Job timeout in minutes (matrix jobs) to avoid hung Selenium sessions."
+        required: false
+        type: number
+        default: 30
+
+      edge_job_timeout_minutes:
+        description: "Job timeout in minutes (edge job) to avoid hung Selenium sessions."
+        required: false
+        type: number
+        default: 30
+
+      enforce_teardown:
+        description: "If true, always attempt docker compose down -v for grid/app in finalizer steps."
+        required: false
+        type: boolean
+        default: true
+
+
     outputs:
       selenium_remote_url:
         description: "Remote WebDriver URL for test runners"
@@ -121,7 +143,8 @@ jobs:
   e2e:
     name: "Selenium E2E • ${{ matrix.browser }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.job_timeout_minutes }}
+
 
     strategy:
       fail-fast: false
@@ -321,12 +344,56 @@ jobs:
             if-no-files-found: warn
             include-hidden-files: true
 
+      # -----------------------------------------------------------------------
+      # SAFEGUARD: Enforced teardown finalizer (always)
+      #
+      # Why:
+      #   - Prevent leaked containers/volumes when a test fails mid-run.
+      #   - Prevent port collisions and stuck sessions in subsequent jobs.
+      #
+      # Behavior:
+      #   - Runs even if earlier steps failed.
+      #   - Never fails the job itself (best-effort cleanup).
+      # -----------------------------------------------------------------------
+      - name: "FINALIZER: enforce teardown (grid + app) (always)"
+        if: ${{ always() && inputs.enforce_teardown == true }}
+        run: |
+          set +e
+          : <<'DOCSTRING'
+          FINALIZER: enforce teardown (grid + app)
+
+          Purpose:
+            Guarantee we attempt cleanup even if:
+              - tests fail,
+              - grid hangs,
+              - earlier teardown steps were skipped or errored.
+
+          Notes:
+            - Uses set +e to ensure cleanup does not mask the real failure.
+            - Uses docker compose down -v to remove volumes as well.
+          DOCSTRING
+
+          echo "[FINALIZER] Cleaning Selenium Grid..."
+          (cd "${{ inputs.service_workdir }}" && docker compose -f "${{ inputs.compose_file }}" down -v) || true
+
+          if [[ "${{ inputs.start_app }}" == "true" ]]; then
+            echo "[FINALIZER] Cleaning App Under Test..."
+            (cd "${{ inputs.app_service_workdir }}" && docker compose -f "${{ inputs.app_compose_file }}" down -v) || true
+          else
+            echo "[FINALIZER] start_app=false, skipping app teardown."
+          fi
+
+          echo "[FINALIZER] Done ✅"
+
+
 
   e2e-edge:
     name: "Selenium E2E • edge"
     if: ${{ inputs.enable_edge == true }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.edge_job_timeout_minutes }}
+
+
 
     env:
       E2E_TARGET_URL: ${{ inputs.target_url }}
@@ -464,3 +531,24 @@ jobs:
                 ${{ inputs.service_workdir }}/.audit/**
             if-no-files-found: warn
             include-hidden-files: true
+
+      - name: "FINALIZER: enforce teardown (grid + app) (always)"
+        if: ${{ always() && inputs.enforce_teardown == true }}
+        run: |
+          set +e
+          : <<'DOCSTRING'
+          FINALIZER: enforce teardown (grid + app)
+
+          Purpose:
+            Best-effort cleanup to prevent leaked containers/volumes.
+          DOCSTRING
+
+          echo "[FINALIZER] Cleaning Selenium Grid..."
+          (cd "${{ inputs.service_workdir }}" && docker compose -f "${{ inputs.compose_file }}" down -v) || true
+
+          if [[ "${{ inputs.start_app }}" == "true" ]]; then
+            echo "[FINALIZER] Cleaning App Under Test..."
+            (cd "${{ inputs.app_service_workdir }}" && docker compose -f "${{ inputs.app_compose_file }}" down -v) || true
+          fi
+
+          echo "[FINALIZER] Done ✅"
