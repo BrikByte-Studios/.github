@@ -496,14 +496,14 @@ jobs:
         run: |
           set -euo pipefail
           docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
-          
+
       - name: "Debug: hub logs (early)"
         if: always()
         working-directory: ${{ inputs.service_workdir }}
         run: |
             set -euo pipefail
             docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub | tail -n 200 || true
-    
+
       - name: "Install jq (for reliable /status parsing)"
         run: |
             set -euo pipefail
@@ -515,11 +515,11 @@ jobs:
       - name: "Wait for Selenium Grid readiness + node registration"
         uses: BrikByte-Studios/.github/.github/actions/selenium-grid-healthcheck@main
         with:
-            remote_url: ${{ env.SELENIUM_REMOTE_URL }}
-            timeout_seconds: ${{ inputs.grid_wait_seconds }}
-            require_chrome: "true"
-            require_firefox: "true"
-            require_edge: "true"
+          remote_url: ${{ env.SELENIUM_REMOTE_URL }}
+          timeout_seconds: ${{ inputs.grid_wait_seconds }}
+          require_chrome: "true"
+          require_firefox: "true"
+          require_edge: "true"
 
 
       - name: "Run E2E tests (Edge)"
@@ -535,12 +535,35 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .audit/selenium-grid
-          docker compose -f "${{ inputs.compose_file }}" ps > .audit/selenium-grid/compose-ps.txt || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub > .audit/selenium-grid/selenium-hub.log || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color chrome        > .audit/selenium-grid/node-chrome.log || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color firefox       > .audit/selenium-grid/node-firefox.log || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color edge          > .audit/selenium-grid/node-edge.log || true
-          curl -fsS "http://localhost:4444/status" > .audit/selenium-grid/grid-status.json || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            ps \
+            > .audit/selenium-grid/compose-ps.txt || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            logs --no-color selenium-hub \
+            > .audit/selenium-grid/selenium-hub.log || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            logs --no-color chrome \
+            > .audit/selenium-grid/node-chrome.log || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            logs --no-color firefox \
+            > .audit/selenium-grid/node-firefox.log || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            logs --no-color edge \
+            > .audit/selenium-grid/node-edge.log || true
+
+          curl -fsS \
+            "http://localhost:4444/status" \
+            > .audit/selenium-grid/grid-status.json || true
 
       - name: "Teardown (always)"
         if: always()
