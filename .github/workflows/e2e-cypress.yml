@@ -362,12 +362,22 @@ jobs:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
 
+          # -------------------------------------------------------------------------
+          # Cypress artifact discovery (scoped to service_workdir)
+          # -------------------------------------------------------------------------
+          CYPRESS_SCREENSHOTS_DIR: "${{ inputs.service_workdir }}/cypress/screenshots"
+          CYPRESS_VIDEOS_DIR: "${{ inputs.service_workdir }}/cypress/videos"
+
+          # Optional: only if you actually generate/store trace-like bundles
+          # (most Cypress setups won't have this)
+          CYPRESS_TRACES_DIR: "${{ inputs.service_workdir }}/cypress/traces"
+
       - name: "Upload E2E artifacts (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}-${{ github.run_id }}
-          path: .audit/**/e2e/artifacts/**
+          path: ${{ inputs.service_workdir }}/.audit/**/e2e/artifacts/**/*
           if-no-files-found: warn
           include-hidden-files: true
 
