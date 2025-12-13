@@ -60,4 +60,4 @@ runs:
         # Docstring:
         # - Calls the shared exporter script.
         # - Never fails the job if artifacts are missing; exporter exits 0.
-        node "${GITHUB_WORKSPACE}/.github/scripts/export-e2e-artifacts.mjs"
+        node "${GITHUB_ACTION_PATH}/export-e2e-artifacts.mjs"
