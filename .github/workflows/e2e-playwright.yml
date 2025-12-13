@@ -1,343 +1,202 @@
-# Reusable Playwright E2E workflow for BrikByteOS.
-# - Designed to be called from product/demo repos via `workflow_call`.
-# - Provides:
-#   * Multi-browser matrix (Chromium mandatory; Firefox/WebKit optional)
-#   * Environment targeting via E2E_TARGET_URL
-#   * Parallelism via Playwright workers
-#   * Basic retry + trace-on-retry
-#   * HTML report + traces exported as GitHub Actions artifact
-#
-# NOTE:
-# - This workflow runs in the context of the *calling* repo.
-# - Product repos must supply Node version + dependencies (package.json, etc.).
-# - No secrets or credentials are defined here.
+name: "E2E (Playwright • Cross-Browser)"
 
-name: "E2E - Playwright (Reusable)"
+# -----------------------------------------------------------------------------
+# Reusable Playwright E2E workflow (BrikByteOS standard)
+#
+# ENV CONTRACT:
+#   Required:
+#     - E2E_TARGET_URL
+#
+#   Exporter / Audit:
+#     - E2E_RUNNER=playwright
+#     - E2E_STATUS=success|failed
+#     - E2E_VIDEO=true|false
+#     - E2E_TRACE=true|false
+#     - E2E_ARTIFACTS_ALWAYS=true|false
+#
+# Always-on guarantees:
+#   - Export artifacts (best-effort)
+#   - Upload .audit evidence
+# -----------------------------------------------------------------------------
 
 on:
-  # This workflow is *reusable* – it must be invoked from other workflows.
   workflow_call:
     inputs:
       target_url:
-        description: "Base URL for E2E tests (staging by default)."
+        description: "Base URL of the app under test"
         type: string
-        required: false
-        default: "https://staging.example.com"
-      enable_firefox:
-        description: "Include Firefox project in the browser matrix."
-        type: boolean
-        required: false
-        default: false
-      enable_webkit:
-        description: "Include WebKit project in the browser matrix."
-        type: boolean
-        required: false
-        default: false
-      workers:
-        description: "Playwright workers (e.g. '50%', '4'). Controls parallelism/sharding."
-        type: string
-        required: false
-        default: "50%"
-      retries:
-        description: "Global retry count for Playwright tests."
-        type: number
-        required: false
-        default: 1
-      trace_mode:
-        description: "Playwright trace mode (on, on-first-retry, retain-on-failure, off)."
-        type: string
-        required: false
-        default: "on-first-retry"
+        required: true
+
       service_workdir:
-        description: "Relative path to the service under test (e.g. node-ui-example)"
+        description: "Working directory of the UI project"
         type: string
         required: false
         default: "."
-      artifact_suffix:
-        description: "Optional suffix to disambiguate artifacts (e.g. -baseline, -sharded)."
+
+      enable_firefox:
+        description: "Enable Firefox project"
+        type: boolean
+        required: false
+        default: false
+
+      enable_webkit:
+        description: "Enable WebKit project"
+        type: boolean
+        required: false
+        default: false
+
+      workers:
+        description: "Playwright workers (e.g. 50%, 4)"
         type: string
         required: false
-        default: ""
+        default: "50%"
+
+      retries:
+        description: "Playwright retry count"
+        type: number
+        required: false
+        default: 1
+
+      trace_mode:
+        description: "Trace mode (on, on-first-retry, retain-on-failure, off)"
+        type: string
+        required: false
+        default: "on-first-retry"
+
+      artifact_name:
+        description: "Base artifact name"
+        type: string
+        required: false
+        default: "playwright-e2e"
+
+      e2e_video:
+        description: "Always export video when supported"
+        type: boolean
+        required: false
+        default: false
+
+      e2e_trace:
+        description: "Always export traces when supported"
+        type: boolean
+        required: false
+        default: false
+
+      e2e_artifacts_always:
+        description: "Export artifacts even on success"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
-  playwright-e2e:
-    name: "Playwright E2E (${{ matrix.browser }})"
+  e2e:
+    name: "Playwright E2E • ${{ matrix.browser }}"
     runs-on: ubuntu-latest
 
-    # Browser matrix:
-    # - Chromium always enabled.
-    # - Firefox/WebKit can be logically skipped via env flags.
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
 
     env:
-      # Base URL for tests – consumed by Playwright config.
+      # ----------------------------------------------------------
+      # Test runner contract
+      # ----------------------------------------------------------
       E2E_TARGET_URL: ${{ inputs.target_url }}
-
-      # Flags for conditional browser projects in config:
-      PW_ENABLE_FIREFOX: ${{ inputs.enable_firefox && '1' || '0' }}
-      PW_ENABLE_WEBKIT: ${{ inputs.enable_webkit && '1' || '0' }}
-
-      # Parallelism / sharding (via Playwright workers).
+      PW_BROWSER: ${{ matrix.browser }}
       PW_WORKERS: ${{ inputs.workers }}
-
-      # Retry + trace behaviour.
       PW_RETRIES: ${{ inputs.retries }}
       PW_TRACE_MODE: ${{ inputs.trace_mode }}
 
-      # Current browser project (used in Playwright config / debugging).
-      PW_BROWSER: ${{ matrix.browser }}
+      # ----------------------------------------------------------
+      # Artifact exporter contract
+      # ----------------------------------------------------------
+      E2E_RUNNER: playwright
+      E2E_VIDEO: ${{ inputs.e2e_video }}
+      E2E_TRACE: ${{ inputs.e2e_trace }}
+      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
 
-      # ----------------------------------------------------------
-      # Audit configuration (BrikByteOS standard)
-      # ----------------------------------------------------------
-      AUDIT_ROOT: ".audit"
-      AUDIT_E2E_SUBPATH: "PIPE-E2E"
+      FORCE_COLOR: "0"
 
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
-        with:
-          # Shallow clone is enough for E2E tests in most cases.
-          fetch-depth: 1
 
-      - name: "Use Node.js 20 LTS"
-        # Caller repos can change this by editing this workflow in future versions.
+      - name: "Setup Node.js"
         uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
+          node-version: "20"
 
       - name: "Install dependencies"
-        # This keeps the workflow generic across repos:
-        # - If package-lock.json exists, npm ci is preferred.
-        # - You can customize this in your own fork if you use pnpm/yarn.
+        working-directory: ${{ inputs.service_workdir }}
         run: |
           if [ -f package-lock.json ]; then
-            echo "[PLAYWRIGHT-E2E] Using npm ci"
             npm ci
           else
-            echo "[PLAYWRIGHT-E2E] Using npm install"
             npm install
           fi
-        working-directory: ${{ inputs.service_workdir }}
 
       - name: "Install Playwright browsers"
-        # Installs browser binaries + system deps needed for Playwright on Ubuntu.
+        working-directory: ${{ inputs.service_workdir }}
         run: |
           npx playwright install --with-deps
-        working-directory: ${{ inputs.service_workdir }}
-
-      - name: "Start UI app for E2E (background)"
-        working-directory: ${{ inputs.service_workdir }}
-        run: |
-          echo "[PLAYWRIGHT-E2E] Starting UI app on PORT=3000..."
-          export PORT=3000
-
-          # Start the app in the background
-          node src/server.mjs &
-          APP_PID=$!
-
-          echo "APP_PID=${APP_PID}" >> "$GITHUB_ENV"
-
-          # Wait for it to be up (simple curl loop)
-          echo "[PLAYWRIGHT-E2E] Waiting for http://localhost:3000/login to be ready..."
-          for i in $(seq 1 30); do
-            if curl -fsS "http://localhost:3000/login" > /dev/null 2>&1; then
-              echo "[PLAYWRIGHT-E2E] UI is up."
-              break
-            fi
-            echo "[PLAYWRIGHT-E2E] Still waiting (${i})..."
-            sleep 2
-          done
-
-          # As a sanity check, fail if still not up after loop
-          if ! curl -fsS "http://localhost:3000/login" > /dev/null 2>&1; then
-            echo "[PLAYWRIGHT-E2E] ERROR: UI did not become ready in time."
-            exit 1
-          fi
-
 
       - name: "Run Playwright tests"
-        id: run_playwright
-        # Skip Firefox/WebKit if not enabled via inputs – Chromium always runs.
         if: >
           matrix.browser == 'chromium' ||
           (matrix.browser == 'firefox' && inputs.enable_firefox) ||
           (matrix.browser == 'webkit' && inputs.enable_webkit)
+        working-directory: ${{ inputs.service_workdir }}
         run: |
-          echo "[PLAYWRIGHT-E2E] Running project: $PW_BROWSER"
-          echo "[PLAYWRIGHT-E2E] Base URL: $E2E_TARGET_URL"
-          echo "[PLAYWRIGHT-E2E] Workers: $PW_WORKERS"
-          echo "[PLAYWRIGHT-E2E] Retries: $PW_RETRIES"
-          echo "[PLAYWRIGHT-E2E] Trace mode: $PW_TRACE_MODE"
+          set -euo pipefail
 
-          START_TS=$(date +%s)
+          echo "[E2E] Browser=${PW_BROWSER}"
+          echo "[E2E] Target=${E2E_TARGET_URL}"
 
-          # PW_* env vars are read by playwright.config.ts
-          # Reporter 'html' writes to ./playwright-report
           npx playwright test \
-            --project="$PW_BROWSER"
+            --project="${PW_BROWSER}"
 
-          END_TS=$(date +%s)
-          DURATION_SEC=$((END_TS - START_TS))
-
-          echo "[PLAYWRIGHT-E2E] E2E duration (s): ${DURATION_SEC}"
-
-          # Export so later steps + callers can see it
-          echo "DURATION_SECONDS=${DURATION_SEC}" >> "$GITHUB_ENV"
-          echo "duration_seconds=${DURATION_SEC}" >> "$GITHUB_OUTPUT"
-        continue-on-error: false
-        working-directory: ${{ inputs.service_workdir }}
-
-      # --------------------------------------------------------------
-      # .audit hook: create E2E audit path
-      # --------------------------------------------------------------
-      - name: "Prepare E2E audit bundle path"
+      # -----------------------------------------------------------------------
+      # ALWAYS: normalize status for exporter
+      # -----------------------------------------------------------------------
+      - name: "Set E2E_STATUS for exporter (always)"
         if: always()
-        id: e2e_audit_path
-        working-directory: ${{ inputs.service_workdir }}
-        env:
-          JOB_STATUS: ${{ job.status }}
         run: |
-          RUN_ID="${GITHUB_RUN_ID}-playwright-e2e-${PW_BROWSER}-workers-${PW_WORKERS}"
-          AUDIT_PATH="${AUDIT_ROOT}/${AUDIT_E2E_SUBPATH}/${RUN_ID}"
+          set -euo pipefail
 
-          echo "AUDIT_PATH=${AUDIT_PATH}" >> "$GITHUB_ENV"
-          echo "[PLAYWRIGHT-E2E] E2E audit path: ${AUDIT_PATH}"
+          status="${{ job.status }}"
 
-          mkdir -p "${AUDIT_PATH}"
-          echo "PIPE-E2E Playwright evidence for ${PW_BROWSER}" > "${AUDIT_PATH}/.audit-e2e-marker"
-
-      - name: "Copy Playwright report into .audit/PIPE-E2E"
-        if: always()
-        working-directory: ${{ inputs.service_workdir }}
-        env:
-          JOB_STATUS: ${{ job.status }}
-          RUN_DURATION: ${{ steps.run_playwright.outputs.duration_seconds }}
-        run: |
-          echo "[PLAYWRIGHT-E2E] Copying Playwright artifacts to ${AUDIT_PATH}"
-
-          mkdir -p "${AUDIT_PATH}"
-
-          if [ -d "playwright-report" ]; then
-            cp -R "playwright-report" "${AUDIT_PATH}/playwright-report"
+          if [[ "${status}" == "failure" || "${status}" == "cancelled" ]]; then
+            echo "E2E_STATUS=failed" >> "${GITHUB_ENV}"
           else
-            echo "[PLAYWRIGHT-E2E] No playwright-report directory found."
+            echo "E2E_STATUS=success" >> "${GITHUB_ENV}"
           fi
 
-          if [ -d "test-results" ]; then
-            cp -R "test-results" "${AUDIT_PATH}/test-results"
-          else
-            echo "[PLAYWRIGHT-E2E] No test-results directory found."
-          fi
+      # -----------------------------------------------------------------------
+      # ALWAYS: export artifacts into .audit
+      # -----------------------------------------------------------------------
+      - name: "Export E2E artifacts into .audit (always)"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
 
-          DURATION_VALUE="${RUN_DURATION:-${DURATION_SECONDS:-0}}"
+          node \
+            "${GITHUB_WORKSPACE}/.github/scripts/export-e2e-artifacts.mjs" \
+            || true
 
-          cat > "${AUDIT_PATH}/metadata.json" << EOF
-          {
-            "type": "e2e-playwright",
-            "spec": "PIPE-E2E-PLAYWRIGHT-BUILD-001",
-            "run_id": "${GITHUB_RUN_ID}",
-            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
-            "job": "${GITHUB_JOB}",
-            "browser": "${PW_BROWSER}",
-            "workers": "${PW_WORKERS}",
-            "duration_seconds": ${DURATION_VALUE},
-            "repo": "${GITHUB_REPOSITORY}",
-            "ref": "${GITHUB_REF}",
-            "sha": "${GITHUB_SHA}",
-            "status": "${JOB_STATUS}",
-            "workflow": "${GITHUB_WORKFLOW}",
-            "run_number": "${GITHUB_RUN_NUMBER}"
-          }
-          EOF
-
-          echo "[PLAYWRIGHT-E2E] E2E audit bundle prepared at: ${AUDIT_PATH}"
-
-      - name: "Upload E2E audit slice"
+      # -----------------------------------------------------------------------
+      # ALWAYS: upload audit artifacts
+      # -----------------------------------------------------------------------
+      - name: "Upload E2E artifacts (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # e.g. e2e-audit-node-ui-example-chromium-workers-1-baseline
-          # e.g. e2e-audit-node-ui-example-chromium-workers-1-baseline
           name: >
-            e2e-audit-${{ inputs.service_workdir }}-${{ matrix.browser }}
-            -workers-${{ env.PW_WORKERS }}${{ inputs.artifact_suffix }}
+            ${{ inputs.artifact_name }}-${{ matrix.browser }}
+            -${{ github.run_id }}
 
-          path: >
-            ${{ inputs.service_workdir }}/${{ env.AUDIT_ROOT }}
-            /${{ env.AUDIT_E2E_SUBPATH }}/${{ github.run_id }}
-            -playwright-e2e-${{ env.PW_BROWSER }}-workers-${{ env.PW_WORKERS }}/
-          if-no-files-found: "ignore"
-          compression-level: 6
-          overwrite: false
-          include-hidden-files: false
-
-      - name: "Copy Playwright report into .audit/PIPE-E2E"
-        if: always()
-        working-directory: ${{ inputs.service_workdir }}
-        env:
-          JOB_STATUS: ${{ job.status }}
-          RUN_DURATION: ${{ steps.run_playwright.outputs.duration_seconds }}
-        run: |
-          echo "[PLAYWRIGHT-E2E] Copying Playwright artifacts to ${AUDIT_PATH}"
-
-          mkdir -p "${AUDIT_PATH}"
-
-          # Copy HTML report if present
-          if [ -d "playwright-report" ]; then
-            cp -R "playwright-report" "${AUDIT_PATH}/playwright-report"
-          else
-            echo "[PLAYWRIGHT-E2E] No playwright-report directory found."
-          fi
-
-          # Copy raw test-results (traces, screenshots, etc.) if present
-          if [ -d "test-results" ]; then
-            cp -R "test-results" "${AUDIT_PATH}/test-results"
-          else
-            echo "[PLAYWRIGHT-E2E] No test-results directory found."
-          fi
-
-          # Fallback if RUN_DURATION is empty (e.g. tests aborted before step id ran)
-          DURATION_VALUE="${RUN_DURATION:-${DURATION_SECONDS:-0}}"
-
-          # Write machine-readable metadata for policy gate & auditors
-          cat > "${AUDIT_PATH}/metadata.json" << EOF
-          {
-            "type": "e2e-playwright",
-            "spec": "PIPE-E2E-PLAYWRIGHT-BUILD-001",
-            "run_id": "${GITHUB_RUN_ID}",
-            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
-            "job": "${GITHUB_JOB}",
-            "browser": "${PW_BROWSER}",
-            "workers": "${PW_WORKERS}",
-            "duration_seconds": ${DURATION_VALUE},
-            "repo": "${GITHUB_REPOSITORY}",
-            "ref": "${GITHUB_REF}",
-            "sha": "${GITHUB_SHA}",
-            "status": "${JOB_STATUS}",
-            "workflow": "${GITHUB_WORKFLOW}",
-            "run_number": "${GITHUB_RUN_NUMBER}"
-          }
-          EOF
-
-          echo "[PLAYWRIGHT-E2E] E2E audit bundle prepared at: ${AUDIT_PATH}"
-
-
-      # --------------------------------------------------------------
-      # Upload raw Playwright report (still useful for debugging)
-      # --------------------------------------------------------------
-      - name: "Upload Playwright HTML report"
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          # Include service_workdir and browser so names are unique per service + browser.
-          name: "playwright-report-${{ inputs.service_workdir }}-${{ matrix.browser }}${{ inputs.artifact_suffix }}"
           path: |
-            ${{ inputs.service_workdir }}/playwright-report/
-          if-no-files-found: "ignore"
-          compression-level: 6
-          overwrite: false
-          include-hidden-files: false
+            .audit/**/e2e/artifacts/**
+
+          if-no-files-found: warn
+          include-hidden-files: true

@@ -2,38 +2,31 @@
 # Reusable Cypress E2E Workflow — BrikByteOS
 # ==============================================================================
 #
-# PURPOSE
-# -------
-# Standardized, governance-ready Cypress E2E runner for BrikByte Studios UI
-# services.
+# Reusable via workflow_call
+# Stable ENV CONTRACT
+# Always set E2E_STATUS
+# Always export via export-e2e-artifacts.mjs
+# Always upload .audit/**/e2e/artifacts/**
+# No duplicated legacy audit logic (single exporter is source of truth)
 #
-# Supports TWO execution modes:
+# ENV CONTRACT (stable across repos and runners)
+# ---------------------------------------------
+# Required:
+#   - E2E_TARGET_URL           Base URL of app under test
+#   - E2E_RUNNER               cypress
 #
-# 1) External target (staging / preview URL)
-#    - Cypress hits an already-running environment
+# Exporter contract:
+#   - E2E_STATUS               success|failed
+#   - E2E_VIDEO                true|false
+#   - E2E_TRACE                true|false (typically false for Cypress)
+#   - E2E_ARTIFACTS_ALWAYS     true|false
+#   - E2E_AUDIT_DATE           YYYY-MM-DD (optional override)
+#   - E2E_AUDIT_ROOT           .audit/<date>/e2e/artifacts (optional override)
 #
-# 2) Docker-started UI (local container in CI)
-#    - UI is built + started in CI
-#    - Cypress runs in a sibling container
-#    - Containers communicate via a shared Docker network (`e2e-net`)
-#
-# WHY THIS DESIGN?
-# ----------------
-# - Cypress runs inside Docker for determinism
-# - Docker networking avoids localhost pitfalls
-# - Explicit health checks ensure reliable startup
-# - Artifacts (screenshots + videos) are always exported
-# - Fully offline (no Cypress Cloud dependency)
-#
-# NOTES / ASSUMPTIONS
-# -------------------
-# - In Docker mode, the UI container is named `app` and joined to `e2e-net`
-#   so it is reachable at http://app:<docker_port>
-# - Your UI should expose a readiness endpoint (default: /health) returning 200
-# - Your service_workdir MUST contain a Cypress config file named:
-#     cypress.config.cjs
-#   (This avoids TypeScript config loading issues inside Cypress/included images)
-#
+# Notes:
+# - This workflow intentionally does NOT implement legacy copy logic into .audit.
+# - The single source of truth for normalization is:
+#     .github/scripts/export-e2e-artifacts.mjs
 # ==============================================================================
 
 name: "E2E - Cypress (Reusable)"
@@ -41,86 +34,42 @@ name: "E2E - Cypress (Reusable)"
 on:
   workflow_call:
     inputs:
-      # ------------------------------------------------------------------------
-      # Base URL Cypress will test against.
-      #
-      # External mode examples:
-      # - https://staging.example.com
-      #
-      # Docker mode examples (recommended):
-      # - http://app:3000
-      # ------------------------------------------------------------------------
       target_url:
         description: "Base URL Cypress will test against."
         type: string
         required: false
         default: "https://staging.example.com"
 
-      # ------------------------------------------------------------------------
-      # Health endpoint path used for readiness checks.
-      # Must return HTTP 200 when ready.
-      # ------------------------------------------------------------------------
       health_path:
         description: "Relative health path for readiness checks."
         type: string
         required: false
         default: "/health"
 
-      # ------------------------------------------------------------------------
-      # Service directory containing:
-      # - Dockerfile (if start_with_docker=true)
-      # - cypress.config.cjs
-      # - tests/e2e/cypress/*
-      # ------------------------------------------------------------------------
       service_workdir:
         description: "Working directory for the service under test."
         type: string
         required: false
         default: "."
 
-      # ------------------------------------------------------------------------
-      # Port exposed by the UI service INSIDE the container (Docker mode).
-      #
-      # This must match:
-      # - EXPOSE in Dockerfile
-      # - PORT env used by the app
-      #
-      # Examples:
-      # - Express / Next.js: 3000
-      # - Vite: 5173
-      # ------------------------------------------------------------------------
       docker_port:
         description: "Container port used by the app when start_with_docker=true."
         type: number
         required: false
         default: 3000
 
-      # ------------------------------------------------------------------------
-      # Official Cypress Docker image (includes browsers + Cypress binary).
-      # NOTE: cypress/included images ship with their own Node version.
-      # ------------------------------------------------------------------------
       cypress_image:
         description: "Cypress Docker image to run tests."
         type: string
         required: false
         default: "cypress/included:13.12.0"
 
-      # ------------------------------------------------------------------------
-      # Optional Cypress spec filter.
-      # Example:
-      #   tests/e2e/cypress/e2e/smoke.cy.ts
-      # ------------------------------------------------------------------------
       spec_pattern:
         description: "Optional Cypress spec glob/path filter."
         type: string
         required: false
         default: ""
 
-      # ------------------------------------------------------------------------
-      # Retry behavior (Cypress retries setting)
-      # - runMode  → CI
-      # - openMode → local developer runs
-      # ------------------------------------------------------------------------
       run_mode_retries:
         description: "Retries when running in CI."
         type: number
@@ -133,41 +82,26 @@ on:
         required: false
         default: 0
 
-      # ------------------------------------------------------------------------
-      # Artifact name prefix for Cypress outputs.
-      # ------------------------------------------------------------------------
       artifact_name:
-        description: "Artifact base name for screenshots/videos."
+        description: "Artifact base name for logs/evidence."
         type: string
         required: false
-        default: "cypress-artifacts"
+        default: "cypress-e2e"
 
-      # ------------------------------------------------------------------------
-      # If true:
-      # - Build the UI Docker image
-      # - Start it in CI (container name: app)
-      # - Run Cypress against it via Docker networking
-      # ------------------------------------------------------------------------
       start_with_docker:
         description: "If true, build & start the app via Docker before tests."
         type: boolean
         required: false
         default: false
 
-      # ------------------------------------------------------------------------
-      # Docker image name used when building the UI service.
-      # ------------------------------------------------------------------------
       docker_image_name:
         description: "Docker image name used to build/run the app in Docker mode."
         type: string
         required: false
         default: "brikbyte-e2e-app"
 
-      # ---------------------------
-      # Contingency controls
-      # ---------------------------
       allow_disable:
-        description: "If true, repo can disable Cypress via DISABLE_CYPRESS_E2E=1."
+        description: "If true, repo can disable Cypress via disable_cypress_e2e input."
         type: boolean
         required: false
         default: true
@@ -184,123 +118,106 @@ on:
         required: false
         default: false
 
+      # -----------------------------------------------------------------------
+      # Cross-runner artifact export toggles (BrikByteOS standard)
+      # -----------------------------------------------------------------------
+      e2e_video:
+        description: "If true, exporter treats videos as always-on where supported."
+        type: boolean
+        required: false
+        default: false
+
+      e2e_trace:
+        description: "If true, exporter treats traces as always-on where supported."
+        type: boolean
+        required: false
+        default: false
+
+      e2e_artifacts_always:
+        description: "If true, exporter exports artifacts even on success."
+        type: boolean
+        required: false
+        default: false
+
+      job_timeout_minutes:
+        description: "Job timeout in minutes to avoid hung sessions."
+        type: number
+        required: false
+        default: 30
+
     secrets: {}
 
 jobs:
   cypress-e2e:
     name: "Cypress E2E"
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.job_timeout_minutes }}
 
-    # --------------------------------------------------------------------------
-    # Environment variables exposed to Cypress runner container.
-    #
-    # NOTE:
-    # - CYPRESS_BASE_URL is the standard Cypress convention.
-    # - E2E_TARGET_URL keeps parity with other tooling (Playwright, etc.)
-    # --------------------------------------------------------------------------
     env:
-      CYPRESS_BASE_URL: ${{ inputs.target_url }}
-      # Shared convention for other tooling.
+      # Runner contract
+      E2E_RUNNER: cypress
       E2E_TARGET_URL: ${{ inputs.target_url }}
-      # Retry controls (read by your cypress.config.cjs).
+
+      # Cypress convention
+      CYPRESS_BASE_URL: ${{ inputs.target_url }}
+
+      # Retry controls (read by your cypress.config.cjs)
       CYPRESS_RUN_MODE_RETRIES: ${{ inputs.run_mode_retries }}
       CYPRESS_OPEN_MODE_RETRIES: ${{ inputs.open_mode_retries }}
 
+      # Exporter toggles
+      E2E_VIDEO: ${{ inputs.e2e_video }}
+      E2E_TRACE: ${{ inputs.e2e_trace }}
+      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
+
+      FORCE_COLOR: "0"
+
     steps:
-      # ------------------------------------------------------------------------
-      # Checkout repository
-      # ------------------------------------------------------------------------
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------------------
-      # Contingency: allow a repo to disable Cypress without deleting workflow.
-      #
-      # Docstring:
-      # - If inputs.allow_disable=true AND a repo sets DISABLE_CYPRESS_E2E=1
-      #   (as an env/variable in the calling wrapper), this job exits early.
-      # ------------------------------------------------------------------------
       - name: "Honor disable flag"
         env:
           ALLOW_DISABLE: ${{ inputs.allow_disable }}
           DISABLE: ${{ inputs.disable_cypress_e2e }}
         run: |
           set -euo pipefail
-          echo "[CYPRESS-E2E] allow_disable=${ALLOW_DISABLE}"
-          echo "[CYPRESS-E2E] disable_cypress_e2e=${DISABLE}"
+          echo "[CYPRESS] allow_disable=${ALLOW_DISABLE}"
+          echo "[CYPRESS] disable_cypress_e2e=${DISABLE}"
 
           if [ "${ALLOW_DISABLE}" = "true" ] && [ "${DISABLE}" = "true" ]; then
-            echo "[CYPRESS-E2E] Cypress E2E disabled by repo flag. Exiting early."
+            echo "[CYPRESS] Disabled by repo flag. Exiting early."
             exit 0
           fi
 
-      # ------------------------------------------------------------------------
-      # Create shared Docker network (Docker mode only)
-      #
-      # This allows:
-      # - UI container (hostname: app)
-      # - Cypress runner container
-      # to communicate deterministically.
-      # ------------------------------------------------------------------------
-      - name: "Create Docker network"
+      - name: "Create Docker network (docker mode)"
         if: ${{ inputs.start_with_docker }}
         run: |
           set -euo pipefail
-          echo "[CYPRESS-E2E] Creating Docker network: e2e-net"
           docker network create e2e-net
 
-      # ------------------------------------------------------------------------
-      # Build the UI Docker image (Docker mode only)
-      # ------------------------------------------------------------------------
-      - name: "Build UI Docker image"
+      - name: "Build UI Docker image (docker mode)"
         if: ${{ inputs.start_with_docker }}
         working-directory: ${{ inputs.service_workdir }}
         env:
           DOCKER_IMAGE_NAME: ${{ inputs.docker_image_name }}
         run: |
           set -euo pipefail
-          echo "[CYPRESS-E2E] Building image '${DOCKER_IMAGE_NAME}' from '${PWD}'"
           docker build -t "${DOCKER_IMAGE_NAME}" .
-          echo "[CYPRESS-E2E] Built images:"
-          docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}" | head -n 25
 
-      # ------------------------------------------------------------------------
-      # Start the UI container (Docker mode only)
-      #
-      # IMPORTANT:
-      # - Container name is `app` (hostname resolves as `app` on e2e-net)
-      # - The app should listen on DOCKER_PORT internally
-      # - We do NOT need host port publishing in Docker-network mode
-      # ------------------------------------------------------------------------
-      - name: "Start UI Docker container"
+      - name: "Start UI Docker container (docker mode)"
         if: ${{ inputs.start_with_docker }}
         env:
           DOCKER_IMAGE_NAME: ${{ inputs.docker_image_name }}
           DOCKER_PORT: ${{ inputs.docker_port }}
         run: |
           set -euo pipefail
-          echo "[CYPRESS-E2E] Starting UI container 'app' on port ${DOCKER_PORT} (network: e2e-net)"
-
           docker run -d --rm \
             --name app \
             --network e2e-net \
             -e PORT="${DOCKER_PORT}" \
             "${DOCKER_IMAGE_NAME}"
 
-          echo "[CYPRESS-E2E] Container started. Status:"
-          docker ps --filter "name=app"
-          echo "[CYPRESS-E2E] Tail logs:"
-          docker logs app --tail 50 || true
-
-      # ------------------------------------------------------------------------
-      # Resolve HEALTH_URL
-      #
-      # In Docker mode, we *force* readiness checks via container DNS:
-      #   http://app:<docker_port><health_path>
-      #
-      # In external mode, we use:
-      #   <target_url><health_path>
-      # ------------------------------------------------------------------------
       - name: "Resolve HEALTH_URL"
         id: health
         env:
@@ -313,107 +230,79 @@ jobs:
 
           if [ "${START_WITH_DOCKER}" = "true" ]; then
             echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
-            echo "[CYPRESS-E2E] HEALTH_URL (docker) = http://app:${DOCKER_PORT}${HEALTH_PATH}"
           else
             echo "health_url=${TARGET_URL}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
-            echo "[CYPRESS-E2E] HEALTH_URL (external) = ${TARGET_URL}${HEALTH_PATH}"
           fi
 
-      # ------------------------------------------------------------------------
-      # Wait for service readiness
-      #
-      # - In Docker mode: curl from a container on e2e-net
-      # - In external mode: curl from the host runner
-      # ------------------------------------------------------------------------
       - name: "Wait for service readiness"
         env:
           HEALTH_URL: ${{ steps.health.outputs.health_url }}
           START_WITH_DOCKER: ${{ inputs.start_with_docker }}
         run: |
           set -euo pipefail
-          echo "[CYPRESS-E2E] Waiting for ${HEALTH_URL}"
+          echo "[CYPRESS] Waiting for ${HEALTH_URL}"
 
           timeout=120
           elapsed=0
           interval=5
 
           if [ "${START_WITH_DOCKER}" = "true" ]; then
-            # Fail fast if UI container is not running
             docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
-              echo "[CYPRESS-E2E] ERROR: UI container 'app' is not running."
+              echo "[CYPRESS] ERROR: app container not running"
               docker logs app || true
               exit 1
             }
 
-            while ! docker run --rm --network e2e-net curlimages/curl:8.5.0 -fsS "${HEALTH_URL}" > /dev/null; do
-              echo "[CYPRESS-E2E] Not ready yet... (${elapsed}s elapsed)"
+            while ! docker run --rm --network e2e-net \
+              curlimages/curl:8.5.0 -fsS "${HEALTH_URL}" >/dev/null; do
               sleep "${interval}"
               elapsed=$((elapsed + interval))
 
-              # If the app crashed mid-wait, surface logs immediately
               docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
-                echo "[CYPRESS-E2E] ERROR: UI container 'app' stopped unexpectedly."
+                echo "[CYPRESS] ERROR: app container stopped"
                 docker logs app || true
                 exit 1
               }
 
               if [ "${elapsed}" -ge "${timeout}" ]; then
-                echo "[CYPRESS-E2E] ERROR: Service did not become ready within ${timeout}s."
+                echo "[CYPRESS] ERROR: readiness timed out (${timeout}s)"
                 docker logs app || true
                 exit 1
               fi
             done
           else
-            while ! curl -fsS "${HEALTH_URL}" > /dev/null; do
-              echo "[CYPRESS-E2E] Not ready yet... (${elapsed}s elapsed)"
+            while ! curl -fsS "${HEALTH_URL}" >/dev/null; do
               sleep "${interval}"
               elapsed=$((elapsed + interval))
-
               if [ "${elapsed}" -ge "${timeout}" ]; then
-                echo "[CYPRESS-E2E] ERROR: Service did not become ready within ${timeout}s."
+                echo "[CYPRESS] ERROR: readiness timed out (${timeout}s)"
                 exit 1
               fi
             done
           fi
 
-          echo "[CYPRESS-E2E] Service is ready: ${HEALTH_URL}"
-
-      # ------------------------------------------------------------------------
-      # Run Cypress E2E inside official Cypress image
-      #
-      # Key design:
-      # - Mount repo root into /e2e
-      # - Run from /e2e/<service_workdir>
-      # - Use explicit --config-file to avoid "not found" / TS loader issues
-      # - Join e2e-net in Docker mode so Cypress reaches `app`
-      # ------------------------------------------------------------------------
       - name: "Run Cypress E2E"
+        id: run_cypress
         env:
           CYPRESS_IMAGE: ${{ inputs.cypress_image }}
           SERVICE_WORKDIR: ${{ inputs.service_workdir }}
           SPEC_PATTERN: ${{ inputs.spec_pattern }}
           START_WITH_DOCKER: ${{ inputs.start_with_docker }}
+          NON_BLOCKING: ${{ inputs.non_blocking }}
         run: |
           set -euo pipefail
-
-          echo "[CYPRESS-E2E] non_blocking=${{ inputs.non_blocking }}"
-          echo "[CYPRESS-E2E] RunMode retries=${CYPRESS_RUN_MODE_RETRIES}"
-          echo "[CYPRESS-E2E] OpenMode retries=${CYPRESS_OPEN_MODE_RETRIES}"
-          echo "[CYPRESS-E2E] Base URL=${CYPRESS_BASE_URL}"
-          echo "[CYPRESS-E2E] Cypress image=${CYPRESS_IMAGE}"
 
           PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
           CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
 
           if [ ! -f "${GITHUB_WORKSPACE}/${SERVICE_WORKDIR}/cypress.config.cjs" ]; then
-            echo "[CYPRESS-E2E] ERROR: Missing ${SERVICE_WORKDIR}/cypress.config.cjs"
+            echo "[CYPRESS] ERROR: Missing ${SERVICE_WORKDIR}/cypress.config.cjs"
             exit 1
           fi
 
           SPEC_ARG=""
           if [ -n "${SPEC_PATTERN}" ]; then
             SPEC_ARG="--spec ${SPEC_PATTERN}"
-            echo "[CYPRESS-E2E] Spec filter: ${SPEC_ARG}"
           fi
 
           NET_ARGS=""
@@ -421,6 +310,7 @@ jobs:
             NET_ARGS="--network e2e-net"
           fi
 
+          set +e
           docker run --rm ${NET_ARGS} \
             -e CYPRESS_BASE_URL="${CYPRESS_BASE_URL}" \
             -e E2E_TARGET_URL="${E2E_TARGET_URL}" \
@@ -431,33 +321,46 @@ jobs:
             "${CYPRESS_IMAGE}" \
             npx cypress run --config-file "${CONFIG_FILE}" ${SPEC_ARG}
 
-      # ------------------------------------------------------------------------
-      # Upload Cypress artifacts (screenshots + videos)
-      #
-      # NOTE:
-      # - Videos are typically always generated (if video=true)
-      # - Screenshots only appear on failures (screenshotOnRunFailure=true)
-      # ------------------------------------------------------------------------
-      - name: "Upload Cypress artifacts"
+          exit_code=$?
+          set -e
+
+          if [ "${exit_code}" -ne 0 ] && [ "${NON_BLOCKING}" = "true" ]; then
+            echo "[CYPRESS] Non-blocking enabled. Continuing despite failures."
+            exit 0
+          fi
+
+          exit "${exit_code}"
+
+      - name: "Set E2E_STATUS for exporter (always)"
+        if: always()
+        run: |
+          set -euo pipefail
+          status="${{ job.status }}"
+          if [ "${status}" = "failure" ] || [ "${status}" = "cancelled" ]; then
+            echo "E2E_STATUS=failed" >> "${GITHUB_ENV}"
+          else
+            echo "E2E_STATUS=success" >> "${GITHUB_ENV}"
+          fi
+
+      - name: "Export E2E artifacts into .audit (always)"
+        if: always()
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
+          node "${GITHUB_WORKSPACE}/.github/scripts/export-e2e-artifacts.mjs" || true
+
+      - name: "Upload E2E artifacts (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}
-          path: |
-            ${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots
-            ${{ inputs.service_workdir }}/tests/e2e/cypress/videos
-          if-no-files-found: "ignore"
-          compression-level: 6
-          overwrite: false
-          include-hidden-files: false
+          name: ${{ inputs.artifact_name }}-${{ github.run_id }}
+          path: .audit/**/e2e/artifacts/**
+          if-no-files-found: warn
+          include-hidden-files: true
 
-      # ------------------------------------------------------------------------
-      # Cleanup Docker resources (Docker mode only)
-      # ------------------------------------------------------------------------
-      - name: "Cleanup Docker"
-        if: always() && inputs.start_with_docker
+      - name: "Cleanup Docker (docker mode)"
+        if: ${{ always() && inputs.start_with_docker }}
         run: |
           set -euo pipefail
-          echo "[CYPRESS-E2E] Cleaning up Docker resources..."
           docker rm -f app || true
           docker network rm e2e-net || true
