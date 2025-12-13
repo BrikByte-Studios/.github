@@ -384,7 +384,10 @@ function exportType(kind, sourceDirs, outDir) {
   let selected = files;
   if (kind === "screenshots") selected = filterByExt(files, [".png", ".jpg", ".jpeg"]);
   if (kind === "videos") selected = filterByExt(files, [".mp4", ".webm"]);
-  if (kind === "traces") selected = filterByExt(files, [".zip", ".json", ".har", ".log", ".txt"]);
+  if (kind === "traces") selected = filterByExt(files, [
+    ".zip", ".json", ".har", ".log", ".txt",
+    ".html", ".css", ".js", ".map"
+  ]);
 
   if (selected.length === 0) return { copied: 0, skipped: false };
 
