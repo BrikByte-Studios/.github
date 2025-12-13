@@ -1,41 +1,41 @@
 # ==============================================================================
-# Reusable Playwright E2E Workflow — BrikByteOS
+# Reusable Cypress E2E Workflow — BrikByteOS
 # ==============================================================================
 #
 # Reusable via workflow_call
 # Stable ENV CONTRACT
 # Always set E2E_STATUS
-# Always export via export-e2e-artifacts action (single source of truth)
+# Always export via export-e2e-artifacts.mjs
 # Always upload .audit/**/e2e/artifacts/**
-# No duplicated legacy audit logic
+# No duplicated legacy audit logic (single exporter is source of truth)
 #
 # ENV CONTRACT (stable across repos and runners)
 # ---------------------------------------------
 # Required:
 #   - E2E_TARGET_URL           Base URL of app under test
-#   - E2E_RUNNER               playwright
+#   - E2E_RUNNER               cypress
 #
 # Exporter contract:
 #   - E2E_STATUS               success|failed
 #   - E2E_VIDEO                true|false
-#   - E2E_TRACE                true|false
+#   - E2E_TRACE                true|false (typically false for Cypress)
 #   - E2E_ARTIFACTS_ALWAYS     true|false
 #   - E2E_AUDIT_DATE           YYYY-MM-DD (optional override)
 #   - E2E_AUDIT_ROOT           .audit/<date>/e2e/artifacts (optional override)
 #
 # Notes:
 # - This workflow intentionally does NOT implement legacy copy logic into .audit.
-# - The single source of truth for normalization is the reusable action:
-#     BrikByte-Studios/.github/.github/actions/export-e2e-artifacts@main
+# - The single source of truth for normalization is:
+#     .github/scripts/export-e2e-artifacts.mjs
 # ==============================================================================
 
-name: "E2E - Playwright (Reusable)"
+name: "E2E - Cypress (Reusable)"
 
 on:
   workflow_call:
     inputs:
       target_url:
-        description: "Base URL Playwright will test against."
+        description: "Base URL Cypress will test against."
         type: string
         required: false
         default: "https://staging.example.com"
@@ -58,35 +58,35 @@ on:
         required: false
         default: 3000
 
+      cypress_image:
+        description: "Cypress Docker image to run tests."
+        type: string
+        required: false
+        default: "cypress/included:13.12.0"
+
       spec_pattern:
-        description: "Optional Playwright test grep (passed to --grep)."
+        description: "Optional Cypress spec glob/path filter."
         type: string
         required: false
         default: ""
 
-      workers:
-        description: "Playwright workers (e.g. 50%, 4)."
-        type: string
-        required: false
-        default: "50%"
-
-      retries:
-        description: "Playwright retry count in CI."
+      run_mode_retries:
+        description: "Retries when running in CI."
         type: number
         required: false
-        default: 1
+        default: 2
 
-      trace_mode:
-        description: "Trace mode (on, on-first-retry, retain-on-failure, off)."
-        type: string
+      open_mode_retries:
+        description: "Retries when running via Cypress open."
+        type: number
         required: false
-        default: "on-first-retry"
+        default: 0
 
       artifact_name:
         description: "Artifact base name for logs/evidence."
         type: string
         required: false
-        default: "playwright-e2e"
+        default: "cypress-e2e"
 
       start_with_docker:
         description: "If true, build & start the app via Docker before tests."
@@ -101,31 +101,19 @@ on:
         default: "brikbyte-e2e-app"
 
       allow_disable:
-        description: "If true, repo can disable Playwright via disable_playwright_e2e input."
+        description: "If true, repo can disable Cypress via disable_cypress_e2e input."
         type: boolean
         required: false
         default: true
 
       non_blocking:
-        description: "If true, Playwright failures won't fail the workflow (stabilization)."
+        description: "If true, Cypress failures won't fail the workflow (stabilization)."
         type: boolean
         required: false
         default: false
 
-      disable_playwright_e2e:
-        description: "If true, skip Playwright run (repo emergency stop)."
-        type: boolean
-        required: false
-        default: false
-
-      enable_firefox:
-        description: "Enable Firefox project."
-        type: boolean
-        required: false
-        default: false
-
-      enable_webkit:
-        description: "Enable WebKit project."
+      disable_cypress_e2e:
+        description: "If true, skip Cypress run (repo emergency stop)."
         type: boolean
         required: false
         default: false
@@ -160,26 +148,27 @@ on:
     secrets: {}
 
 jobs:
-  playwright-e2e:
-    name: "Playwright E2E • ${{ matrix.browser }}"
+  cypress-e2e:
+    name: "Cypress E2E"
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.job_timeout_minutes }}
 
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
+        browser: [chrome, firefox, edge]
 
     env:
       # Runner contract
-      E2E_RUNNER: playwright
+      E2E_RUNNER: cypress
       E2E_TARGET_URL: ${{ inputs.target_url }}
 
-      # Playwright convention (read by your tests/config if you want)
-      PW_BROWSER: ${{ matrix.browser }}
-      PW_WORKERS: ${{ inputs.workers }}
-      PW_RETRIES: ${{ inputs.retries }}
-      PW_TRACE_MODE: ${{ inputs.trace_mode }}
+      # Cypress convention
+      CYPRESS_BASE_URL: ${{ inputs.target_url }}
+
+      # Retry controls (read by your cypress.config.cjs)
+      CYPRESS_RUN_MODE_RETRIES: ${{ inputs.run_mode_retries }}
+      CYPRESS_OPEN_MODE_RETRIES: ${{ inputs.open_mode_retries }}
 
       # Exporter toggles
       E2E_BROWSER: ${{ matrix.browser }}
@@ -196,21 +185,16 @@ jobs:
       - name: "Honor disable flag"
         env:
           ALLOW_DISABLE: ${{ inputs.allow_disable }}
-          DISABLE: ${{ inputs.disable_playwright_e2e }}
+          DISABLE: ${{ inputs.disable_cypress_e2e }}
         run: |
           set -euo pipefail
-          echo "[PLAYWRIGHT] allow_disable=${ALLOW_DISABLE}"
-          echo "[PLAYWRIGHT] disable_playwright_e2e=${DISABLE}"
+          echo "[CYPRESS] allow_disable=${ALLOW_DISABLE}"
+          echo "[CYPRESS] disable_cypress_e2e=${DISABLE}"
 
           if [ "${ALLOW_DISABLE}" = "true" ] && [ "${DISABLE}" = "true" ]; then
-            echo "[PLAYWRIGHT] Disabled by repo flag. Exiting early."
+            echo "[CYPRESS] Disabled by repo flag. Exiting early."
             exit 0
           fi
-
-      - name: "Setup Node.js"
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
 
       - name: "Create Docker network (docker mode)"
         if: ${{ inputs.start_with_docker }}
@@ -249,6 +233,7 @@ jobs:
           TARGET_URL: ${{ inputs.target_url }}
         run: |
           set -euo pipefail
+
           if [ "${START_WITH_DOCKER}" = "true" ]; then
             echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
           else
@@ -261,7 +246,7 @@ jobs:
           START_WITH_DOCKER: ${{ inputs.start_with_docker }}
         run: |
           set -euo pipefail
-          echo "[PLAYWRIGHT] Waiting for ${HEALTH_URL}"
+          echo "[CYPRESS] Waiting for ${HEALTH_URL}"
 
           timeout=120
           elapsed=0
@@ -269,7 +254,7 @@ jobs:
 
           if [ "${START_WITH_DOCKER}" = "true" ]; then
             docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
-              echo "[PLAYWRIGHT] ERROR: app container not running"
+              echo "[CYPRESS] ERROR: app container not running"
               docker logs app || true
               exit 1
             }
@@ -280,13 +265,13 @@ jobs:
               elapsed=$((elapsed + interval))
 
               docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
-                echo "[PLAYWRIGHT] ERROR: app container stopped"
+                echo "[CYPRESS] ERROR: app container stopped"
                 docker logs app || true
                 exit 1
               }
 
               if [ "${elapsed}" -ge "${timeout}" ]; then
-                echo "[PLAYWRIGHT] ERROR: readiness timed out (${timeout}s)"
+                echo "[CYPRESS] ERROR: readiness timed out (${timeout}s)"
                 docker logs app || true
                 exit 1
               fi
@@ -296,60 +281,57 @@ jobs:
               sleep "${interval}"
               elapsed=$((elapsed + interval))
               if [ "${elapsed}" -ge "${timeout}" ]; then
-                echo "[PLAYWRIGHT] ERROR: readiness timed out (${timeout}s)"
+                echo "[CYPRESS] ERROR: readiness timed out (${timeout}s)"
                 exit 1
               fi
             done
           fi
 
-      - name: "Install dependencies"
-        working-directory: ${{ inputs.service_workdir }}
-        run: |
-          set -euo pipefail
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
-
-      - name: "Install Playwright browsers"
-        working-directory: ${{ inputs.service_workdir }}
-        run: |
-          set -euo pipefail
-          npx playwright install --with-deps
-
-      - name: "Run Playwright E2E"
-        id: run_pw
-        if: >
-          matrix.browser == 'chromium' ||
-          (matrix.browser == 'firefox' && inputs.enable_firefox) ||
-          (matrix.browser == 'webkit' && inputs.enable_webkit)
-        working-directory: ${{ inputs.service_workdir }}
+      - name: "Run Cypress E2E"
+        id: run_cypress
         env:
+          CYPRESS_IMAGE: ${{ inputs.cypress_image }}
+          SERVICE_WORKDIR: ${{ inputs.service_workdir }}
           SPEC_PATTERN: ${{ inputs.spec_pattern }}
           START_WITH_DOCKER: ${{ inputs.start_with_docker }}
           NON_BLOCKING: ${{ inputs.non_blocking }}
         run: |
           set -euo pipefail
 
-          echo "[E2E] Browser=${PW_BROWSER}"
-          echo "[E2E] Target=${E2E_TARGET_URL}"
+          PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
+          CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
 
-          GREP_ARG=""
+          if [ ! -f "${GITHUB_WORKSPACE}/${SERVICE_WORKDIR}/cypress.config.cjs" ]; then
+            echo "[CYPRESS] ERROR: Missing ${SERVICE_WORKDIR}/cypress.config.cjs"
+            exit 1
+          fi
+
+          SPEC_ARG=""
           if [ -n "${SPEC_PATTERN}" ]; then
-            GREP_ARG="--grep ${SPEC_PATTERN}"
+            SPEC_ARG="--spec ${SPEC_PATTERN}"
+          fi
+
+          NET_ARGS=""
+          if [ "${START_WITH_DOCKER}" = "true" ]; then
+            NET_ARGS="--network e2e-net"
           fi
 
           set +e
-          npx playwright test \
-            --project="${PW_BROWSER}" \
-            ${GREP_ARG}
+          docker run --rm ${NET_ARGS} \
+            -e CYPRESS_BASE_URL="${CYPRESS_BASE_URL}" \
+            -e E2E_TARGET_URL="${E2E_TARGET_URL}" \
+            -e CYPRESS_RUN_MODE_RETRIES="${CYPRESS_RUN_MODE_RETRIES}" \
+            -e CYPRESS_OPEN_MODE_RETRIES="${CYPRESS_OPEN_MODE_RETRIES}" \
+            -v "${GITHUB_WORKSPACE}:/e2e" \
+            -w "${PROJECT_DIR}" \
+            "${CYPRESS_IMAGE}" \
+            npx cypress run --config-file "${CONFIG_FILE}" ${SPEC_ARG}
 
           exit_code=$?
           set -e
 
           if [ "${exit_code}" -ne 0 ] && [ "${NON_BLOCKING}" = "true" ]; then
-            echo "[PLAYWRIGHT] Non-blocking enabled. Continuing despite failures."
+            echo "[CYPRESS] Non-blocking enabled. Continuing despite failures."
             exit 0
           fi
 
@@ -370,7 +352,7 @@ jobs:
         if: always()
         uses: BrikByte-Studios/.github/.github/actions/export-e2e-artifacts@main
         with:
-          runner: "playwright"
+          runner: "cypress"
           browser: ${{ matrix.browser }}
           status: ${{ job.status }}
           video: ${{ inputs.e2e_video }}
@@ -384,8 +366,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-${{ github.run_id }}
-          path: ${{ inputs.service_workdir }}/.audit/**/e2e/artifacts/**
+          name: ${{ inputs.artifact_name }}-${{ github.run_id }}
+          path: .audit/**/e2e/artifacts/**
           if-no-files-found: warn
           include-hidden-files: true
 
