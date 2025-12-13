@@ -261,15 +261,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # e.g. e2e-audit-node-ui-example-chromium-workers-1-baseline
-          name: "e2e-audit-${{ inputs.service_workdir }}-${{ matrix.browser }}-workers-${{ env.PW_WORKERS }}${{ inputs.artifact_suffix }}"
-          path: |
-            ${{ inputs.service_workdir }}/${{ env.AUDIT_ROOT }}/${{ env.AUDIT_E2E_SUBPATH }}/${{ github.run_id }}-playwright-e2e-${{ env.PW_BROWSER }}-workers-${{ env.PW_WORKERS }}/
+          # e.g. e2e-audit-node-ui-example-chromium-workers-1-baseline
+          name: >
+            e2e-audit-${{ inputs.service_workdir }}-${{ matrix.browser }}
+            -workers-${{ env.PW_WORKERS }}${{ inputs.artifact_suffix }}
+
+          path: >
+            ${{ inputs.service_workdir }}/${{ env.AUDIT_ROOT }}
+            /${{ env.AUDIT_E2E_SUBPATH }}/${{ github.run_id }}
+            -playwright-e2e-${{ env.PW_BROWSER }}-workers-${{ env.PW_WORKERS }}/
           if-no-files-found: "ignore"
           compression-level: 6
           overwrite: false
           include-hidden-files: false
-
-
 
       - name: "Copy Playwright report into .audit/PIPE-E2E"
         if: always()

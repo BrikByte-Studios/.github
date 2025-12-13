@@ -177,14 +177,14 @@ on:
         type: boolean
         required: false
         default: false
-      
+
       disable_cypress_e2e:
         description: "If true, skip Cypress run (repo emergency stop)."
         type: boolean
         required: false
         default: false
-      
-    secrets: {}  
+
+    secrets: {}
 
 jobs:
   cypress-e2e:
