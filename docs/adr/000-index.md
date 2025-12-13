@@ -12,6 +12,10 @@
 | ADR-0007 | 7 | [Human-Readable Governance Summary (PIPE-GOV-8.2)](007-human-readable-governance-summary-pipe-gov-8-2.md) | 2025-11-22 | governance, policy-gate, ci-cd, devx | `007-human-readable-governance-summary-pipe-gov-8-2.md` |
 | ADR-0008 | 8 | [Container Build Strategy (Docker vs Kaniko)](008-container-build-strategy-docker-vs-kaniko.md) | 2025-11-26 | containers, ci-cd, security, platform | `008-container-build-strategy-docker-vs-kaniko.md` |
 | ADR-0011 | 11 | [Integration Test Audit Export Strategy](011-integration-test-audit-export-strategy.md) | 2025-12-10 | CI/CD • QA Automation • Governance | `011-integration-test-audit-export-strategy.md` |
+| ADR-0012 | 12 | [Implement Playwright Base E2E Workflow (PIPE-E2E-PLAYWRIGHT-BUILD-001)](012-implement-playwright-base-e2e-workflow-pipe-e2e-playwright-build-001.md) | 2025-12-11 | CI/CD • QA Automation • Governance • E2E Testing | `012-implement-playwright-base-e2e-workflow-pipe-e2e-playwright-build-001.md` |
+| ADR-0013 | 13 | [Cypress Base E2E Workflow for Deterministic CI Execution](013-cypress-base-e2e-workflow-for-deterministic-ci-execution.md) | 2025-12-12 | CI/CD • QA Automation • E2E Testing | `013-cypress-base-e2e-workflow-for-deterministic-ci-execution.md` |
+| ADR-0014 | 14 | [Selenium Grid E2E Workflow for Cross-Browser Testing](014-selenium-grid-e2e-workflow-for-cross-browser-testing.md) | 2025-12-13 | CI/CD • QA Automation • E2E Testing | `014-selenium-grid-e2e-workflow-for-cross-browser-testing.md` |
+| ADR-0015 | 15 | [Standardized E2E Screenshot, Video, and Trace Artifact Export Across Runners](015-standardized-e2e-screenshot-video-and-trace-artifact-export-across-runners.md) | 2025-12-13 | CI/CD • QA Automation • Audit & Governance | `015-standardized-e2e-screenshot-video-and-trace-artifact-export-across-runners.md` |
 
 ### Proposed
 
@@ -27,6 +31,25 @@
 | ADR-0010 | 10 | [Integration Secrets & Environment Provisioning Strategy](010-integration-secrets-environment-provisioning-strategy.md) | 2025-12-09 | security, ci-cd, integration-tests, brikpipe | `010-integration-secrets-environment-provisioning-strategy.md` |
 
 ## By Area
+
+### CI/CD • QA Automation • Audit & Governance
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0015 | 15 | [Standardized E2E Screenshot, Video, and Trace Artifact Export Across Runners](015-standardized-e2e-screenshot-video-and-trace-artifact-export-across-runners.md) | Accepted | 2025-12-13 | `015-standardized-e2e-screenshot-video-and-trace-artifact-export-across-runners.md` |
+
+### CI/CD • QA Automation • E2E Testing
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0013 | 13 | [Cypress Base E2E Workflow for Deterministic CI Execution](013-cypress-base-e2e-workflow-for-deterministic-ci-execution.md) | Accepted | 2025-12-12 | `013-cypress-base-e2e-workflow-for-deterministic-ci-execution.md` |
+| ADR-0014 | 14 | [Selenium Grid E2E Workflow for Cross-Browser Testing](014-selenium-grid-e2e-workflow-for-cross-browser-testing.md) | Accepted | 2025-12-13 | `014-selenium-grid-e2e-workflow-for-cross-browser-testing.md` |
+
+### CI/CD • QA Automation • Governance • E2E Testing
+
+| ID | Seq | Title | Status | Date | File |
+| --- | --- | --- | --- | --- | --- |
+| ADR-0012 | 12 | [Implement Playwright Base E2E Workflow (PIPE-E2E-PLAYWRIGHT-BUILD-001)](012-implement-playwright-base-e2e-workflow-pipe-e2e-playwright-build-001.md) | Accepted | 2025-12-11 | `012-implement-playwright-base-e2e-workflow-pipe-e2e-playwright-build-001.md` |
 
 ### CI/CD • QA Automation • Governance
 
