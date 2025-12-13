@@ -365,18 +365,15 @@ jobs:
           # -------------------------------------------------------------------------
           # Cypress artifact discovery (scoped to service_workdir)
           # -------------------------------------------------------------------------
-          CYPRESS_SCREENSHOTS_DIR: "${{ inputs.service_workdir }}/cypress/screenshots"
-          CYPRESS_VIDEOS_DIR: "${{ inputs.service_workdir }}/cypress/videos"
-
-          # Optional: only if you actually generate/store trace-like bundles
-          # (most Cypress setups won't have this)
-          CYPRESS_TRACES_DIR: "${{ inputs.service_workdir }}/cypress/traces"
+          CYPRESS_SCREENSHOTS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots"
+          CYPRESS_VIDEOS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/videos"
+          CYPRESS_REPORT_DIR: "${{ inputs.service_workdir }}/cypress/reports"   # optional if you generate one
 
       - name: "Upload E2E artifacts (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}-${{ github.run_id }}
+          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-${{ github.run_id }}
           path: .audit/**/e2e/artifacts/**
           if-no-files-found: warn
           include-hidden-files: true
