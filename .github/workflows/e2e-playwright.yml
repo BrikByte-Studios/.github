@@ -105,6 +105,12 @@ on:
         required: false
         default: "on-first-retry"
 
+      video_mode:
+        description: "Video mode (on, on-first-retry, retain-on-failure, off)"
+        type: string
+        required: false
+        default: "retain-on-failure"
+
       artifact_name:
         description: "Base artifact name"
         type: string
@@ -158,6 +164,8 @@ jobs:
       PW_WORKERS: ${{ inputs.workers }}
       PW_RETRIES: ${{ inputs.retries }}
       PW_TRACE_MODE: ${{ inputs.trace_mode }}
+      PW_VIDEO_MODE: ${{ inputs.video_mode }}
+
 
       # ----------------------------------------------------------
       # Artifact exporter contract
