@@ -21,6 +21,15 @@
  *     <browser>_<spec-name>_<timestamp>.mp4 (or .webm if source is webm and no conversion is done)
  * - Prints a short summary (counts + locations).
  *
+ * Size guardrails (Mitigation 2)
+ * ------------------------------
+ * - Enforces a max total budget for exported artifacts:
+ *     E2E_MAX_TOTAL_MB (default 300)
+ * - Enforces retention for videos (keep newest N):
+ *     E2E_MAX_VIDEOS (default 10)
+ * - If over budget, deletes oldest first in this order:
+ *     videos -> traces -> screenshots
+ *
  * Security notes
  * --------------
  * - The script never prints secret env values.
@@ -39,6 +48,12 @@ function envBool(name, defaultValue = "false") {
 
 function envStr(name, def = "") {
   return (process.env[name] ?? def).toString();
+}
+
+function envInt(name, def) {
+  const raw = envStr(name, String(def)).trim();
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : def;
 }
 
 /**
@@ -90,14 +105,6 @@ function exists(p) {
   }
 }
 
-function isFile(p) {
-  try {
-    return fs.statSync(p).isFile();
-  } catch {
-    return false;
-  }
-}
-
 function walkFiles(rootDir) {
   const out = [];
   if (!exists(rootDir)) return out;
@@ -133,6 +140,142 @@ function inferNameFromPath(filePath) {
   return slugify(noExt);
 }
 
+function warn(msg) {
+  console.log(`[E2E-ARTIFACTS] WARN: ${msg}`);
+}
+
+function info(msg) {
+  console.log(`[E2E-ARTIFACTS] ${msg}`);
+}
+
+function filterByExt(files, exts) {
+  const set = new Set(exts.map((e) => e.toLowerCase()));
+  return files.filter((f) => set.has(path.extname(f).toLowerCase()));
+}
+
+function fileSizeBytes(p) {
+  try {
+    return fs.statSync(p).size;
+  } catch {
+    return 0;
+  }
+}
+
+function fileMtimeMs(p) {
+  try {
+    return fs.statSync(p).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function sumBytes(files) {
+  return files.reduce((acc, f) => acc + fileSizeBytes(f), 0);
+}
+
+/**
+ * Keep only newest N video files inside:
+ *   <AUDIT_ROOT>/videos
+ *
+ * Deletes older videos by mtime ascending (oldest first).
+ * Best-effort; never throws.
+ */
+function enforceMaxVideos(auditRoot, maxVideos) {
+  const dir = path.join(auditRoot, "videos");
+  if (!exists(dir)) return { kept: 0, deleted: 0 };
+
+  const files = walkFiles(dir).sort((a, b) => fileMtimeMs(b) - fileMtimeMs(a));
+  if (files.length <= maxVideos) return { kept: files.length, deleted: 0 };
+
+  const toDelete = files.slice(maxVideos);
+  let deleted = 0;
+
+  for (const f of toDelete) {
+    try {
+      fs.unlinkSync(f);
+      deleted += 1;
+    } catch (e) {
+      warn(`MaxVideos: failed to delete ${path.basename(f)}: ${e?.message ?? String(e)}`);
+    }
+  }
+
+  return { kept: files.length - deleted, deleted };
+}
+
+/**
+ * Enforce total artifact budget under:
+ *   <AUDIT_ROOT>/{screenshots,videos,traces}
+ *
+ * Removal order (oldest first):
+ *   1) videos
+ *   2) traces
+ *   3) screenshots
+ *
+ * Best-effort; never throws; returns final size.
+ */
+function enforceTotalBudget(auditRoot, maxBytes) {
+  const videosDir = path.join(auditRoot, "videos");
+  const tracesDir = path.join(auditRoot, "traces");
+  const shotsDir = path.join(auditRoot, "screenshots");
+
+  const collect = () => ({
+    videos: walkFiles(videosDir),
+    traces: walkFiles(tracesDir),
+    screenshots: walkFiles(shotsDir),
+  });
+
+  const sortOldestFirst = (files) =>
+    files
+      .slice()
+      .sort((a, b) => fileMtimeMs(a) - fileMtimeMs(b));
+
+  const allFiles = () => {
+    const c = collect();
+    return [...c.videos, ...c.traces, ...c.screenshots];
+  };
+
+  let total = sumBytes(allFiles());
+  if (total <= maxBytes) return { trimmed: 0, totalBytes: total };
+
+  let trimmed = 0;
+
+  const tryDelete = (f) => {
+    const s = fileSizeBytes(f);
+    try {
+      fs.unlinkSync(f);
+      total = Math.max(0, total - s);
+      trimmed += 1;
+      return true;
+    } catch (e) {
+      warn(`Budget: failed to delete ${path.basename(f)}: ${e?.message ?? String(e)}`);
+      return false;
+    }
+  };
+
+  const c0 = collect();
+  const queues = [
+    sortOldestFirst(c0.videos),
+    sortOldestFirst(c0.traces),
+    sortOldestFirst(c0.screenshots),
+  ];
+
+  while (total > maxBytes) {
+    let removedAny = false;
+
+    for (const q of queues) {
+      while (q.length && total > maxBytes) {
+        const f = q.shift();
+        if (tryDelete(f)) removedAny = true;
+      }
+      if (total <= maxBytes) break;
+    }
+
+    if (!removedAny) break;
+  }
+
+  return { trimmed, totalBytes: total };
+}
+
 /**
  * Main config (env contract)
  *
@@ -145,6 +288,10 @@ function inferNameFromPath(filePath) {
  * - E2E_TRACE=true|false
  * - E2E_ARTIFACTS_ALWAYS=true|false
  *
+ * Guardrails:
+ * - E2E_MAX_TOTAL_MB (default 300)
+ * - E2E_MAX_VIDEOS   (default 10)
+ *
  * Audit roots:
  * - E2E_AUDIT_DATE  default today
  * - E2E_AUDIT_ROOT  default .audit/<date>/e2e/artifacts
@@ -155,9 +302,17 @@ const E2E_VIDEO = envBool("E2E_VIDEO", "false");
 const E2E_TRACE = envBool("E2E_TRACE", "false");
 const E2E_ARTIFACTS_ALWAYS = envBool("E2E_ARTIFACTS_ALWAYS", "false");
 
+// Guardrails (safe metadata; not secrets)
+const E2E_MAX_TOTAL_MB = envInt("E2E_MAX_TOTAL_MB", 300);
+const E2E_MAX_VIDEOS = envInt("E2E_MAX_VIDEOS", 10);
+const E2E_MAX_TOTAL_BYTES = Math.max(0, E2E_MAX_TOTAL_MB) * 1024 * 1024;
+
 // Avoid reading secrets: we only read simple metadata toggles.
 const AUDIT_DATE = envStr("E2E_AUDIT_DATE", todayAuditDate());
-const AUDIT_ROOT = envStr("E2E_AUDIT_ROOT", path.join(".audit", AUDIT_DATE, "e2e", "artifacts"));
+const AUDIT_ROOT = envStr(
+  "E2E_AUDIT_ROOT",
+  path.join(".audit", AUDIT_DATE, "e2e", "artifacts"),
+);
 
 const OUT_SCREENSHOTS = path.join(AUDIT_ROOT, "screenshots");
 const OUT_VIDEOS = path.join(AUDIT_ROOT, "videos");
@@ -172,78 +327,46 @@ const stamp = nowStamp();
 const sources = {
   playwright: {
     screenshots: [
-      envStr("PLAYWRIGHT_SCREENSHOTS_DIR", "test-results"), // screenshots often under test-results/**/.png
-      envStr("PLAYWRIGHT_REPORT_DIR", "playwright-report"), // sometimes screenshots attach here
+      envStr("PLAYWRIGHT_SCREENSHOTS_DIR", "test-results"),
+      envStr("PLAYWRIGHT_REPORT_DIR", "playwright-report"),
     ],
-    videos: [
-      envStr("PLAYWRIGHT_VIDEOS_DIR", "test-results"), // video.webm usually under test-results/**
-    ],
-    traces: [
-      envStr("PLAYWRIGHT_TRACES_DIR", "test-results"), // trace.zip usually under test-results/**
-    ],
+    videos: [envStr("PLAYWRIGHT_VIDEOS_DIR", "test-results")],
+    traces: [envStr("PLAYWRIGHT_TRACES_DIR", "test-results")],
   },
   cypress: {
     screenshots: [envStr("CYPRESS_SCREENSHOTS_DIR", "cypress/screenshots")],
     videos: [envStr("CYPRESS_VIDEOS_DIR", "cypress/videos")],
-    traces: [envStr("CYPRESS_TRACES_DIR", "")], // optional if you store DOM snapshots or extra logs
+    traces: [envStr("CYPRESS_TRACES_DIR", "")],
   },
   selenium: {
     screenshots: [envStr("SELENIUM_SCREENSHOTS_DIR", "e2e-artifacts/screenshots")],
-    videos: [envStr("SELENIUM_VIDEOS_DIR", "e2e-artifacts/videos")], // v2 with recorder container
-    traces: [envStr("SELENIUM_TRACES_DIR", "e2e-artifacts/traces")], // e.g., HAR/log bundles
+    videos: [envStr("SELENIUM_VIDEOS_DIR", "e2e-artifacts/videos")],
+    traces: [envStr("SELENIUM_TRACES_DIR", "e2e-artifacts/traces")],
   },
 };
 
-function warn(msg) {
-  console.log(`[E2E-ARTIFACTS] WARN: ${msg}`);
-}
-
-function info(msg) {
-  console.log(`[E2E-ARTIFACTS] ${msg}`);
-}
-
 /**
  * Decide whether we should export at all.
- *
- * - Always export on failure via workflow `if: always()` and `E2E_STATUS=failed`.
- * - On pass:
- *   - export only when E2E_ARTIFACTS_ALWAYS=true
- *   - optionally export videos/traces if E2E_VIDEO/E2E_TRACE toggled (teams may want always-on evidence)
  */
-const E2E_STATUS = envStr("E2E_STATUS", "").toLowerCase(); // expected: "success" | "failed"
+const E2E_STATUS = envStr("E2E_STATUS", "").toLowerCase(); // success | failed
 const isFailed = E2E_STATUS === "failed";
 
-/**
- * Export strategy:
- * - screenshots: always copy if present (esp. on failure)
- * - videos: copy on failure OR if E2E_VIDEO=true OR E2E_ARTIFACTS_ALWAYS=true
- * - traces: copy on failure OR if E2E_TRACE=true OR E2E_ARTIFACTS_ALWAYS=true
- */
 const exportScreenshots = isFailed || E2E_ARTIFACTS_ALWAYS;
 const exportVideos = isFailed || E2E_VIDEO || E2E_ARTIFACTS_ALWAYS;
 const exportTraces = isFailed || E2E_TRACE || E2E_ARTIFACTS_ALWAYS;
 
 if (!E2E_RUNNER) {
-  warn("E2E_RUNNER not set. Set E2E_RUNNER=playwright|cypress|selenium for best results.");
+  warn("E2E_RUNNER not set. Use E2E_RUNNER=playwright|cypress|selenium for best results.");
 }
 
 const runnerKey = (E2E_RUNNER && sources[E2E_RUNNER]) ? E2E_RUNNER : null;
 
-function filterByExt(files, exts) {
-  const set = new Set(exts.map((e) => e.toLowerCase()));
-  return files.filter((f) => set.has(path.extname(f).toLowerCase()));
-}
-
 /**
- * Normalize target names:
- * - For screenshots: png/jpg/jpeg
- * - For videos: mp4/webm (keep original ext unless converting)
- * - For traces: zip/json/har/log
+ * Export files by kind into audit folder with normalized naming.
  */
 function exportType(kind, sourceDirs, outDir) {
   if (!sourceDirs || sourceDirs.length === 0) return { copied: 0, skipped: true };
 
-  // Collect all files under each dir, ignoring missing dirs.
   const files = [];
   for (const dir of sourceDirs) {
     if (!dir) continue;
@@ -252,7 +375,6 @@ function exportType(kind, sourceDirs, outDir) {
     for (const f of walkFiles(abs)) files.push(f);
   }
 
-  // Runner-specific filters
   let selected = files;
   if (kind === "screenshots") selected = filterByExt(files, [".png", ".jpg", ".jpeg"]);
   if (kind === "videos") selected = filterByExt(files, [".mp4", ".webm"]);
@@ -266,8 +388,6 @@ function exportType(kind, sourceDirs, outDir) {
   for (const src of selected) {
     const ext = path.extname(src);
     const inferred = inferNameFromPath(src);
-
-    // Deterministic convention: <browser>_<name>_<timestamp>.<ext>
     const destName = `${E2E_BROWSER}_${inferred}_${stamp}${ext}`;
     const dest = path.join(outDir, destName);
 
@@ -275,30 +395,33 @@ function exportType(kind, sourceDirs, outDir) {
       copyFileSafe(src, dest);
       copied++;
     } catch (e) {
-      warn(`Failed to copy ${src} -> ${dest}: ${(e && e.message) ? e.message : e}`);
+      warn(`Copy failed: ${path.basename(src)} -> ${path.basename(dest)}: ${e?.message ?? String(e)}`);
     }
   }
+
   return { copied, skipped: false };
 }
 
 function main() {
   info(`Runner=${E2E_RUNNER || "unknown"}, Browser=${E2E_BROWSER}, Status=${E2E_STATUS || "unknown"}`);
   info(`Audit root: ${AUDIT_ROOT}`);
+  info(`Guardrails: max_total_mb=${E2E_MAX_TOTAL_MB}, max_videos=${E2E_MAX_VIDEOS}`);
 
-  // Ensure base dirs exist even if empty (helps predictable uploads).
   ensureDir(OUT_SCREENSHOTS);
   ensureDir(OUT_VIDEOS);
   ensureDir(OUT_TRACES);
 
   if (!runnerKey) {
-    warn("Unknown runner. Will attempt generic detection from common folders.");
+    warn("Unknown runner. Using generic detection from common folders.");
   }
 
-  const runnerSources = runnerKey ? sources[runnerKey] : {
-    screenshots: ["test-results", "playwright-report", "cypress/screenshots", "e2e-artifacts/screenshots"],
-    videos: ["test-results", "cypress/videos", "e2e-artifacts/videos"],
-    traces: ["test-results", "e2e-artifacts/traces"],
-  };
+  const runnerSources = runnerKey
+    ? sources[runnerKey]
+    : {
+        screenshots: ["test-results", "playwright-report", "cypress/screenshots", "e2e-artifacts/screenshots"],
+        videos: ["test-results", "cypress/videos", "e2e-artifacts/videos"],
+        traces: ["test-results", "e2e-artifacts/traces"],
+      };
 
   const results = {
     screenshots: { copied: 0 },
@@ -306,32 +429,53 @@ function main() {
     traces: { copied: 0 },
   };
 
-  if (exportScreenshots) {
-    results.screenshots = exportType("screenshots", runnerSources.screenshots, OUT_SCREENSHOTS);
-  } else {
-    info("Screenshots export skipped (not failed, and E2E_ARTIFACTS_ALWAYS=false).");
+  try {
+    if (exportScreenshots) {
+      results.screenshots = exportType("screenshots", runnerSources.screenshots, OUT_SCREENSHOTS);
+    } else {
+      info("Screenshots export skipped (not failed and E2E_ARTIFACTS_ALWAYS=false).");
+    }
+
+    if (exportVideos) {
+      results.videos = exportType("videos", runnerSources.videos, OUT_VIDEOS);
+    } else {
+      info("Videos export skipped (E2E_VIDEO=false and not failed).");
+    }
+
+    if (exportTraces) {
+      results.traces = exportType("traces", runnerSources.traces, OUT_TRACES);
+    } else {
+      info("Traces export skipped (E2E_TRACE=false and not failed).");
+    }
+  } catch (e) {
+    warn(`Unexpected export error: ${e?.message ?? String(e)}`);
   }
 
-  if (exportVideos) {
-    results.videos = exportType("videos", runnerSources.videos, OUT_VIDEOS);
-  } else {
-    info("Videos export skipped (E2E_VIDEO=false and not failed).");
+  // --------------------------------------------------------------------------
+  // Guardrails: retention + total budget (best-effort, never fatal)
+  // --------------------------------------------------------------------------
+  try {
+    const v = enforceMaxVideos(AUDIT_ROOT, E2E_MAX_VIDEOS);
+    if (v.deleted > 0) info(`Retention: deleted_videos=${v.deleted}, kept=${v.kept}`);
+  } catch (e) {
+    warn(`Retention step failed: ${e?.message ?? String(e)}`);
   }
 
-  if (exportTraces) {
-    results.traces = exportType("traces", runnerSources.traces, OUT_TRACES);
-  } else {
-    info("Traces export skipped (E2E_TRACE=false and not failed).");
+  try {
+    const b = enforceTotalBudget(AUDIT_ROOT, E2E_MAX_TOTAL_BYTES);
+    if (b.trimmed > 0) {
+      const mb = Math.round(b.totalBytes / 1024 / 1024);
+      info(`Budget: trimmed_files=${b.trimmed}, final_size_mb=${mb}`);
+    }
+  } catch (e) {
+    warn(`Budget step failed: ${e?.message ?? String(e)}`);
   }
 
-  // Summary (counts + paths)
   info("Export summary:");
   info(`  screenshots: ${results.screenshots.copied} -> ${OUT_SCREENSHOTS}`);
   info(`  videos:      ${results.videos.copied} -> ${OUT_VIDEOS}`);
   info(`  traces:      ${results.traces.copied} -> ${OUT_TRACES}`);
 
-  // Never fail the pipeline because artifacts are missing.
-  // The E2E runner test step is the source of truth for pass/fail.
   process.exit(0);
 }
 

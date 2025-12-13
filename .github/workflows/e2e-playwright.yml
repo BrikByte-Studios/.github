@@ -181,6 +181,9 @@ jobs:
           video: ${{ inputs.e2e_video }}
           trace: ${{ inputs.e2e_trace }}
           artifacts_always: ${{ inputs.e2e_artifacts_always }}
+        env:
+          E2E_MAX_TOTAL_MB: "300"
+          E2E_MAX_VIDEOS: "10"
 
       # -----------------------------------------------------------------------
       # ALWAYS: upload audit artifacts
