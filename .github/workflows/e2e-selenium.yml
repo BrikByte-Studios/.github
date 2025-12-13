@@ -429,9 +429,6 @@ jobs:
     if: ${{ inputs.enable_edge == true }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.edge_job_timeout_minutes }}
-
-
-
     env:
       E2E_TARGET_URL: ${{ inputs.target_url }}
       SELENIUM_REMOTE_URL: http://localhost:4444/wd/hub
