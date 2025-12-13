@@ -259,11 +259,11 @@ jobs:
       - name: "Wait for Selenium Grid readiness + node registration"
         uses: BrikByte-Studios/.github/.github/actions/selenium-grid-healthcheck@main
         with:
-            remote_url: ${{ env.SELENIUM_REMOTE_URL }}
-            timeout_seconds: ${{ inputs.grid_wait_seconds }}
-            require_chrome: "true"
-            require_firefox: "true"
-            require_edge: "false"
+          remote_url: ${{ env.SELENIUM_REMOTE_URL }}
+          timeout_seconds: ${{ inputs.grid_wait_seconds }}
+          require_chrome: "true"
+          require_firefox: "true"
+          require_edge: "false"
 
       - name: "Expose Remote WebDriver URL (workflow output)"
         id: set-remote
@@ -290,16 +290,37 @@ jobs:
           set -euo pipefail
           mkdir -p .audit/selenium-grid
 
-          docker compose -f "${{ inputs.compose_file }}" ps > .audit/selenium-grid/compose-ps.txt || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub > .audit/selenium-grid/selenium-hub.log || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color chrome        > .audit/selenium-grid/node-chrome.log || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color firefox       > .audit/selenium-grid/node-firefox.log || true
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            ps \
+            > .audit/selenium-grid/compose-ps.txt || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            logs --no-color selenium-hub \
+            > .audit/selenium-grid/selenium-hub.log || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            logs --no-color chrome \
+            > .audit/selenium-grid/node-chrome.log || true
+
+          docker compose \
+            -f "${{ inputs.compose_file }}" \
+            logs --no-color firefox \
+            > .audit/selenium-grid/node-firefox.log || true
 
           if [[ "${{ inputs.enable_edge }}" == "true" ]]; then
-            docker compose -f "${{ inputs.compose_file }}" logs --no-color edge > .audit/selenium-grid/node-edge.log || true
+            docker compose \
+              -f "${{ inputs.compose_file }}" \
+              logs --no-color edge \
+              > .audit/selenium-grid/node-edge.log || true
           fi
 
-          curl -fsS "http://localhost:4444/status" > .audit/selenium-grid/grid-status.json || true
+          curl -fsS \
+            "http://localhost:4444/status" \
+            > .audit/selenium-grid/grid-status.json || true
+
 
       - name: "Collect app-under-test logs (always)"
         if: ${{ always() && inputs.start_app == true }}
