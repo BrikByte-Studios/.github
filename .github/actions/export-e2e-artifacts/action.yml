@@ -1,6 +1,6 @@
 name: "Export E2E Artifacts to .audit"
-description: > 
-  "Normalizes Playwright/Cypress/Selenium artifacts into 
+description: >
+  "Normalizes Playwright/Cypress/Selenium artifacts into
   .audit/YYYY-MM-DD/e2e/artifacts with deterministic naming."
 
 inputs:
