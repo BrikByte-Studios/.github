@@ -368,7 +368,8 @@ function normalizeStatus(raw) {
   return v; // unknown stays unknown
 }
 
-const E2E_STATUS_RAW = envStr("E2E_STATUS", "");
+const E2E_STATUS_RAW =
+  envStr("E2E_STATUS", "") || envStr("E2E_STATUS_INPUT", "");
 const E2E_STATUS = normalizeStatus(E2E_STATUS_RAW);
 const isFailed = E2E_STATUS === "failed";
 
