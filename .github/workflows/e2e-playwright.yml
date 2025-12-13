@@ -129,6 +129,7 @@ jobs:
       - name: "Install dependencies"
         working-directory: ${{ inputs.service_workdir }}
         run: |
+          set -euo pipefail
           if [ -f package-lock.json ]; then
             npm ci
           else
@@ -138,6 +139,7 @@ jobs:
       - name: "Install Playwright browsers"
         working-directory: ${{ inputs.service_workdir }}
         run: |
+          set -euo pipefail
           npx playwright install --with-deps
 
       - name: "Run Playwright tests"
@@ -148,12 +150,9 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
         run: |
           set -euo pipefail
-
           echo "[E2E] Browser=${PW_BROWSER}"
           echo "[E2E] Target=${E2E_TARGET_URL}"
-
-          npx playwright test \
-            --project="${PW_BROWSER}"
+          npx playwright test --project="${PW_BROWSER}"
 
       # -----------------------------------------------------------------------
       # ALWAYS: normalize status for exporter
@@ -162,9 +161,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-
           status="${{ job.status }}"
-
           if [[ "${status}" == "failure" || "${status}" == "cancelled" ]]; then
             echo "E2E_STATUS=failed" >> "${GITHUB_ENV}"
           else
@@ -172,17 +169,18 @@ jobs:
           fi
 
       # -----------------------------------------------------------------------
-      # ALWAYS: export artifacts into .audit
+      # ALWAYS: export artifacts into .audit (via reusable action)
       # -----------------------------------------------------------------------
-      - name: "Export E2E artifacts into .audit (always)"
+      - name: "Export E2E artifacts (always)"
         if: always()
-        working-directory: ${{ inputs.service_workdir }}
-        run: |
-          set -euo pipefail
-
-          node \
-            "${GITHUB_WORKSPACE}/.github/scripts/export-e2e-artifacts.mjs" \
-            || true
+        uses: BrikByte-Studios/.github/.github/actions/export-e2e-artifacts@main
+        with:
+          runner: "playwright"
+          browser: ${{ matrix.browser }}
+          status: ${{ job.status }}
+          video: ${{ inputs.e2e_video }}
+          trace: ${{ inputs.e2e_trace }}
+          artifacts_always: ${{ inputs.e2e_artifacts_always }}
 
       # -----------------------------------------------------------------------
       # ALWAYS: upload audit artifacts
@@ -191,12 +189,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: >
-            ${{ inputs.artifact_name }}-${{ matrix.browser }}
-            -${{ github.run_id }}
-
-          path: |
-            .audit/**/e2e/artifacts/**
-
+          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-${{ github.run_id }}
+          path: ${{ inputs.service_workdir }}/.audit/**/e2e/artifacts/**
           if-no-files-found: warn
           include-hidden-files: true

@@ -1,0 +1,63 @@
+name: "Export E2E Artifacts to .audit"
+description: "Normalizes Playwright/Cypress/Selenium artifacts into .audit/YYYY-MM-DD/e2e/artifacts with deterministic naming."
+
+inputs:
+  runner:
+    description: "playwright|cypress|selenium"
+    required: true
+  browser:
+    description: "chrome|firefox|webkit|edge|..."
+    required: true
+  status:
+    description: "success|failed (used to decide export behavior)"
+    required: true
+
+  # Optional toggles
+  video:
+    description: "true|false (export videos always-on)"
+    required: false
+    default: "false"
+  trace:
+    description: "true|false (export traces always-on)"
+    required: false
+    default: "false"
+  artifacts_always:
+    description: "true|false (export even on success)"
+    required: false
+    default: "false"
+
+  # Optional overrides
+  audit_date:
+    description: "YYYY-MM-DD (default: computed by exporter if omitted)"
+    required: false
+    default: ""
+  audit_root:
+    description: "Override audit root (default: .audit/<date>/e2e/artifacts)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Setup Node (for exporter)"
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: "Run exporter"
+      shell: bash
+      env:
+        E2E_RUNNER: ${{ inputs.runner }}
+        E2E_BROWSER: ${{ inputs.browser }}
+        E2E_STATUS: ${{ inputs.status }}
+        E2E_VIDEO: ${{ inputs.video }}
+        E2E_TRACE: ${{ inputs.trace }}
+        E2E_ARTIFACTS_ALWAYS: ${{ inputs.artifacts_always }}
+        E2E_AUDIT_DATE: ${{ inputs.audit_date }}
+        E2E_AUDIT_ROOT: ${{ inputs.audit_root }}
+      run: |
+        set -euo pipefail
+        # Docstring:
+        # - Calls the shared exporter script.
+        # - Never fails the job if artifacts are missing; exporter exits 0.
+        node "${GITHUB_WORKSPACE}/.github/scripts/export-e2e-artifacts.mjs"

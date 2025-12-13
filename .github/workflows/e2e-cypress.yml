@@ -342,12 +342,16 @@ jobs:
             echo "E2E_STATUS=success" >> "${GITHUB_ENV}"
           fi
 
-      - name: "Export E2E artifacts into .audit (always)"
+      - name: "Export E2E artifacts (always)"
         if: always()
-        working-directory: ${{ inputs.service_workdir }}
-        run: |
-          set -euo pipefail
-          node "${GITHUB_WORKSPACE}/.github/scripts/export-e2e-artifacts.mjs" || true
+        uses: BrikByte-Studios/.github/.github/actions/export-e2e-artifacts@main
+        with:
+          runner: "cypress"
+          browser: ${{ matrix.browser }}
+          status: ${{ job.status }}
+          video: ${{ inputs.e2e_video }}
+          trace: ${{ inputs.e2e_trace }}
+          artifacts_always: ${{ inputs.e2e_artifacts_always }}
 
       - name: "Upload E2E artifacts (always)"
         if: always()
