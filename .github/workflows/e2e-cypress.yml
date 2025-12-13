@@ -153,6 +153,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.job_timeout_minutes }}
 
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, firefox, edge]
+
     env:
       # Runner contract
       E2E_RUNNER: cypress
@@ -166,6 +171,7 @@ jobs:
       CYPRESS_OPEN_MODE_RETRIES: ${{ inputs.open_mode_retries }}
 
       # Exporter toggles
+      E2E_BROWSER: ${{ matrix.browser }}
       E2E_VIDEO: ${{ inputs.e2e_video }}
       E2E_TRACE: ${{ inputs.e2e_trace }}
       E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
