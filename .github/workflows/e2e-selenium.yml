@@ -623,10 +623,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .audit/selenium-grid
-          docker compose -f "${{ inputs.compose_file }}" ps > .audit/selenium-grid/compose-ps.txt || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub > .audit/selenium-grid/selenium-hub.log || true
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color edge > .audit/selenium-grid/node-edge.log || true
-          curl -fsS "http://localhost:4444/status" > .audit/selenium-grid/grid-status.json || true
+
+          COMPOSE_FILE="${{ inputs.compose_file }}"
+
+          docker compose -f "$COMPOSE_FILE" ps \
+            > .audit/selenium-grid/compose-ps.txt || true
+
+          docker compose -f "$COMPOSE_FILE" logs --no-color selenium-hub \
+            > .audit/selenium-grid/selenium-hub.log || true
+
+          docker compose -f "$COMPOSE_FILE" logs --no-color edge \
+            > .audit/selenium-grid/node-edge.log || true
+
+          curl -fsS http://localhost:4444/status \
+            > .audit/selenium-grid/grid-status.json || true
 
       - name: "Teardown Selenium Grid (always)"
         if: always()
