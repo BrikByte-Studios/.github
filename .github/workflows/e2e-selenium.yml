@@ -367,11 +367,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-            name: ${{ inputs.artifact_name }}-${{ matrix.browser }}
-            path: |
-                ${{ inputs.service_workdir }}/.audit/**
-            if-no-files-found: warn
-            include-hidden-files: true
+          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}
+          path: |
+              ${{ inputs.service_workdir }}/.audit/**
+          if-no-files-found: warn
+          include-hidden-files: true
 
       # -----------------------------------------------------------------------
       # SAFEGUARD: Enforced teardown finalizer (always)
@@ -403,18 +403,26 @@ jobs:
           DOCSTRING
 
           echo "[FINALIZER] Cleaning Selenium Grid..."
-          (cd "${{ inputs.service_workdir }}" && docker compose -f "${{ inputs.compose_file }}" down -v) || true
+          (
+            cd "${{ inputs.service_workdir }}" \
+            && docker compose \
+              -f "${{ inputs.compose_file }}" \
+              down -v
+          ) || true
 
           if [[ "${{ inputs.start_app }}" == "true" ]]; then
             echo "[FINALIZER] Cleaning App Under Test..."
-            (cd "${{ inputs.app_service_workdir }}" && docker compose -f "${{ inputs.app_compose_file }}" down -v) || true
+            (
+              cd "${{ inputs.app_service_workdir }}" \
+              && docker compose \
+                -f "${{ inputs.app_compose_file }}" \
+                down -v
+            ) || true
           else
             echo "[FINALIZER] start_app=false, skipping app teardown."
           fi
 
           echo "[FINALIZER] Done ✅"
-
-
 
   e2e-edge:
     name: "Selenium E2E • edge"
