@@ -53,8 +53,12 @@ function envBool(name, defaultValue = "false") {
 }
 
 function envStr(name, def = "") {
-  return (process.env[name] ?? def).toString();
+  const v = process.env[name];
+  if (v === undefined) return def;
+  const s = v.toString();
+  return s.trim() === "" ? def : s;
 }
+
 
 function envInt(name, def) {
   const raw = envStr(name, String(def)).trim();
@@ -352,9 +356,20 @@ const sources = {
 };
 
 /**
- * Decide whether we should export at all.
+ * Normalize status across GitHub + BrikByte contract.
+ *
+ * GitHub job.status: success | failure | cancelled
+ * BrikByte contract: success | failed
  */
-const E2E_STATUS = envStr("E2E_STATUS", "").toLowerCase(); // success | failed
+function normalizeStatus(raw) {
+  const v = (raw ?? "").toString().toLowerCase().trim();
+  if (v === "failed" || v === "failure" || v === "cancelled" || v === "canceled") return "failed";
+  if (v === "success") return "success";
+  return v; // unknown stays unknown
+}
+
+const E2E_STATUS_RAW = envStr("E2E_STATUS", "");
+const E2E_STATUS = normalizeStatus(E2E_STATUS_RAW);
 const isFailed = E2E_STATUS === "failed";
 
 const exportScreenshots = isFailed || E2E_ARTIFACTS_ALWAYS;

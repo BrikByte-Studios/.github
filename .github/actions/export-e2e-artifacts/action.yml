@@ -11,7 +11,7 @@ inputs:
     description: "chrome|firefox|webkit|edge|..."
     required: true
   status:
-    description: "success|failed (used to decide export behavior)"
+    description: "GitHub job.status (success|failure|cancelled) or BrikByte (success|failed)"
     required: true
 
   # Optional toggles
@@ -46,17 +46,52 @@ runs:
       with:
         node-version: "20"
 
+    # -------------------------------------------------------------------------
+    # Normalize status across GitHub + BrikByte contract
+    # - GitHub: success | failure | cancelled
+    # - BrikByte: success | failed
+    # -------------------------------------------------------------------------
+    - name: "Normalize status"
+      shell: bash
+      run: |
+        set -euo pipefail
+        s="${{ inputs.status }}"
+        s="$(echo "$s" | tr '[:upper:]' '[:lower:]' | xargs)"
+
+        if [[ "$s" == "failure" || "$s" == "failed" || "$s" == "cancelled" || "$s" == "canceled" ]]; then
+          echo "E2E_STATUS=failed" >> "$GITHUB_ENV"
+        elif [[ "$s" == "success" ]]; then
+          echo "E2E_STATUS=success" >> "$GITHUB_ENV"
+        else
+          # Unknown status - preserve for debugging but don't break exporter
+          echo "E2E_STATUS=$s" >> "$GITHUB_ENV"
+        fi
+
+    # -------------------------------------------------------------------------
+    # Only set audit overrides if non-empty (so exporter defaults aren't clobbered)
+    # -------------------------------------------------------------------------
+    - name: "Apply audit overrides (optional)"
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ -n "${{ inputs.audit_date }}" ]]; then
+          echo "E2E_AUDIT_DATE=${{ inputs.audit_date }}" >> "$GITHUB_ENV"
+        fi
+
+        if [[ -n "${{ inputs.audit_root }}" ]]; then
+          echo "E2E_AUDIT_ROOT=${{ inputs.audit_root }}" >> "$GITHUB_ENV"
+        fi
+
     - name: "Run exporter"
       shell: bash
       env:
         E2E_RUNNER: ${{ inputs.runner }}
         E2E_BROWSER: ${{ inputs.browser }}
-        E2E_STATUS: ${{ inputs.status }}
+        # E2E_STATUS comes from $GITHUB_ENV after normalization
         E2E_VIDEO: ${{ inputs.video }}
         E2E_TRACE: ${{ inputs.trace }}
         E2E_ARTIFACTS_ALWAYS: ${{ inputs.artifacts_always }}
-        E2E_AUDIT_DATE: ${{ inputs.audit_date }}
-        E2E_AUDIT_ROOT: ${{ inputs.audit_root }}
       run: |
         set -euo pipefail
         # Docstring:
