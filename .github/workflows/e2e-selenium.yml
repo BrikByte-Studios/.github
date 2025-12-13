@@ -1,7 +1,7 @@
 name: "E2E (Selenium Grid • Cross-Browser)"
 
 # -----------------------------------------------------------------------------
-# Reusable workflow: Selenium Grid E2E
+# Reusable workflow: Selenium Grid E2E (BrikByteOS standard)
 #
 # ENV CONTRACT (stable across repos and runners):
 #   Required:
@@ -19,6 +19,7 @@ name: "E2E (Selenium Grid • Cross-Browser)"
 #     - E2E_AUDIT_ROOT        .audit/<date>/e2e/artifacts (optional override)
 #
 # Always-on behavior:
+#   - Always normalize status into E2E_STATUS (success|failed)
 #   - Always export artifacts (best-effort, non-fatal)
 #   - Always upload .audit evidence bundles
 #   - Always teardown docker compose (grid + optional app)
@@ -59,6 +60,12 @@ on:
         type: string
         default: "."
 
+      app_wait_seconds:
+        description: "Max seconds to wait for app health endpoint (if health_url provided)"
+        required: false
+        type: number
+        default: 120
+
       # -----------------------------------------------------------------------
       # Selenium Grid
       # -----------------------------------------------------------------------
@@ -74,6 +81,18 @@ on:
         type: string
         default: "."
 
+      enable_edge:
+        description: "Enable Edge node in grid and run Edge tests"
+        required: false
+        type: boolean
+        default: false
+
+      grid_wait_seconds:
+        description: "Max seconds to wait for Selenium Grid + node registration"
+        required: false
+        type: number
+        default: 120
+
       # -----------------------------------------------------------------------
       # Runner
       # -----------------------------------------------------------------------
@@ -88,60 +107,14 @@ on:
         type: string
 
       # -----------------------------------------------------------------------
-      # Options / Timeouts
+      # Artifact / audit controls
       # -----------------------------------------------------------------------
-      enable_edge:
-        description: "Enable Edge node in grid and run Edge tests"
-        required: false
-        type: boolean
-        default: false
-
-      grid_wait_seconds:
-        description: "Max seconds to wait for Selenium Grid + node registration"
-        required: false
-        type: number
-        default: 120
-
-      app_wait_seconds:
-        description: "Max seconds to wait for app health endpoint (if health_url provided)"
-        required: false
-        type: number
-        default: 120
-
       artifact_name:
         description: "Base name for uploaded logs/artifacts"
         required: false
         type: string
         default: "selenium-grid-e2e"
 
-      # -----------------------------------------------------------------------
-      # Safeguards / Job Timeouts
-      # -----------------------------------------------------------------------
-      job_timeout_minutes:
-        description: >
-          Job timeout in minutes for matrix jobs.
-          Prevents hung Selenium sessions.
-        required: false
-        type: number
-        default: 30
-
-      edge_job_timeout_minutes:
-        description: "Job timeout in minutes (edge job) to avoid hung Selenium sessions."
-        required: false
-        type: number
-        default: 30
-
-      enforce_teardown:
-        description: >
-          If true, always attempt docker compose down -v
-          for grid and app in finalizer steps.
-        required: false
-        type: boolean
-        default: true
-
-      # -----------------------------------------------------------------------
-      # Artifact export toggles (cross-runner standard)
-      # -----------------------------------------------------------------------
       e2e_video:
         description: "If true, always export videos where supported."
         required: false
@@ -160,12 +133,55 @@ on:
         type: boolean
         default: false
 
+      # Optional overrides for selenium artifact discovery roots
+      selenium_screenshots_dir:
+        description: "Override source screenshots dir (absolute or relative to repo root)"
+        required: false
+        type: string
+        default: ""
+
+      selenium_videos_dir:
+        description: "Override source videos dir (absolute or relative to repo root)"
+        required: false
+        type: string
+        default: ""
+
+      selenium_logs_dir:
+        description: "Override source logs dir (absolute or relative to repo root)"
+        required: false
+        type: string
+        default: ""
+
+      # -----------------------------------------------------------------------
+      # Safeguards / Job Timeouts
+      # -----------------------------------------------------------------------
+      job_timeout_minutes:
+        description: "Job timeout in minutes for matrix jobs (prevents hung Selenium sessions)."
+        required: false
+        type: number
+        default: 30
+
+      edge_job_timeout_minutes:
+        description: "Job timeout in minutes (edge job) to avoid hung Selenium sessions."
+        required: false
+        type: number
+        default: 30
+
+      enforce_teardown:
+        description: "If true, always attempt docker compose down -v for grid and app in finalizer."
+        required: false
+        type: boolean
+        default: true
+
     outputs:
       selenium_remote_url:
         description: "Remote WebDriver URL for test runners"
         value: ${{ jobs.e2e.outputs.selenium_remote_url }}
 
 jobs:
+  # ----------------------------------------------------------------------------
+  # Matrix job: chrome + firefox
+  # ----------------------------------------------------------------------------
   e2e:
     name: "Selenium E2E • ${{ matrix.browser }}"
     runs-on: ubuntu-latest
@@ -221,7 +237,7 @@ jobs:
           docker compose version
 
       # -----------------------------------------------------------------------
-      # OPTIONAL: Start the app under test (for localhost CI)
+      # OPTIONAL: Start the app under test (localhost CI)
       # -----------------------------------------------------------------------
       - name: "Validate app inputs (if start_app=true)"
         if: ${{ inputs.start_app == true }}
@@ -239,13 +255,6 @@ jobs:
         working-directory: ${{ inputs.app_service_workdir }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Start app under test (docker compose)
-
-          Purpose:
-            Brings up the app under test for localhost-based E2E within CI.
-          DOCSTRING
-
           docker compose -f "${{ inputs.app_compose_file }}" up -d --build
           docker compose -f "${{ inputs.app_compose_file }}" ps
 
@@ -253,13 +262,6 @@ jobs:
         if: ${{ inputs.health_url != '' }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Wait for app readiness
-
-          Purpose:
-            Ensures the app's health endpoint responds before we start the Grid + tests.
-          DOCSTRING
-
           echo "[APP] Waiting for: ${{ inputs.health_url }}"
           timeout=${{ inputs.app_wait_seconds }}
           elapsed=0
@@ -280,14 +282,6 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Start Selenium Grid
-
-          Notes:
-            - Edge is an optional compose profile.
-            - Grid readiness is validated by a dedicated healthcheck step.
-          DOCSTRING
-
           if [[ "${{ inputs.enable_edge }}" == "true" ]]; then
             docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
           else
@@ -333,52 +327,88 @@ jobs:
           eval "${{ inputs.test_command }}"
 
       # -----------------------------------------------------------------------
-      # ALWAYS EXPORT: normalize runner artifacts into .audit
+      # ALWAYS: normalize status for exporter (success|failed)
       # -----------------------------------------------------------------------
-      - name: "Set E2E_STATUS for exporter (always)"
+      - name: "Normalize E2E_STATUS (always)"
         if: always()
+        id: e2e_status
+        shell: bash
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Set E2E_STATUS for exporter
-
-          Purpose:
-            Exporter uses E2E_STATUS + toggles to decide whether to export:
-              - always on failure
-              - optional always-on via E2E_ARTIFACTS_ALWAYS=true
-          DOCSTRING
-
-          status="${{ job.status }}"
-          if [[ "${status}" == "failure" || "${status}" == "cancelled" ]]; then
-            echo "E2E_STATUS=failed" >> "${GITHUB_ENV}"
+          s="${{ job.status }}"
+          if [[ "$s" == "failure" || "$s" == "cancelled" ]]; then
+            echo "E2E_STATUS=failed" >> "$GITHUB_ENV"
           else
-            echo "E2E_STATUS=success" >> "${GITHUB_ENV}"
+            echo "E2E_STATUS=success" >> "$GITHUB_ENV"
           fi
 
+      # -----------------------------------------------------------------------
+      # ALWAYS: resolve selenium artifact roots (language-aware, overrideable)
+      # -----------------------------------------------------------------------
+      - name: "Resolve Selenium artifact roots (always)"
+        if: always()
+        id: selenium-roots
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          lang="${{ inputs.runner_language }}"
+          wd="${{ inputs.service_workdir }}"
+
+          shots="${{ inputs.selenium_screenshots_dir }}"
+          vids="${{ inputs.selenium_videos_dir }}"
+          logs="${{ inputs.selenium_logs_dir }}"
+
+          # Prefer explicit overrides from caller; otherwise derive defaults.
+          if [[ -z "$shots" || -z "$vids" || -z "$logs" ]]; then
+            if [[ "$lang" == "java" ]]; then
+              shots="${shots:-${wd}/target/selenium-artifacts/screenshots}"
+              vids="${vids:-${wd}/target/selenium-artifacts/videos}"
+              logs="${logs:-${wd}/target/surefire-reports}"
+            elif [[ "$lang" == "python" ]]; then
+              shots="${shots:-${wd}/artifacts/selenium/screenshots}"
+              vids="${vids:-${wd}/artifacts/selenium/videos}"
+              logs="${logs:-${wd}/artifacts/selenium/logs}"
+            else
+              echo "[ROOTS] ERROR: unknown runner_language=$lang"
+              exit 1
+            fi
+          fi
+
+          echo "[ROOTS] shots=$shots"
+          echo "[ROOTS] vids=$vids"
+          echo "[ROOTS] logs=$logs"
+
+          echo "shots=$shots" >> "$GITHUB_OUTPUT"
+          echo "vids=$vids" >> "$GITHUB_OUTPUT"
+          echo "logs=$logs" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # ALWAYS: export E2E artifacts into .audit (best-effort)
+      # -----------------------------------------------------------------------
       - name: "Export E2E artifacts (always)"
         if: always()
         uses: BrikByte-Studios/.github/.github/actions/export-e2e-artifacts@main
         with:
           runner: "selenium"
           browser: ${{ matrix.browser }}
-          status: ${{ job.status }}
+          status: ${{ steps.e2e_status.outputs.status }}
           video: ${{ inputs.e2e_video }}
           trace: ${{ inputs.e2e_trace }}
           artifacts_always: ${{ inputs.e2e_artifacts_always }}
         env:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
-          # ---------------------------------------------------------------------
-          # Selenium artifact source directories
-          # (These are read by export-e2e-artifacts.mjs)
-          # ---------------------------------------------------------------------
-          SELENIUM_SCREENSHOTS_DIR: "e2e-artifacts/screenshots"
-          SELENIUM_VIDEOS_DIR: "e2e-artifacts/videos"
-          SELENIUM_TRACES_DIR: "e2e-artifacts/traces"
 
+          RUNNER_LANGUAGE: ${{ inputs.runner_language }}
+          SERVICE_WORKDIR: ${{ inputs.service_workdir }}
+
+          SELENIUM_SCREENSHOTS_DIR: ${{ steps.selenium-roots.outputs.shots }}
+          SELENIUM_VIDEOS_DIR: ${{ steps.selenium-roots.outputs.vids }}
+          SELENIUM_LOGS_DIR: ${{ steps.selenium-roots.outputs.logs }}
 
       # -----------------------------------------------------------------------
-      # ALWAYS COLLECT: grid + app logs (audit-friendly)
+      # ALWAYS: collect grid + app logs (audit-friendly)
       # -----------------------------------------------------------------------
       - name: "Collect Selenium Grid logs (always)"
         if: always()
@@ -386,7 +416,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .audit/selenium-grid
-
           COMPOSE_FILE="${{ inputs.compose_file }}"
 
           docker compose -f "$COMPOSE_FILE" ps \
@@ -431,7 +460,7 @@ jobs:
           fi
 
       # -----------------------------------------------------------------------
-      # ALWAYS TEARDOWN
+      # ALWAYS: teardown
       # -----------------------------------------------------------------------
       - name: "Teardown Selenium Grid (always)"
         if: always()
@@ -448,7 +477,7 @@ jobs:
           docker compose -f "${{ inputs.app_compose_file }}" down -v || true
 
       # -----------------------------------------------------------------------
-      # ALWAYS UPLOAD: evidence bundle + logs
+      # ALWAYS: upload evidence bundle + logs
       # -----------------------------------------------------------------------
       - name: "Upload E2E audit artifacts (always)"
         if: always()
@@ -467,20 +496,6 @@ jobs:
         if: ${{ always() && inputs.enforce_teardown == true }}
         run: |
           set +e
-          : <<'DOCSTRING'
-          FINALIZER: enforce teardown (grid + app)
-
-          Purpose:
-            Guarantee cleanup even if:
-              - earlier teardown steps were skipped or errored,
-              - job was cancelled,
-              - runner crashed mid-session.
-
-          Notes:
-            - Uses docker compose down -v to remove volumes.
-            - Must never fail the job (set +e).
-          DOCSTRING
-
           SERVICE_WORKDIR="${{ inputs.service_workdir }}"
           COMPOSE_FILE="${{ inputs.compose_file }}"
 
@@ -564,6 +579,7 @@ jobs:
         if: ${{ inputs.health_url != '' }}
         run: |
           set -euo pipefail
+          echo "[APP] Waiting for: ${{ inputs.health_url }}"
           timeout=${{ inputs.app_wait_seconds }}
           elapsed=0
           until curl -fsS "${{ inputs.health_url }}" >/dev/null 2>&1; do
@@ -580,6 +596,7 @@ jobs:
         run: |
           set -euo pipefail
           docker compose -f "${{ inputs.compose_file }}" --profile edge up -d
+          docker compose -f "${{ inputs.compose_file }}" ps
 
       - name: "Install jq (for reliable /status parsing)"
         run: |
@@ -600,18 +617,59 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
         run: |
           set -euo pipefail
+          echo "[E2E] BROWSER=${BROWSER}"
+          echo "[E2E] E2E_TARGET_URL=${E2E_TARGET_URL}"
           eval "${{ inputs.test_command }}"
 
-      - name: "Set E2E_STATUS for exporter (always)"
+      - name: "Normalize E2E_STATUS (always)"
         if: always()
+        id: e2e_status
+        shell: bash
         run: |
           set -euo pipefail
-          status="${{ job.status }}"
-          if [[ "${status}" == "failure" || "${status}" == "cancelled" ]]; then
-            echo "E2E_STATUS=failed" >> "${GITHUB_ENV}"
+          s="${{ job.status }}"
+          if [[ "$s" == "failure" || "$s" == "cancelled" ]]; then
+            echo "E2E_STATUS=failed" >> "$GITHUB_ENV"
           else
-            echo "E2E_STATUS=success" >> "${GITHUB_ENV}"
+            echo "E2E_STATUS=success" >> "$GITHUB_ENV"
           fi
+
+      - name: "Resolve Selenium artifact roots (always)"
+        if: always()
+        id: selenium-roots
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          lang="${{ inputs.runner_language }}"
+          wd="${{ inputs.service_workdir }}"
+
+          shots="${{ inputs.selenium_screenshots_dir }}"
+          vids="${{ inputs.selenium_videos_dir }}"
+          logs="${{ inputs.selenium_logs_dir }}"
+
+          if [[ -z "$shots" || -z "$vids" || -z "$logs" ]]; then
+            if [[ "$lang" == "java" ]]; then
+              shots="${shots:-${wd}/target/selenium-artifacts/screenshots}"
+              vids="${vids:-${wd}/target/selenium-artifacts/videos}"
+              logs="${logs:-${wd}/target/surefire-reports}"
+            elif [[ "$lang" == "python" ]]; then
+              shots="${shots:-${wd}/artifacts/selenium/screenshots}"
+              vids="${vids:-${wd}/artifacts/selenium/videos}"
+              logs="${logs:-${wd}/artifacts/selenium/logs}"
+            else
+              echo "[ROOTS] ERROR: unknown runner_language=$lang"
+              exit 1
+            fi
+          fi
+
+          echo "[ROOTS] shots=$shots"
+          echo "[ROOTS] vids=$vids"
+          echo "[ROOTS] logs=$logs"
+
+          echo "shots=$shots" >> "$GITHUB_OUTPUT"
+          echo "vids=$vids" >> "$GITHUB_OUTPUT"
+          echo "logs=$logs" >> "$GITHUB_OUTPUT"
 
       - name: "Export E2E artifacts (always)"
         if: always()
@@ -619,11 +677,20 @@ jobs:
         with:
           runner: "selenium"
           browser: "edge"
-          status: ${{ job.status }}
+          status: ${{ steps.e2e_status.outputs.status }}
           video: ${{ inputs.e2e_video }}
           trace: ${{ inputs.e2e_trace }}
           artifacts_always: ${{ inputs.e2e_artifacts_always }}
+        env:
+          E2E_MAX_TOTAL_MB: "300"
+          E2E_MAX_VIDEOS: "10"
 
+          RUNNER_LANGUAGE: ${{ inputs.runner_language }}
+          SERVICE_WORKDIR: ${{ inputs.service_workdir }}
+
+          SELENIUM_SCREENSHOTS_DIR: ${{ steps.selenium-roots.outputs.shots }}
+          SELENIUM_VIDEOS_DIR: ${{ steps.selenium-roots.outputs.vids }}
+          SELENIUM_LOGS_DIR: ${{ steps.selenium-roots.outputs.logs }}
 
       - name: "Collect Selenium Grid logs (always)"
         if: always()
@@ -631,7 +698,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .audit/selenium-grid
-
           COMPOSE_FILE="${{ inputs.compose_file }}"
 
           docker compose -f "$COMPOSE_FILE" ps \
@@ -666,7 +732,7 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}-edge
           path: |
-            ${{ inputs.service_workdir }}/.audit/**
+            .audit/**
           if-no-files-found: warn
           include-hidden-files: true
 
@@ -674,7 +740,6 @@ jobs:
         if: ${{ always() && inputs.enforce_teardown == true }}
         run: |
           set +e
-
           SERVICE_WORKDIR="${{ inputs.service_workdir }}"
           COMPOSE_FILE="${{ inputs.compose_file }}"
 

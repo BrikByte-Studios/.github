@@ -350,8 +350,8 @@ const sources = {
   },
   selenium: {
     screenshots: [envStr("SELENIUM_SCREENSHOTS_DIR", "e2e-artifacts/screenshots")],
-    videos: [envStr("SELENIUM_VIDEOS_DIR", "e2e-artifacts/videos")],
-    traces: [envStr("SELENIUM_TRACES_DIR", "e2e-artifacts/traces")],
+    videos:      [envStr("SELENIUM_VIDEOS_DIR", "e2e-artifacts/videos")],
+    traces:      [envStr("SELENIUM_TRACES_DIR", envStr("SELENIUM_LOGS_DIR", "e2e-artifacts/traces"))],
   },
 };
 
