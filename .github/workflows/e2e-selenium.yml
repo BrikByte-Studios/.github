@@ -368,6 +368,13 @@ jobs:
         env:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
+          # ---------------------------------------------------------------------
+          # Selenium artifact source directories
+          # (These are read by export-e2e-artifacts.mjs)
+          # ---------------------------------------------------------------------
+          SELENIUM_SCREENSHOTS_DIR: "e2e-artifacts/screenshots"
+          SELENIUM_VIDEOS_DIR: "e2e-artifacts/videos"
+          SELENIUM_TRACES_DIR: "e2e-artifacts/traces"
 
 
       # -----------------------------------------------------------------------
@@ -449,7 +456,7 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}-${{ matrix.browser }}
           path: |
-            ${{ inputs.service_workdir }}/.audit/**
+            .audit/**
           if-no-files-found: warn
           include-hidden-files: true
 
