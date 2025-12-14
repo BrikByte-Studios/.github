@@ -337,6 +337,21 @@ jobs:
 
           exit "${exit_code}"
 
+      # -----------------------------------------------------------------------
+      # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
+      # -----------------------------------------------------------------------
+      - name: "Capture E2E diagnostics (always)"
+        if: always()
+        uses: BrikByte-Studios/.github/.github/actions/capture-e2e-diagnostics@main
+        with:
+          runner: "cypress"
+          browser: ${{ matrix.browser }}
+          status: ${{ job.status }}
+        env:
+          CYPRESS_DIAG_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/diagnostics"
+          PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
+          SELENIUM_DIAG_DIR: "target/selenium-artifacts/diagnostics"
+
       - name: "Set E2E_STATUS for exporter (always)"
         if: always()
         run: |

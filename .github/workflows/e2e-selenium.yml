@@ -384,6 +384,26 @@ jobs:
           echo "logs=$logs" >> "$GITHUB_OUTPUT"
 
       # -----------------------------------------------------------------------
+      # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
+      # -----------------------------------------------------------------------
+      - name: "Capture E2E diagnostics (always)"
+        if: always()
+        uses: BrikByte-Studios/.github/.github/actions/capture-e2e-diagnostics@main
+        with:
+          runner: "selenium"
+          browser: ${{ matrix.browser }}
+          status: ${{ job.status }}
+        env:
+          # Where Selenium diagnostics producer writes files
+          # (Java example: target/selenium-artifacts/diagnostics)
+          SELENIUM_DIAG_DIR: "${{ inputs.service_workdir }}/target/selenium-artifacts/diagnostics"
+
+          # Future-proofing / no-op here for other runners
+          PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
+          CYPRESS_DIAG_DIR: "cypress/diagnostics"
+
+
+      # -----------------------------------------------------------------------
       # ALWAYS: export E2E artifacts into .audit (best-effort)
       # -----------------------------------------------------------------------
       - name: "Export E2E artifacts (always)"
@@ -670,6 +690,22 @@ jobs:
           echo "shots=$shots" >> "$GITHUB_OUTPUT"
           echo "vids=$vids" >> "$GITHUB_OUTPUT"
           echo "logs=$logs" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
+      # -----------------------------------------------------------------------
+      - name: "Capture E2E diagnostics (always)"
+        if: always()
+        uses: BrikByte-Studios/.github/.github/actions/capture-e2e-diagnostics@main
+        with:
+          runner: "selenium"
+          browser: "edge"
+          status: ${{ job.status }}
+        env:
+          SELENIUM_DIAG_DIR: "${{ inputs.service_workdir }}/target/selenium-artifacts/diagnostics"
+          PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
+          CYPRESS_DIAG_DIR: "cypress/diagnostics"
+
 
       - name: "Export E2E artifacts (always)"
         if: always()

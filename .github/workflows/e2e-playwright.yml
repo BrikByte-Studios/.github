@@ -289,6 +289,24 @@ jobs:
             --project="${PW_BROWSER}"
 
       # -----------------------------------------------------------------------
+      # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
+      # -----------------------------------------------------------------------
+      - name: "Capture E2E diagnostics (always)"
+        if: always()
+        uses: BrikByte-Studios/.github/.github/actions/capture-e2e-diagnostics@main
+        with:
+          runner: "playwright"
+          browser: ${{ matrix.browser }}
+          status: ${{ job.status }}
+        env:
+          # Where the Playwright diagnostics producer writes files
+          PLAYWRIGHT_DIAG_DIR: "${{ inputs.service_workdir }}/test-results/diagnostics"
+
+          # Future-proofing for other runners (no-op here)
+          CYPRESS_DIAG_DIR: "cypress/diagnostics"
+          SELENIUM_DIAG_DIR: "target/selenium-artifacts/diagnostics"
+
+      # -----------------------------------------------------------------------
       # ALWAYS: normalize status for exporter
       # -----------------------------------------------------------------------
       - name: "Set E2E_STATUS for exporter (always)"
