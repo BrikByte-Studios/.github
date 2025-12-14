@@ -351,6 +351,14 @@ jobs:
           CYPRESS_DIAG_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/diagnostics"
           PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
           SELENIUM_DIAG_DIR: "target/selenium-artifacts/diagnostics"
+          # Mitigation 1: heavy only on failure (retain-on-failure)
+          E2E_DIAG_HEAVY_ON_FAILURE_ONLY: "true"
+
+          # Contingency: HAR off by default (esp. good for Selenium/Cypress)
+          E2E_DIAG_DISABLE_HAR_BY_DEFAULT: "true"
+
+          # Mitigation 2: size budget
+          E2E_DIAG_MAX_TOTAL_MB: "150"
 
       - name: "Set E2E_STATUS for exporter (always)"
         if: always()
