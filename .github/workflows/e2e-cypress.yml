@@ -394,6 +394,7 @@ jobs:
             .audit/**/e2e/diagnostics/**
           if-no-files-found: warn
           include-hidden-files: true
+          retention-days: 14
 
       - name: "Cleanup Docker (docker mode)"
         if: ${{ always() && inputs.start_with_docker }}

@@ -772,6 +772,7 @@ jobs:
             .audit/**/e2e/diagnostics/**
           if-no-files-found: warn
           include-hidden-files: true
+          retention-days: 14
 
       - name: "FINALIZER: enforce teardown (grid + app) (always)"
         if: ${{ always() && inputs.enforce_teardown == true }}
