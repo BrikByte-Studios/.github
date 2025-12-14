@@ -360,6 +360,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-${{ github.run_id }}
-          path: .audit/**/e2e/artifacts/**
+          path: |
+            .audit/**/e2e/artifacts/**
+            .audit/**/e2e/diagnostics/**
           if-no-files-found: warn
           include-hidden-files: true

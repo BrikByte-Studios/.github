@@ -768,7 +768,8 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}-edge
           path: |
-            .audit/**
+            .audit/**/e2e/artifacts/**
+            .audit/**/e2e/diagnostics/**
           if-no-files-found: warn
           include-hidden-files: true
 
