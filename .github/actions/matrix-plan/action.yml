@@ -1,0 +1,52 @@
+name: "BrikPipe Matrix Plan"
+description: >
+  Computes a deterministic, governed GitHub Actions matrix
+  based on BrikByteOS parallelization rules.
+
+inputs:
+  test_type:
+    description: "Test category: unit | integration | e2e | performance"
+    required: true
+
+  config_path:
+    description: "Path to parallel-matrix.yml"
+    required: false
+    default: ".github/parallel-matrix.yml"
+
+  override_shards:
+    description: >
+      Optional requested shard count.
+      Will be clamped to configured cap.
+    required: false
+    default: ""
+
+  browsers:
+    description: >
+      Optional comma-separated browser list (E2E only).
+      Must be deterministic (explicit names).
+    required: false
+    default: ""
+
+  items:
+    description: >
+      Optional comma-separated list of scenario/service IDs.
+      Used for integration/performance grouping.
+    required: false
+    default: ""
+
+outputs:
+  matrix_json:
+    description: "JSON string to be used as strategy.matrix"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Generate deterministic matrix"
+      shell: bash
+      run: |
+        ruby "${{ github.action_path }}/matrix_plan.rb" \
+          "${{ inputs.test_type }}" \
+          "${{ inputs.config_path }}" \
+          "${{ inputs.override_shards }}" \
+          "${{ inputs.browsers }}" \
+          "${{ inputs.items }}"
