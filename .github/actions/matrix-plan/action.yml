@@ -11,7 +11,7 @@ inputs:
   config_path:
     description: "Path to parallel-matrix.yml"
     required: false
-    default: ".github/parallel-matrix.yml"
+    default: ""
 
   override_shards:
     description: >
