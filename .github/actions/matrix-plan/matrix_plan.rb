@@ -31,8 +31,9 @@ test_type, config_path, override_shards, browsers_csv, items_csv = ARGV
 # If the caller didn't provide a config_path, use the action's bundled config.
 if config_path.nil? || config_path.strip.empty?
   action_dir = File.expand_path(File.dirname(__FILE__))
-  config_path = File.join(action_dir, "..", "..", "..", "parallel-matrix.yml")
+  config_path = File.join(action_dir, "parallel-matrix.yml")
 end
+
 
 config = YAML.load_file(config_path)
 defaults = config.fetch("defaults").fetch(test_type)
