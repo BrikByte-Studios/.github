@@ -34,7 +34,6 @@ if config_path.nil? || config_path.strip.empty?
   config_path = File.join(action_dir, "parallel-matrix.yml")
 end
 
-
 config = YAML.load_file(config_path)
 defaults = config.fetch("defaults").fetch(test_type)
 
