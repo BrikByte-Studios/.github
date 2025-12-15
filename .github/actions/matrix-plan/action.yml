@@ -37,11 +37,13 @@ inputs:
 outputs:
   matrix_json:
     description: "JSON string to be used as strategy.matrix"
+    value: ${{ steps.plan.outputs.matrix_json }}
 
 runs:
   using: "composite"
   steps:
     - name: "Generate deterministic matrix"
+      id: plan
       shell: bash
       run: |
         ruby "${{ github.action_path }}/matrix_plan.rb" \
