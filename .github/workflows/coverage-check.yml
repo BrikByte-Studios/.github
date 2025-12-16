@@ -14,16 +14,10 @@
 # Purpose:
 #   Enforce coverage thresholds (overall + critical paths) for protected branches
 #   using coverage.json + .governance/tests.yml.
-#
-# Notes:
-#   - This workflow can be:
-#       • Called as a reusable workflow (preferred)
-#       • Or triggered directly on pull_request (for central governance repos)
 # =============================================================================
 name: "BrikByteOS — Coverage Governance Gate"
 
 on:
-  # Reusable mode for product/example repos
   workflow_call:
     inputs:
       working-directory:
@@ -51,8 +45,12 @@ on:
         required: false
         default: "coverage-node"
         type: string
+      node-version:
+        description: "Node version used to run the governance gate"
+        required: false
+        default: "20"
+        type: string
 
-  # Optional direct mode for governance repo itself
   pull_request:
     branches:
       - main
@@ -67,38 +65,59 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # -----------------------------------------------------------------------
-      # 1) Checkout repository
-      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 2) (Optional) Download coverage artifact
-      #
-      #    If coverage.json is produced by a separate job (e.g., "tests" job),
-      #    you can uncomment this block and align the artifact name.
-      #
-      #    Example:
-      #      - tests job uploads:
-      #          name: coverage-node
-      #          path: node-api-example/out/coverage.json
-      #
-      #      - This job downloads it before running coverage-check.
+      # Download coverage artifact into a neutral folder (avoid double-nesting)
       # -----------------------------------------------------------------------
       - name: Download coverage artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.coverage-artifact-name }}
-          path: ${{ inputs.working-directory }}
-
+          path: .artifacts/coverage
 
       # -----------------------------------------------------------------------
-      # 3) Run coverage governance gate
-      #
-      #    - Invokes .github/scripts/coverage-check.mjs
-      #    - Enforces thresholds defined in .governance/tests.yml
-      #    - Fails with clear messages if thresholds are not met.
+      # Materialize coverage into canonical path:
+      #   <working-directory>/<coverage-file>
+      # This avoids "node-api-example/node-api-example/out/coverage.json" issues.
+      # -----------------------------------------------------------------------
+      - name: Materialize coverage.json into working directory
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          WD="${{ inputs.working-directory }}"
+          COV_REL="${{ inputs.coverage-file }}"
+          COV_REL="${COV_REL#./}"
+
+          TARGET="${WD}/${COV_REL}"
+
+          echo "[COVERAGE] working-directory : ${WD}"
+          echo "[COVERAGE] coverage-file     : ${COV_REL}"
+          echo "[COVERAGE] target            : ${TARGET}"
+
+          echo "[COVERAGE] downloaded files:"
+          find .artifacts/coverage -maxdepth 8 -type f -print || true
+
+          # Find coverage.json anywhere inside the artifact payload
+          found="$(find .artifacts/coverage -type f \( -path "*/out/coverage.json" -o -name "coverage.json" \) -print -quit 2>/dev/null || true)"
+
+          if [[ -z "${found}" ]]; then
+            echo "[COVERAGE] ERROR: Could not find coverage.json in downloaded artifact."
+            exit 1
+          fi
+
+          echo "[COVERAGE] using: ${found}"
+          mkdir -p "$(dirname "${TARGET}")"
+          cp "${found}" "${TARGET}"
+
+          echo "[COVERAGE] ✅ materialized: ${TARGET}"
+          ls -la "$(dirname "${TARGET}")"
+          head -n 40 "${TARGET}" || true
+
+      # -----------------------------------------------------------------------
+      # Run coverage governance gate
       # -----------------------------------------------------------------------
       - name: Run coverage governance gate
         uses: BrikByte-Studios/.github/.github/actions/coverage-gate@main
@@ -107,4 +126,4 @@ jobs:
           coverage-file: ${{ inputs.coverage-file }}
           policy-file: ${{ inputs.policy-file }}
           baseline-file: ${{ inputs.baseline-file }}
-          node-version: "20"
+          node-version: ${{ inputs.node-version }}
