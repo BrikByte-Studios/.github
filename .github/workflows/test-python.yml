@@ -174,10 +174,27 @@ jobs:
           echo "⏱  [TEST] Duration    : ${DURATION} seconds"
           echo "ℹ️  [TEST] See pytest summary above for test counts."
 
+      - name: "Detect coverage outputs (this shard)"
+        id: cov
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          has_xml="false"
+          has_json="false"
+
+          if [ -f "coverage.xml" ]; then has_xml="true"; fi
+          if [ -f "out/coverage.json" ]; then has_json="true"; fi
+
+          echo "has_xml=${has_xml}"  >> "$GITHUB_OUTPUT"
+          echo "has_json=${has_json}" >> "$GITHUB_OUTPUT"
+
+          echo "🔎 has_xml=${has_xml} has_json=${has_json}"
+
       # -----------------------------------------------------------------------
       # Coverage normalization
       # -----------------------------------------------------------------------
       - name: "Normalize coverage → coverage.json"
+        if: ${{ steps.cov.outputs.has_xml == 'true' || steps.cov.outputs.has_json == 'true' }}
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
           language: ${{ env.LANGUAGE }}
@@ -185,6 +202,7 @@ jobs:
           out: out/coverage.json
 
       - name: "Ensure summary.line is set in coverage.json (Python)"
+        if: ${{ steps.cov.outputs.has_xml == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
