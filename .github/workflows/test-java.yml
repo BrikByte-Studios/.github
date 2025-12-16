@@ -15,6 +15,11 @@
 #           - Maven: mvn -B test
 #           - Gradle: ./gradlew test
 #       • src/test/java for tests.
+#
+# Matrix plan integration:
+#   - Uses BrikPipe Matrix Plan composite action to compute shards deterministically
+#   - Parallel rules live in:
+#       BrikByte-Studios/.github/.github/actions/matrix-plan/parallel-matrix.yml
 # =============================================================================
 name: "BrikByteOS — Java Unit Tests"
 
@@ -37,13 +42,33 @@ on:
         type: string
         default: "."
 
+      # ------------------------------
+      # Governed parallelism (optional)
+      # ------------------------------
+      override_shards:
+        description: "Optional requested shard count (clamped to caps)."
+        required: false
+        type: string
+        default: ""
+      matrix_config_path:
+        description: >
+          Optional path to parallel-matrix.yml.
+          Leave empty to use default inside BrikByte-Studios/.github.
+        required: false
+        type: string
+        default: ""
+
 permissions:
   contents: read
 
 jobs:
   test:
-    name: "Java: Unit Tests"
+    name: "Java: Unit Tests (sharded)"
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(steps.matrix.outputs.matrix_json) }}
 
     env:
       LANGUAGE: java
@@ -51,9 +76,24 @@ jobs:
       JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
+      # shard metadata (defined by matrix-plan)
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_TOTAL: ${{ matrix.shards }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Matrix plan (governed sharding)
+      # -----------------------------------------------------------------------
+      - name: "Compute matrix plan (unit)"
+        id: matrix
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: "unit"
+          config_path: ${{ inputs.matrix_config_path }}
+          override_shards: ${{ inputs.override_shards }}
 
       - name: Verify Java test layout
         run: |
@@ -89,16 +129,25 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
+      # -----------------------------------------------------------------------
+      # Run unit tests via `make test`
+      #
+      # NOTE:
+      #   Your Makefile must honor SHARD_INDEX + SHARD_TOTAL (or ignore them).
+      #   Recommended pattern: Makefile routes to a shard runner script:
+      #     make test => scripts/shard-tests.sh "$SHARD_INDEX" "$SHARD_TOTAL"
+      # -----------------------------------------------------------------------
       - name: Run Java unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          echo "🧪 [TEST] Language  : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime   : Java (Temurin) ${JAVA_VERSION}"
-          echo "🧪 [TEST] Directory : ${PWD}"
-          echo "🧪 [TEST] Command   : make test"
-          echo "🧪 [TEST] Status    : STARTING"
+          echo "🧪 [TEST] Language     : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime      : Java (${JAVA_DISTRIBUTION}) ${JAVA_VERSION}"
+          echo "🧪 [TEST] Directory    : ${PWD}"
+          echo "🧪 [TEST] Shard        : ${SHARD_INDEX}/${SHARD_TOTAL}"
+          echo "🧪 [TEST] Command      : make test"
+          echo "🧪 [TEST] Status       : STARTING"
 
           START_TS=$(date +%s)
 
@@ -107,12 +156,12 @@ jobs:
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
 
-          echo "✅ [TEST] Status    : COMPLETED"
-          echo "⏱  [TEST] Duration : ${DURATION} seconds"
+          echo "✅ [TEST] Status       : COMPLETED"
+          echo "⏱  [TEST] Duration    : ${DURATION} seconds"
           echo "ℹ️  [TEST] See Maven/Gradle test summary above."
 
       # -----------------------------------------------------------------------
-      # X) Collect coverage (Java: Jacoco XML)
+      # X) Collect coverage (Java: JaCoCo XML)
       #    - Expects target/site/jacoco/jacoco.xml.
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
@@ -128,7 +177,6 @@ jobs:
           set -euo pipefail
           echo "🔧 Normalizing coverage: syncing summary.line from JaCoCo XML"
 
-          # Common JaCoCo locations
           if [ -f "target/site/jacoco/jacoco.xml" ]; then
             export JACOCO_XML="target/site/jacoco/jacoco.xml"
           elif [ -f "jacoco.xml" ]; then
@@ -154,8 +202,6 @@ jobs:
           tree = ET.parse(xml_path)
           root = tree.getroot()
 
-          # JaCoCo coverage summary:
-          # <counter type="LINE" missed="X" covered="Y"/>
           missed = 0
           covered = 0
           for counter in root.iter("counter"):
@@ -181,7 +227,6 @@ jobs:
 
           cov.setdefault("summary", {})
           cov["summary"]["line"] = line_pct
-
           cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
@@ -195,7 +240,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ env.LANGUAGE }}   # => coverage-java
+          # Unique per shard:
+          name: coverage-java-shard${{ env.SHARD_INDEX }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/target/site/jacoco/jacoco.xml
