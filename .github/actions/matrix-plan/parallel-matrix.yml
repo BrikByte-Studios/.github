@@ -18,40 +18,32 @@
 version: 1
 
 global:
-  # If true, requested shard counts above caps are clamped instead of failing.
-  # This prevents runaway CI costs while keeping pipelines green.
   clamp_to_caps: true
+  min_shards: 1
 
 defaults:
   unit:
-    # Unit tests are CPU-bound and cheap to parallelize.
-    max_shards: 6      # Recommended range: 4–8
-    cap: 8             # Hard upper bound
+    default_shards: 6
+    cap: 8
 
   integration:
-    # Integration tests often share DBs or services.
-    max_shards: 3      # Recommended range: 2–4
-    cap: 4             # Hard cap to avoid contention
+    default_shards: 3
+    cap: 4
 
   e2e:
-    # E2E tests are heavy and flake-prone.
-    max_shards: 4      # Recommended range: 2–6
-    cap: 6             # Hard cap for stability + cost
+    default_shards: 4
+    cap: 6
     browsers:
       - chromium
-      - firefox        # Explicit list = deterministic matrix
+      - firefox
 
   performance:
-    # Performance tests are resource intensive.
-    max_shards: 1      # Recommended range: 1–2
-    cap: 2             # Hard cap
+    default_shards: 1
+    cap: 2
 
-# -----------------------------------------------------------------------------
-# Example override shape (NOT ACTIVE).
-# Repos may copy this structure into their own override file.
-# -----------------------------------------------------------------------------
 overrides_example:
   unit:
-    max_shards: 8
+    default_shards: 8
   e2e:
     browsers: [chromium, webkit]
+

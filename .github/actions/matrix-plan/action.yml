@@ -9,7 +9,9 @@ inputs:
     required: true
 
   config_path:
-    description: "Path to parallel-matrix.yml"
+    description: >
+      Optional path to parallel-matrix.yml in the caller repo.
+      If empty, defaults to the action-bundled config.
     required: false
     default: ""
 
@@ -46,9 +48,23 @@ runs:
       id: plan
       shell: bash
       run: |
+        set -euo pipefail
+
+        # If caller did not provide a config path, use the action-bundled config.
+        CONFIG_PATH="${{ inputs.config_path }}"
+        if [[ -z "${CONFIG_PATH}" ]]; then
+          CONFIG_PATH="${{ github.action_path }}/parallel-matrix.yml"
+        fi
+
+        echo "[MATRIX-PLAN] test_type=${{ inputs.test_type }}"
+        echo "[MATRIX-PLAN] config_path=${CONFIG_PATH}"
+        echo "[MATRIX-PLAN] override_shards=${{ inputs.override_shards }}"
+        echo "[MATRIX-PLAN] browsers=${{ inputs.browsers }}"
+        echo "[MATRIX-PLAN] items=${{ inputs.items }}"
+
         ruby "${{ github.action_path }}/matrix_plan.rb" \
           "${{ inputs.test_type }}" \
-          "${{ inputs.config_path }}" \
+          "${CONFIG_PATH}" \
           "${{ inputs.override_shards }}" \
           "${{ inputs.browsers }}" \
           "${{ inputs.items }}"
