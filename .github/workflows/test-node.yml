@@ -1,25 +1,13 @@
 # =============================================================================
-# BrikByteOS — Reusable Node.js Unit Test Workflow
+# BrikByteOS — Reusable Node.js Unit Test Workflow (with governed matrix-plan)
 # -----------------------------------------------------------------------------
 # WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
-# Repos  :
-#   - Implemented in:
-#       • BrikByte-Studios/.github (.github/workflows/test-node.yml)
-#   - Consumed by:
-#       • BrikByte-Studios/brik-pipe-examples/node-api-example
-#       • Product repos (via workflow_call)
 #
-# Contract:
-#   - Expects repo to expose:
-#       • Makefile with `make test` (per PIPE-TEST-UNIT-STANDARDS-INIT-001)
-#   - This workflow:
-#       • Plans a governed matrix (shards) via matrix-plan
-#       • Sets up Node
-#       • Uses cache-node-deps composite
-#       • Runs `make test` per shard
-#       • Normalizes + uploads coverage per shard
+# Adds:
+#   - Deterministic shards via BrikPipe matrix-plan (unit)
+#   - Safe-by-default shard caps (clamped by parallel-matrix.yml in .github repo)
+#   - Per-shard coverage artifact naming to support merge later
 # =============================================================================
-
 name: "BrikByteOS — Node.js Unit Tests"
 
 on:
@@ -37,21 +25,17 @@ on:
         type: string
         default: "."
 
-      # -----------------------------------------------------------------------
-      # Parallelization / Matrix (governed)
-      # -----------------------------------------------------------------------
+      # -----------------------------
+      # Matrix-plan (unit) wiring
+      # -----------------------------
       override_shards:
-        description: >
-          Requested shard count for unit tests.
-          Will be clamped to caps from parallel-matrix.yml.
+        description: "Requested shard count (unit). Will be clamped by governance caps."
         required: false
         type: string
         default: ""
 
       matrix_config_path:
-        description: >
-          Optional path to parallel-matrix.yml.
-          Leave empty to use action defaults (inside .github repo).
+        description: "Optional path to parallel-matrix.yml. Leave empty to use action default."
         required: false
         type: string
         default: ""
@@ -64,14 +48,11 @@ jobs:
   # PLAN: governed deterministic matrix (unit shards)
   # ----------------------------------------------------------------------------
   plan:
-    name: "Plan governed unit matrix"
+    name: "Plan governed Unit matrix"
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix_json }}
     steps:
-      - name: "Checkout (caller repo)"
-        uses: actions/checkout@v4
-
       - name: "Generate unit shard matrix (governed)"
         id: plan
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
@@ -81,13 +62,12 @@ jobs:
           override_shards: ${{ inputs.override_shards }}
 
   # ----------------------------------------------------------------------------
-  # MATRIX: shard
+  # TEST: shard matrix
   # ----------------------------------------------------------------------------
   test:
     name: "Node.js: Unit Tests • shard ${{ matrix.shard }}"
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 25
 
     strategy:
       fail-fast: false
@@ -98,13 +78,13 @@ jobs:
       NODE_VERSION: ${{ inputs.node-version || '20' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
 
-      # -----------------------------------------------------------------------
-      # Shard contract (runner must honor this to actually split work)
-      # -----------------------------------------------------------------------
+      # Shard contract (consumed by your Makefile/test runner when implemented)
       UNIT_SHARD: ${{ matrix.shard }}
       UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
-      FORCE_COLOR: "0"
+      # Optional generic contract (if you want to standardize across languages)
+      E2E_SHARD: ${{ matrix.shard }}
+      E2E_SHARD_TOTAL: ${{ strategy.job-total }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -155,35 +135,39 @@ jobs:
           project-path: ${{ env.WORKING_DIRECTORY }}
 
       # -----------------------------------------------------------------------
-      # 5) Run unit tests via `make test` (per shard)
+      # 5) Run unit tests via `make test`
+      #
+      # NOTE:
+      #   Your repo's Makefile should read UNIT_SHARD/UNIT_SHARD_TOTAL and only
+      #   execute its shard (deterministically). If it doesn't yet, each shard
+      #   will run the full suite (wasteful but still correct).
       # -----------------------------------------------------------------------
       - name: Run Node.js unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          echo "🧪 [TEST] Language     : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime      : Node.js ${NODE_VERSION}"
-          echo "🧪 [TEST] Directory    : ${PWD}"
-          echo "🧪 [TEST] Command      : make test"
-          echo "🧪 [TEST] Unit shard   : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
-          echo "🧪 [TEST] Status       : STARTING"
+          echo "🧪 [TEST] Language      : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime       : Node.js ${NODE_VERSION}"
+          echo "🧪 [TEST] Directory     : ${PWD}"
+          echo "🧪 [TEST] Command       : make test"
+          echo "🧪 [TEST] Shard         : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "🧪 [TEST] Status        : STARTING"
 
           START_TS=$(date +%s)
 
-          # IMPORTANT:
-          # Your Makefile / test runner must read UNIT_SHARD + UNIT_SHARD_TOTAL
-          # to actually split test files deterministically.
           make test
 
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
 
-          echo "✅ [TEST] Status       : COMPLETED"
-          echo "⏱  [TEST] Duration     : ${DURATION} seconds"
+          echo "✅ [TEST] Status        : COMPLETED"
+          echo "⏱  [TEST] Duration      : ${DURATION} seconds"
 
       # -----------------------------------------------------------------------
-      # 6) Normalize coverage → out/coverage.json
+      # X) Collect coverage (Node: Jest + c8 / Istanbul)
+      #    - Expects coverage/coverage-final.json + coverage/coverage-summary.json
+      #    - Writes normalized out/coverage.json under WORKING_DIRECTORY.
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
@@ -221,10 +205,9 @@ jobs:
           const linePct = summary.total.lines.pct;
 
           let cov;
-          try { cov = readJson('out/coverage.json'); }
-          catch { cov = {}; }
+          try { cov = readJson('out/coverage.json'); } catch { cov = {}; }
 
-          cov.summary = (cov.summary && typeof cov.summary === 'object') ? cov.summary : {};
+          if (!cov.summary || typeof cov.summary !== 'object') cov.summary = {};
           cov.summary.line = linePct;
 
           if (!Array.isArray(cov.files)) cov.files = [];
@@ -237,17 +220,17 @@ jobs:
           cat out/coverage.json
 
       # -----------------------------------------------------------------------
-      # 7) Upload coverage artifacts (per shard)
+      # Upload per-shard coverage artifacts (important for later merge)
       # -----------------------------------------------------------------------
-      - name: Upload Node coverage artifacts
+      - name: Upload Node coverage artifacts (per shard)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ env.LANGUAGE }}-shard${{ matrix.shard }}-node${{ env.NODE_VERSION }}-${{ github.run_id }}
+          name: coverage-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/coverage/
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
-          if-no-files-found: warn
+          if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
