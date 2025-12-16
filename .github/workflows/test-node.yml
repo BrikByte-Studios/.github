@@ -155,7 +155,7 @@ jobs:
           echo "🧪 [TEST] Status        : STARTING"
 
           START_TS=$(date +%s)
-
+          export UNIT_SHARD UNIT_SHARD_TOTAL
           make test
 
           END_TS=$(date +%s)
