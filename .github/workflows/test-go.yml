@@ -1,20 +1,12 @@
 # =============================================================================
-# BrikByteOS — Reusable Go Unit Test Workflow
+# BrikByteOS — Reusable Go Unit Test Workflow (with governed sharding)
 # -----------------------------------------------------------------------------
 # WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
-# Repos  :
-#   - Implemented in:
-#       • BrikByte-Studios/.github (.github/workflows/test-go.yml)
-#   - Consumed by:
-#       • BrikByte-Studios/brik-pipe-examples/go-api-example
-#       • Product repos (via workflow_call)
 #
-# Contract:
-#   - Expects:
-#       • Makefile with `make test` that:
-#           - runs `go test ./... -coverprofile=coverage.out`
-#           - (optionally) uses go-junit-report to write `out/junit.xml`
-#       • *_test.go files in relevant packages.
+# Matrix plan integration:
+#   - Uses BrikPipe Matrix Plan composite action to compute shards deterministically
+#   - Parallel rules live in:
+#       BrikByte-Studios/.github/.github/actions/matrix-plan/parallel-matrix.yml
 # =============================================================================
 name: "BrikByteOS — Go Unit Tests"
 
@@ -32,19 +24,64 @@ on:
         type: string
         default: "."
 
+      # ------------------------------
+      # Governed parallelism (optional)
+      # ------------------------------
+      override_shards:
+        description: "Optional requested shard count (clamped to caps)."
+        required: false
+        type: string
+        default: ""
+      matrix_config_path:
+        description: >
+          Optional path to parallel-matrix.yml.
+          Leave empty to use default inside BrikByte-Studios/.github.
+        required: false
+        type: string
+        default: ""
+
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: "Go: Unit Tests"
+  # ---------------------------------------------------------------------------
+  # 0) Plan matrix (must be a separate job to use outputs in strategy.matrix)
+  # ---------------------------------------------------------------------------
+  plan:
+    name: "Plan matrix (go unit)"
     runs-on: ubuntu-latest
+    outputs:
+      matrix_json: ${{ steps.plan.outputs.matrix_json }}
+    steps:
+      - name: "Compute matrix plan (unit)"
+        id: plan
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: "unit"
+          config_path: ${{ inputs.matrix_config_path }}
+          override_shards: ${{ inputs.override_shards }}
+
+  # ---------------------------------------------------------------------------
+  # 1) Execute tests (sharded)
+  # ---------------------------------------------------------------------------
+  test:
+    name: "Go: Unit Tests (sharded)"
+    runs-on: ubuntu-latest
+    needs: plan
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_json) }}
 
     env:
       LANGUAGE: go
       GO_VERSION: ${{ inputs.go-version != '' && inputs.go-version || '1.22.x' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
       GOFLAGS: "-mod=readonly"
+
+      # shard metadata (defined by matrix-plan output)
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_TOTAL: ${{ matrix.shards }}
 
     steps:
       - name: Checkout repository
@@ -100,22 +137,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "🧪 [TEST] Language  : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime   : Go ${GO_VERSION}"
-          echo "🧪 [TEST] Directory : ${PWD}"
-          echo "🧪 [TEST] Command   : make test"
-          echo "🧪 [TEST] Status    : STARTING"
+          echo "🧪 [TEST] Language   : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime    : Go ${GO_VERSION}"
+          echo "🧪 [TEST] Directory  : ${PWD}"
+          echo "🧪 [TEST] Shard      : ${SHARD_INDEX}/${SHARD_TOTAL}"
+          echo "🧪 [TEST] Command    : make test"
+          echo "🧪 [TEST] Status     : STARTING"
 
           START_TS=$(date +%s)
 
+          # NOTE:
+          #   Your Makefile SHOULD honor SHARD_INDEX + SHARD_TOTAL
+          #   (or safely ignore them).
+          #   Recommended: make test routes to a shard runner script.
           make test
 
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
 
-          echo "✅ [TEST] Status    : COMPLETED"
-          echo "⏱  [TEST] Duration : ${DURATION} seconds"
-          echo "ℹ️  [TEST] See go test ./... summary above."
+          echo "✅ [TEST] Status     : COMPLETED"
+          echo "⏱  [TEST] Duration   : ${DURATION} seconds"
 
       # -----------------------------------------------------------------------
       # X) Collect coverage (Go: go test -coverprofile=coverage.out)
@@ -139,7 +180,6 @@ jobs:
             exit 1
           fi
 
-          # Use go tool cover to compute total % coverage
           go tool cover -func=coverage.out > coverage-func.txt
 
           echo "📄 go tool cover output (summary line should be 'total: ... X.Y%'):"
@@ -174,9 +214,8 @@ jobs:
             cov = {}
 
           cov.setdefault("summary", {})
-          cov["summary"]["line"] = line_pct  # numeric percentage
-
-          cov.setdefault("files", [])        # can stay empty until you enforce critical_paths
+          cov["summary"]["line"] = line_pct
+          cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
           print(f"✅ Updated out/coverage.json with summary.line = {line_pct:.1f}")
@@ -189,10 +228,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ env.LANGUAGE }}   # => coverage-go
+          # per-shard artifact name (so merge job can pattern match)
+          name: coverage-go-shard${{ env.SHARD_INDEX }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/coverage.out
             ${{ env.WORKING_DIRECTORY }}/coverage-func.txt
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
           if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14

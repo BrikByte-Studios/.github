@@ -163,6 +163,8 @@ jobs:
           # Your Makefile/pytest may optionally consume:
           #   UNIT_SHARD / UNIT_SHARD_TOTAL
           # If it doesn't, all shards will run the full suite (wasteful but correct).
+          export UNIT_SHARD="${UNIT_SHARD}"
+          export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL}"
           make test
 
           END_TS=$(date +%s)
