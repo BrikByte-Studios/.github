@@ -144,16 +144,62 @@ on:
         required: false
         default: 30
 
+      override_shards:
+        description: "Requested shard count (clamped by governance caps)"
+        type: string
+        required: false
+        default: ""
+
+      browsers:
+        description: "Override browser list CSV (optional). If empty, derives from enable_* flags."
+        type: string
+        required: false
+        default: ""
+
 jobs:
+  plan:
+    name: "Plan governed E2E matrix"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix_json }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Compute browser list (deterministic)"
+        id: browsers
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Always include chromium; add optional browsers based on inputs.
+          csv="chromium"
+          if [[ "${{ inputs.enable_firefox }}" == "true" ]]; then csv="${csv},firefox"; fi
+          if [[ "${{ inputs.enable_webkit }}" == "true" ]]; then csv="${csv},webkit"; fi
+
+          # If caller provided explicit browsers CSV, it wins (still deterministic).
+          if [[ -n "${{ inputs.browsers }}" ]]; then
+            csv="${{ inputs.browsers }}"
+          fi
+
+          echo "browsers_csv=${csv}" >> "${GITHUB_OUTPUT}"
+          echo "[PLAN] browsers=${csv}"
+
+      - name: "Generate browser × shard matrix (governed)"
+        id: plan
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: e2e
+          override_shards: ${{ inputs.override_shards }}
+          browsers: ${{ steps.browsers.outputs.browsers_csv }}
+
   e2e:
-    name: "Playwright E2E • ${{ matrix.browser }}"
+    name: "Playwright E2E • ${{ matrix.browser }} • shard ${{ matrix.shard }}"
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.job_timeout_minutes }}
 
     strategy:
       fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
 
     env:
       # ----------------------------------------------------------
@@ -177,8 +223,8 @@ jobs:
 
       FORCE_COLOR: "0"
 
-      PW_ENABLE_FIREFOX: ${{ inputs.enable_firefox && '1' || '0' }}
-      PW_ENABLE_WEBKIT: ${{ inputs.enable_webkit && '1' || '0' }}
+      PW_ENABLE_FIREFOX: ${{ matrix.browser == 'firefox' && '1' || '0' }}
+      PW_ENABLE_WEBKIT: ${{ matrix.browser == 'webkit' && '1' || '0' }}
 
     steps:
       - name: "Checkout repository"
@@ -272,21 +318,25 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
         run: |
           set -euo pipefail
-          npx playwright install --with-deps
+          case "${PW_BROWSER}" in
+            chromium) npx playwright install --with-deps chromium ;;
+            firefox)  npx playwright install --with-deps firefox ;;
+            webkit)   npx playwright install --with-deps webkit ;;
+            *) echo "Unknown browser: ${PW_BROWSER}" && exit 1 ;;
+          esac
 
       - name: "Run Playwright tests"
-        if: >
-          matrix.browser == 'chromium' ||
-          (matrix.browser == 'firefox' && inputs.enable_firefox) ||
-          (matrix.browser == 'webkit' && inputs.enable_webkit)
         working-directory: ${{ inputs.service_workdir }}
         run: |
           set -euo pipefail
           echo "[E2E] Browser=${PW_BROWSER}"
           echo "[E2E] Target=${E2E_TARGET_URL}"
+          echo "[E2E] Shard=${{ matrix.shard }}/${{ strategy.job-total }}"
 
           npx playwright test \
-            --project="${PW_BROWSER}"
+            --project="${PW_BROWSER}" \
+            --shard="${{ matrix.shard }}/${{ strategy.job-total }}"
+
 
       # -----------------------------------------------------------------------
       # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
@@ -367,7 +417,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-${{ github.run_id }}
+          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-shard-${{ matrix.shard }}-${{ github.run_id }}
           path: |
             .audit/**/e2e/artifacts/**
             .audit/**/e2e/diagnostics/**
