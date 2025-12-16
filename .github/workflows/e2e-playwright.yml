@@ -217,9 +217,9 @@ jobs:
       # Artifact exporter contract
       # ----------------------------------------------------------
       E2E_RUNNER: playwright
-      E2E_VIDEO: ${{ inputs.e2e_video }}
-      E2E_TRACE: ${{ inputs.e2e_trace }}
-      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
+      E2E_VIDEO: ${{ inputs.e2e_video && 'true' || 'false' }}
+      E2E_TRACE: ${{ inputs.e2e_trace && 'true' || 'false' }}
+      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always && 'true' || 'false' }}
 
       FORCE_COLOR: "0"
 
