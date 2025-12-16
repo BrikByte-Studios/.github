@@ -62,13 +62,40 @@ permissions:
   contents: read
 
 jobs:
+  # ------------------------------------------------------------
+  # 1) PLAN: compute governed matrix JSON (job output)
+  # ------------------------------------------------------------
+  plan:
+    name: "Matrix Plan (java unit)"
+    runs-on: ubuntu-latest
+
+    outputs:
+      matrix_json: ${{ steps.matrix.outputs.matrix_json }}
+
+    steps:
+      - name: "Compute matrix plan (unit)"
+        id: matrix
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: "unit"
+          config_path: ${{ inputs.matrix_config_path }}
+          override_shards: ${{ inputs.override_shards }}
+
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.matrix.outputs.matrix_json }}"
+
+  # ------------------------------------------------------------
+  # 2) TEST: run shards from matrix computed in plan job
+  # ------------------------------------------------------------
   test:
     name: "Java: Unit Tests (sharded)"
+    needs: plan
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(steps.matrix.outputs.matrix_json) }}
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_json) }}
 
     env:
       LANGUAGE: java
@@ -83,17 +110,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # -----------------------------------------------------------------------
-      # Matrix plan (governed sharding)
-      # -----------------------------------------------------------------------
-      - name: "Compute matrix plan (unit)"
-        id: matrix
-        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
-        with:
-          test_type: "unit"
-          config_path: ${{ inputs.matrix_config_path }}
-          override_shards: ${{ inputs.override_shards }}
 
       - name: Verify Java test layout
         run: |
@@ -240,10 +256,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Unique per shard:
           name: coverage-java-shard${{ env.SHARD_INDEX }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/target/site/jacoco/jacoco.xml
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
           if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
