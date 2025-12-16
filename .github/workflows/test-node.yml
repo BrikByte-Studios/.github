@@ -13,14 +13,16 @@
 #   - Expects repo to expose:
 #       • Makefile with `make test` (per PIPE-TEST-UNIT-STANDARDS-INIT-001)
 #   - This workflow:
+#       • Plans a governed matrix (shards) via matrix-plan
 #       • Sets up Node
-#       • (Optionally) uses cache-node-deps composite
-#       • Runs `make test` and fails CI on non-zero exit.
+#       • Uses cache-node-deps composite
+#       • Runs `make test` per shard
+#       • Normalizes + uploads coverage per shard
 # =============================================================================
+
 name: "BrikByteOS — Node.js Unit Tests"
 
 on:
-  # Reusable mode for service repos
   workflow_call:
     inputs:
       node-version:
@@ -28,28 +30,81 @@ on:
         required: false
         type: string
         default: "20"
+
       working-directory:
         description: "Path to Node project (folder with package.json + Makefile)"
         required: false
         type: string
         default: "."
 
+      # -----------------------------------------------------------------------
+      # Parallelization / Matrix (governed)
+      # -----------------------------------------------------------------------
+      override_shards:
+        description: >
+          Requested shard count for unit tests.
+          Will be clamped to caps from parallel-matrix.yml.
+        required: false
+        type: string
+        default: ""
+
+      matrix_config_path:
+        description: >
+          Optional path to parallel-matrix.yml.
+          Leave empty to use action defaults (inside .github repo).
+        required: false
+        type: string
+        default: ""
+
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: "Node.js: Unit Tests"
+  # ----------------------------------------------------------------------------
+  # PLAN: governed deterministic matrix (unit shards)
+  # ----------------------------------------------------------------------------
+  plan:
+    name: "Plan governed unit matrix"
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix_json }}
+    steps:
+      - name: "Checkout (caller repo)"
+        uses: actions/checkout@v4
 
-    # NOTE:
-    #   - When called via workflow_call, inputs.node-version is set.
-    #   - When triggered via push/PR:
-    #        inputs.node-version is empty, so we use matrix.node-version.
+      - name: "Generate unit shard matrix (governed)"
+        id: plan
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: unit
+          config_path: ${{ inputs.matrix_config_path }}
+          override_shards: ${{ inputs.override_shards }}
+
+  # ----------------------------------------------------------------------------
+  # MATRIX: shard
+  # ----------------------------------------------------------------------------
+  test:
+    name: "Node.js: Unit Tests • shard ${{ matrix.shard }}"
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
     env:
       LANGUAGE: node
       NODE_VERSION: ${{ inputs.node-version || '20' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
+
+      # -----------------------------------------------------------------------
+      # Shard contract (runner must honor this to actually split work)
+      # -----------------------------------------------------------------------
+      UNIT_SHARD: ${{ matrix.shard }}
+      UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
+
+      FORCE_COLOR: "0"
 
     steps:
       # -----------------------------------------------------------------------
@@ -60,10 +115,10 @@ jobs:
 
       # -----------------------------------------------------------------------
       # 2) Verify Node project layout
-      #    - Must have package.json + Makefile in WORKING_DIRECTORY
       # -----------------------------------------------------------------------
       - name: Verify Node test layout
         run: |
+          set -euo pipefail
           echo "📁 Working directory: ${WORKING_DIRECTORY}"
 
           if [ ! -d "${WORKING_DIRECTORY}" ]; then
@@ -91,8 +146,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # -----------------------------------------------------------------------
-      # 4) (Optional) Use central Node cache composite
-      #    - Implemented in BrikByte-Studios/.github/.github/actions/cache-node-deps
+      # 4) Cache deps
       # -----------------------------------------------------------------------
       - name: "Cache Node dependencies (npm / Yarn / pnpm)"
         uses: BrikByte-Studios/.github/.github/actions/cache-node-deps@main
@@ -101,35 +155,35 @@ jobs:
           project-path: ${{ env.WORKING_DIRECTORY }}
 
       # -----------------------------------------------------------------------
-      # 5) Run unit tests via `make test`
-      #    - MUST fail on non-zero exit (blocks merges via status checks).
+      # 5) Run unit tests via `make test` (per shard)
       # -----------------------------------------------------------------------
       - name: Run Node.js unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          echo "🧪 [TEST] Language  : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime   : Node.js ${NODE_VERSION}"
-          echo "🧪 [TEST] Directory : ${PWD}"
-          echo "🧪 [TEST] Command   : make test"
-          echo "🧪 [TEST] Status    : STARTING"
+          echo "🧪 [TEST] Language     : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime      : Node.js ${NODE_VERSION}"
+          echo "🧪 [TEST] Directory    : ${PWD}"
+          echo "🧪 [TEST] Command      : make test"
+          echo "🧪 [TEST] Unit shard   : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "🧪 [TEST] Status       : STARTING"
 
           START_TS=$(date +%s)
 
+          # IMPORTANT:
+          # Your Makefile / test runner must read UNIT_SHARD + UNIT_SHARD_TOTAL
+          # to actually split test files deterministically.
           make test
 
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
 
-          echo "✅ [TEST] Status    : COMPLETED"
-          echo "⏱  [TEST] Duration : ${DURATION} seconds"
-          echo "ℹ️  [TEST] See TAP summary above for test counts."
+          echo "✅ [TEST] Status       : COMPLETED"
+          echo "⏱  [TEST] Duration     : ${DURATION} seconds"
 
       # -----------------------------------------------------------------------
-      # X) Collect coverage (Node: Jest + c8 / Istanbul)
-      #    - Expects coverage/coverage-final.json from the test step.
-      #    - Writes normalized out/coverage.json under WORKING_DIRECTORY.
+      # 6) Normalize coverage → out/coverage.json
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
@@ -157,7 +211,6 @@ jobs:
             return JSON.parse(fs.readFileSync(path, 'utf8'));
           }
 
-          // 1) Read c8 summary (json-summary reporter)
           const summary = readJson('coverage/coverage-summary.json');
 
           if (!summary.total || !summary.total.lines || typeof summary.total.lines.pct !== 'number') {
@@ -165,26 +218,16 @@ jobs:
             process.exit(1);
           }
 
-          const linePct = summary.total.lines.pct; // e.g. 100
+          const linePct = summary.total.lines.pct;
 
-          // 2) Read existing coverage.json if present, otherwise start fresh
           let cov;
-          try {
-            cov = readJson('out/coverage.json');
-          } catch {
-            cov = {};
-          }
+          try { cov = readJson('out/coverage.json'); }
+          catch { cov = {}; }
 
-          if (!cov.summary || typeof cov.summary !== 'object') {
-            cov.summary = {};
-          }
-
+          cov.summary = (cov.summary && typeof cov.summary === 'object') ? cov.summary : {};
           cov.summary.line = linePct;
 
-          // Ensure files key exists (can stay empty if you don't yet enforce critical_paths)
-          if (!Array.isArray(cov.files)) {
-            cov.files = [];
-          }
+          if (!Array.isArray(cov.files)) cov.files = [];
 
           fs.writeFileSync('out/coverage.json', JSON.stringify(cov, null, 2));
           console.log('✅ Updated out/coverage.json with summary.line =', linePct);
@@ -193,15 +236,18 @@ jobs:
           echo "✅ coverage.json after normalization:"
           cat out/coverage.json
 
+      # -----------------------------------------------------------------------
+      # 7) Upload coverage artifacts (per shard)
+      # -----------------------------------------------------------------------
       - name: Upload Node coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Unique per matrix entry: includes runtime version + job + attempt
-          name: coverage-${{ env.LANGUAGE }}
+          name: coverage-${{ env.LANGUAGE }}-shard${{ matrix.shard }}-node${{ env.NODE_VERSION }}-${{ github.run_id }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/coverage/
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
-          if-no-files-found: ignore
-
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
