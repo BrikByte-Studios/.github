@@ -5,9 +5,13 @@
 # Reusable via workflow_call
 # Stable ENV CONTRACT
 # Always set E2E_STATUS
-# Always export via export-e2e-artifacts.mjs
+# Always export via export-e2e-artifacts (single source of truth)
 # Always upload .audit/**/e2e/artifacts/**
-# No duplicated legacy audit logic (single exporter is source of truth)
+#
+# Matrix governance:
+# - Uses BrikPipe matrix-plan to produce a deterministic matrix.
+# - Cypress defaults to NO sharding (override_shards forced to 1) until spec-splitting
+#   is implemented. We still govern the browser fan-out to control cost.
 #
 # ENV CONTRACT (stable across repos and runners)
 # ---------------------------------------------
@@ -20,13 +24,11 @@
 #   - E2E_VIDEO                true|false
 #   - E2E_TRACE                true|false (typically false for Cypress)
 #   - E2E_ARTIFACTS_ALWAYS     true|false
-#   - E2E_AUDIT_DATE           YYYY-MM-DD (optional override)
-#   - E2E_AUDIT_ROOT           .audit/<date>/e2e/artifacts (optional override)
 #
 # Notes:
 # - This workflow intentionally does NOT implement legacy copy logic into .audit.
-# - The single source of truth for normalization is:
-#     .github/scripts/export-e2e-artifacts.mjs
+# - Normalization is done by:
+#     BrikByte-Studios/.github/.github/actions/export-e2e-artifacts
 # ==============================================================================
 
 name: "E2E - Cypress (Reusable)"
@@ -119,6 +121,25 @@ on:
         default: false
 
       # -----------------------------------------------------------------------
+      # Matrix governance (BrikPipe)
+      # -----------------------------------------------------------------------
+      override_shards:
+        description: >
+          Requested shard count (future: Cypress spec sharding). Clamped.
+          NOTE: Cypress sharding is not enabled yet in this workflow; forced to 1.
+        type: string
+        required: false
+        default: ""
+
+      browsers:
+        description: >
+          CSV list of Cypress browsers (chrome,firefox,edge).
+          Deterministic. Use "chrome" for cheapest default.
+        type: string
+        required: false
+        default: "chrome"
+
+      # -----------------------------------------------------------------------
       # Cross-runner artifact export toggles (BrikByteOS standard)
       # -----------------------------------------------------------------------
       e2e_video:
@@ -148,15 +169,33 @@ on:
     secrets: {}
 
 jobs:
+  plan:
+    name: "Plan governed Cypress matrix"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix_json }}
+    steps:
+      - name: "Checkout (future-proof for repo-level config)"
+        uses: actions/checkout@v4
+
+      - name: "Generate browser matrix (governed)"
+        id: plan
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: e2e
+          # Cypress sharding not implemented here → keep at 1 to avoid job explosion.
+          override_shards: "1"
+          browsers: ${{ inputs.browsers }}
+
   cypress-e2e:
-    name: "Cypress E2E"
+    name: "Cypress E2E • ${{ matrix.browser }}"
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.job_timeout_minutes }}
 
     strategy:
       fail-fast: false
-      matrix:
-        browser: [chrome, firefox, edge]
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
 
     env:
       # Runner contract
@@ -172,9 +211,9 @@ jobs:
 
       # Exporter toggles
       E2E_BROWSER: ${{ matrix.browser }}
-      E2E_VIDEO: ${{ inputs.e2e_video }}
-      E2E_TRACE: ${{ inputs.e2e_trace }}
-      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
+      E2E_VIDEO: ${{ inputs.e2e_video && 'true' || 'false' }}
+      E2E_TRACE: ${{ inputs.e2e_trace && 'true' || 'false' }}
+      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always && 'true' || 'false' }}
 
       FORCE_COLOR: "0"
 
@@ -188,6 +227,14 @@ jobs:
           DISABLE: ${{ inputs.disable_cypress_e2e }}
         run: |
           set -euo pipefail
+          : <<'DOCSTRING'
+          Honor disable flag
+
+          Purpose:
+            Allow repos to temporarily disable Cypress E2E (emergency stop),
+            but only if allow_disable=true.
+          DOCSTRING
+
           echo "[CYPRESS] allow_disable=${ALLOW_DISABLE}"
           echo "[CYPRESS] disable_cypress_e2e=${DISABLE}"
 
@@ -209,6 +256,12 @@ jobs:
           DOCKER_IMAGE_NAME: ${{ inputs.docker_image_name }}
         run: |
           set -euo pipefail
+          : <<'DOCSTRING'
+          Build app image for docker mode.
+
+          Notes:
+            The Dockerfile must exist in service_workdir.
+          DOCSTRING
           docker build -t "${DOCKER_IMAGE_NAME}" .
 
       - name: "Start UI Docker container (docker mode)"
@@ -218,6 +271,12 @@ jobs:
           DOCKER_PORT: ${{ inputs.docker_port }}
         run: |
           set -euo pipefail
+          : <<'DOCSTRING'
+          Start app container for Cypress docker mode.
+
+          Notes:
+            App is reachable on the docker network as http://app:<port>.
+          DOCSTRING
           docker run -d --rm \
             --name app \
             --network e2e-net \
@@ -233,6 +292,13 @@ jobs:
           TARGET_URL: ${{ inputs.target_url }}
         run: |
           set -euo pipefail
+          : <<'DOCSTRING'
+          Resolve HEALTH_URL
+
+          Purpose:
+            Compute the correct health endpoint depending on whether the app is started
+            inside Docker (reachable as app:<port>) or externally via target_url.
+          DOCSTRING
 
           if [ "${START_WITH_DOCKER}" = "true" ]; then
             echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
@@ -246,6 +312,13 @@ jobs:
           START_WITH_DOCKER: ${{ inputs.start_with_docker }}
         run: |
           set -euo pipefail
+          : <<'DOCSTRING'
+          Wait for service readiness
+
+          Purpose:
+            Ensure the app under test responds before Cypress runs.
+          DOCSTRING
+
           echo "[CYPRESS] Waiting for ${HEALTH_URL}"
 
           timeout=120
@@ -297,6 +370,16 @@ jobs:
           NON_BLOCKING: ${{ inputs.non_blocking }}
         run: |
           set -euo pipefail
+          : <<'DOCSTRING'
+          Run Cypress E2E in a container
+
+          Purpose:
+            Execute Cypress in a consistent, isolated environment using a pinned image.
+            The repo is mounted into /e2e and Cypress runs within the service folder.
+
+          Notes:
+            Browser selection comes from strategy.matrix (governed).
+          DOCSTRING
 
           PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
           CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
@@ -325,7 +408,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/e2e" \
             -w "${PROJECT_DIR}" \
             "${CYPRESS_IMAGE}" \
-            npx cypress run --config-file "${CONFIG_FILE}" ${SPEC_ARG}
+            npx cypress run --browser "${E2E_BROWSER}" --config-file "${CONFIG_FILE}" ${SPEC_ARG}
 
           exit_code=$?
           set -e
@@ -337,9 +420,6 @@ jobs:
 
           exit "${exit_code}"
 
-      # -----------------------------------------------------------------------
-      # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
-      # -----------------------------------------------------------------------
       - name: "Capture E2E diagnostics (always)"
         if: always()
         uses: BrikByte-Studios/.github/.github/actions/capture-e2e-diagnostics@main
@@ -351,13 +431,8 @@ jobs:
           CYPRESS_DIAG_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/diagnostics"
           PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
           SELENIUM_DIAG_DIR: "target/selenium-artifacts/diagnostics"
-          # Mitigation 1: heavy only on failure (retain-on-failure)
           E2E_DIAG_HEAVY_ON_FAILURE_ONLY: "true"
-
-          # Contingency: HAR off by default (esp. good for Selenium/Cypress)
           E2E_DIAG_DISABLE_HAR_BY_DEFAULT: "true"
-
-          # Mitigation 2: size budget
           E2E_DIAG_MAX_TOTAL_MB: "150"
 
       - name: "Set E2E_STATUS for exporter (always)"
@@ -384,13 +459,9 @@ jobs:
         env:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
-
-          # -------------------------------------------------------------------------
-          # Cypress artifact discovery (scoped to service_workdir)
-          # -------------------------------------------------------------------------
           CYPRESS_SCREENSHOTS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots"
           CYPRESS_VIDEOS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/videos"
-          CYPRESS_REPORT_DIR: "${{ inputs.service_workdir }}/cypress/reports"   # optional if you generate one
+          CYPRESS_REPORT_DIR: "${{ inputs.service_workdir }}/cypress/reports"
 
       - name: "Upload E2E artifacts (always)"
         if: always()
