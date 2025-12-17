@@ -164,12 +164,24 @@ jobs:
           echo "✅ [TEST] Status        : COMPLETED"
           echo "⏱  [TEST] Duration      : ${DURATION} seconds"
 
+      - name: Detect coverage presence
+        id: cov
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f "coverage/coverage-final.json" ] || [ -f "coverage/coverage-summary.json" ]; then
+            echo "has_coverage=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_coverage=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # -----------------------------------------------------------------------
       # X) Collect coverage (Node: Jest + c8 / Istanbul)
       #    - Expects coverage/coverage-final.json + coverage/coverage-summary.json
       #    - Writes normalized out/coverage.json under WORKING_DIRECTORY.
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
+        if: steps.cov.outputs.has_coverage == 'true'
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
           language: ${{ env.LANGUAGE }}
@@ -182,10 +194,13 @@ jobs:
           set -euo pipefail
           echo "🔧 Normalizing coverage: syncing summary.line from coverage/coverage-summary.json"
 
+          # Empty shard => no tests executed => no coverage folder.
+          # This is OK; skip to keep shard job green.
           if [ ! -f "coverage/coverage-summary.json" ]; then
-            echo "❌ coverage/coverage-summary.json not found – did c8 run with --reporter=json-summary?"
-            ls -R
-            exit 1
+            echo "ℹ️ No coverage/coverage-summary.json found (likely empty shard). Skipping summary sync."
+            echo "ℹ️ Workspace listing:"
+            ls -la
+            exit 0
           fi
 
           node - << 'EOF'
@@ -212,6 +227,7 @@ jobs:
 
           if (!Array.isArray(cov.files)) cov.files = [];
 
+          fs.mkdirSync('out', { recursive: true });
           fs.writeFileSync('out/coverage.json', JSON.stringify(cov, null, 2));
           console.log('✅ Updated out/coverage.json with summary.line =', linePct);
           EOF
