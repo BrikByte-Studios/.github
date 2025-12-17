@@ -68,8 +68,9 @@ jobs:
   plan:
     name: "Matrix Plan (java unit)"
     runs-on: ubuntu-latest
+
     outputs:
-      matrix: ${{ steps.plan.outputs.matrix_json }}
+      matrix_json: ${{ steps.matrix.outputs.matrix_json }}
 
     steps:
       - name: "Compute matrix plan (unit)"
@@ -94,7 +95,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_json) }}
 
     env:
       LANGUAGE: java
@@ -104,7 +105,7 @@ jobs:
 
       # shard metadata (defined by matrix-plan)
       SHARD_INDEX: ${{ matrix.shard }}
-      SHARD_TOTAL: ${{ strategy.job-total }}
+      SHARD_TOTAL: ${{ fromJson(needs.plan.outputs.matrix_json).shard.size }}
 
     steps:
       - name: Checkout repository
