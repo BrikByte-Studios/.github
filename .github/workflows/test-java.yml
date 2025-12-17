@@ -89,7 +89,7 @@ jobs:
   # 2) TEST: run shards from matrix computed in plan job
   # ------------------------------------------------------------
   test:
-    name: "Java: Unit Tests (sharded)"
+    name: "Java: Unit Tests • shard ${{ matrix.shard }}/${{ matrix.shards }}"
     needs: plan
     runs-on: ubuntu-latest
 
@@ -155,6 +155,9 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Run Java unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          UNIT_SHARD: ${{ env.SHARD_INDEX }}
+          UNIT_SHARD_TOTAL: ${{ env.SHARD_TOTAL }}
         run: |
           set -euo pipefail
 
@@ -177,10 +180,26 @@ jobs:
           echo "ℹ️  [TEST] See Maven/Gradle test summary above."
 
       # -----------------------------------------------------------------------
+      # Detect JaCoCo presence (empty shard => no jacoco.xml)
+      # -----------------------------------------------------------------------
+      - name: Detect JaCoCo XML presence
+        id: jacoco
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f "target/site/jacoco/jacoco.xml" ] || [ -f "jacoco.xml" ]; then
+            echo "has_jacoco=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_jacoco=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "has_jacoco=$(cat $GITHUB_OUTPUT | tail -n 1)"
+
+      # -----------------------------------------------------------------------
       # X) Collect coverage (Java: JaCoCo XML)
       #    - Expects target/site/jacoco/jacoco.xml.
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
+        if: steps.jacoco.outputs.has_jacoco == 'true'
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
           language: ${{ env.LANGUAGE }}
@@ -188,6 +207,7 @@ jobs:
           out: out/coverage.json
 
       - name: Ensure summary.line is set in coverage.json (Java / JaCoCo)
+        if: steps.jacoco.outputs.has_jacoco == 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
