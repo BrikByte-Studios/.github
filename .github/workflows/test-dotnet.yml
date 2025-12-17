@@ -18,6 +18,11 @@
 #   - Uses BrikPipe Matrix Plan composite action to compute shards deterministically
 #   - Parallel rules live in:
 #       BrikByte-Studios/.github/.github/actions/matrix-plan/parallel-matrix.yml
+#
+# Shard-safe coverage:
+#   - Some shards may run no tests (e.g., more shards than test projects)
+#   - We detect Coverlet output presence and ONLY normalize/upload coverage when present
+#   - Empty shards skip coverage steps (avoids stub coverage + failing normalizer)
 # =============================================================================
 
 name: "BrikByteOS — .NET Unit Tests"
@@ -173,40 +178,41 @@ jobs:
           echo "ℹ️  [TEST] See dotnet test summary above."
 
       # -----------------------------------------------------------------------
-      # Coverage normalization (your existing approach)
+      # Detect whether this shard produced coverage (empty shard => skip coverage)
       # -----------------------------------------------------------------------
-      - name: Normalize coverage → coverage.json
-        uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
-        with:
-          language: ${{ env.LANGUAGE }}
-          working-directory: ${{ env.WORKING_DIRECTORY }}
-          out: out/coverage.json
-
-      - name: Ensure summary.line is set in coverage.json (.NET / Coverlet)
+      - name: Detect coverage artifacts (per shard)
+        id: covdetect
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
-          echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
 
-          # Prefer deterministic shard-specific file if your Makefile emits it.
-          FOUND=$(find . -type f -name "coverage.net*.json" | head -n 1 || true)
-          if [ -z "$FOUND" ]; then
-            echo "❌ No Coverlet JSON file found under working directory."
-            ls -R
-            exit 1
+          FOUND="$(find . -type f -name "coverage.net*.json" | head -n 1 || true)"
+          if [ -n "$FOUND" ]; then
+            echo "has_coverage=true" >> "$GITHUB_OUTPUT"
+            echo "coverlet_json=$FOUND" >> "$GITHUB_OUTPUT"
+            echo "✅ Found Coverlet JSON: $FOUND"
+          else
+            echo "has_coverage=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ No Coverlet JSON found for this shard (likely no tests ran)."
           fi
-          echo "ℹ️ Using detected Coverlet JSON: $FOUND"
-          export COVERLET_JSON="$FOUND"
+
+      # -----------------------------------------------------------------------
+      # Coverage normalization (ONLY when coverage exists)
+      # NOTE: removed coverage-merge@main here because it emits a stub for dotnet.
+      # -----------------------------------------------------------------------
+      - name: Ensure summary.line is set in out/coverage.json (.NET / Coverlet)
+        if: steps.covdetect.outputs.has_coverage == 'true'
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          COVERLET_JSON: ${{ steps.covdetect.outputs.coverlet_json }}
+        run: |
+          set -euo pipefail
+          echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
+          echo "ℹ️ Using Coverlet JSON: ${COVERLET_JSON}"
 
           python - << 'PY'
           import json, os
           from pathlib import Path
-
-          cov_dir = Path("out")
-          cov_dir.mkdir(parents=True, exist_ok=True)
-          cov_path = cov_dir / "coverage.json"
-
-          cov = json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.exists() else {}
 
           coverlet_path = Path(os.environ["COVERLET_JSON"])
           data = json.loads(coverlet_path.read_text(encoding="utf-8"))
@@ -229,12 +235,6 @@ jobs:
           total = 0
           covered = 0
 
-          # 1) Prefer fast paths if present
-          if isinstance(data, dict):
-            # Some coverlet formats put Modules at top-level
-            pass
-
-          # 2) Generic: count from all Lines maps anywhere in JSON
           for lines_map in iter_lines_maps(data):
             for _, hits in lines_map.items():
               try:
@@ -250,6 +250,11 @@ jobs:
 
           percent = (covered / total) * 100.0
 
+          cov_dir = Path("out")
+          cov_dir.mkdir(parents=True, exist_ok=True)
+          cov_path = cov_dir / "coverage.json"
+
+          cov = json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.exists() else {}
           cov.setdefault("summary", {})
           cov["summary"]["line"] = float(percent)
           cov.setdefault("files", [])
@@ -258,17 +263,30 @@ jobs:
           print(f"✅ Updated out/coverage.json with summary.line = {percent:.2f} (covered={covered}, total={total})")
           PY
 
-
+          echo "✅ out/coverage.json:"
           cat out/coverage.json
 
-      - name: Upload Dotnet coverage artifacts
+      # -----------------------------------------------------------------------
+      # Upload artifacts
+      # - JUnit is useful even if shard was empty (but may not exist)
+      # - Coverage should only upload when it exists (avoid stub artifacts)
+      # -----------------------------------------------------------------------
+      - name: Upload shard JUnit artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # If you shard, make this unique per shard (or merge later).
+          name: junit-dotnet-shard${{ env.UNIT_SHARD }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/out/junit-shard${{ env.UNIT_SHARD }}.xml
+            ${{ env.WORKING_DIRECTORY }}/TestResults/
+          if-no-files-found: ignore
+
+      - name: Upload shard coverage artifacts
+        if: steps.covdetect.outputs.has_coverage == 'true'
+        uses: actions/upload-artifact@v4
+        with:
           name: coverage-dotnet-shard${{ env.UNIT_SHARD }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/TestResults/
-            ${{ env.WORKING_DIRECTORY }}/out/junit-shard${{ env.UNIT_SHARD }}.xml
           if-no-files-found: ignore
