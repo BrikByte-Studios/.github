@@ -1,5 +1,5 @@
 # =============================================================================
-# BrikByteOS — Reusable .NET Unit Test Workflow
+# BrikByteOS — Reusable .NET Unit Test Workflow (sharded)
 # -----------------------------------------------------------------------------
 # WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
 # Repos  :
@@ -12,8 +12,14 @@
 # Contract:
 #   - Expects:
 #       • Makefile with `make test` calling `dotnet test`
-#       • One or more test projects (e.g. /tests/SomeApp.Tests).
+#       • One or more test projects (e.g. /tests/SomeApp.Tests)
+#
+# Matrix plan integration:
+#   - Uses BrikPipe Matrix Plan composite action to compute shards deterministically
+#   - Parallel rules live in:
+#       BrikByte-Studios/.github/.github/actions/matrix-plan/parallel-matrix.yml
 # =============================================================================
+
 name: "BrikByteOS — .NET Unit Tests"
 
 on:
@@ -24,24 +30,82 @@ on:
         required: false
         type: string
         default: "8.0.x"
+
       working-directory:
         description: "Path to .NET solution root (Makefile + *.sln or tests/)"
         required: false
         type: string
         default: "."
 
+      # ------------------------------
+      # Governed parallelism (optional)
+      # ------------------------------
+      override_shards:
+        description: "Optional requested shard count (clamped to caps)."
+        required: false
+        type: string
+        default: ""
+
+      matrix_config_path:
+        description: >
+          Optional path to parallel-matrix.yml.
+          Leave empty to use default inside BrikByte-Studios/.github.
+        required: false
+        type: string
+        default: ""
+
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: ".NET: Unit Tests"
+  # ---------------------------------------------------------------------------
+  # 0) PLAN: compute governed matrix JSON (job output)
+  # ---------------------------------------------------------------------------
+  plan:
+    name: "Matrix Plan (.NET unit)"
     runs-on: ubuntu-latest
+    outputs:
+      matrix_json: ${{ steps.matrix.outputs.matrix_json }}
+
+    steps:
+      - name: "Compute matrix plan (unit)"
+        id: matrix
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: "unit"
+          config_path: ${{ inputs.matrix_config_path }}
+          override_shards: ${{ inputs.override_shards }}
+
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.matrix.outputs.matrix_json }}"
+
+  # ---------------------------------------------------------------------------
+  # 1) TEST: run shards from matrix computed in plan job
+  # ---------------------------------------------------------------------------
+  test:
+    name: ".NET: Unit Tests • shard ${{ matrix.shard }}"
+    runs-on: ubuntu-latest
+    needs: plan
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_json) }}
 
     env:
       LANGUAGE: dotnet
       DOTNET_VERSION: ${{ inputs.dotnet-version != '' && inputs.dotnet-version || '8.0.x' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
+
+      # shard metadata (deterministic)
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_TOTAL: ${{ strategy.job-total }}
+
+      # Optional sharding contract for Makefile/test runners
+      UNIT_SHARD: ${{ matrix.shard }}
+      UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
+
+      FORCE_COLOR: "0"
 
     steps:
       - name: Checkout repository
@@ -49,6 +113,7 @@ jobs:
 
       - name: Verify .NET test layout
         run: |
+          set -euo pipefail
           echo "📁 Working directory: ${WORKING_DIRECTORY}"
 
           if [ ! -d "${WORKING_DIRECTORY}" ]; then
@@ -58,8 +123,9 @@ jobs:
 
           cd "${WORKING_DIRECTORY}"
 
-          if ! compgen -G "*.sln" > /dev/null && ! compgen -G "**/*.csproj" > /dev/null; then
-            echo "❌ No .sln or .csproj files found in ${PWD}."
+          # NOTE: Bash globstar isn't enabled by default; keep checks simple & reliable.
+          if ! ls *.sln >/dev/null 2>&1 && ! find . -maxdepth 4 -name "*.csproj" | head -n 1 | grep -q .; then
+            echo "❌ No .sln or .csproj files found under ${PWD}."
             exit 1
           fi
 
@@ -89,10 +155,14 @@ jobs:
           echo "🧪 [TEST] Runtime   : .NET SDK ${DOTNET_VERSION}"
           echo "🧪 [TEST] Directory : ${PWD}"
           echo "🧪 [TEST] Command   : make test"
+          echo "🧪 [TEST] Shard     : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
           echo "🧪 [TEST] Status    : STARTING"
 
           START_TS=$(date +%s)
 
+          # NOTE:
+          # Your Makefile may optionally consume UNIT_SHARD / UNIT_SHARD_TOTAL.
+          # If it doesn't, all shards will run the full suite (wasteful but correct).
           make test
 
           END_TS=$(date +%s)
@@ -103,7 +173,7 @@ jobs:
           echo "ℹ️  [TEST] See dotnet test summary above."
 
       # -----------------------------------------------------------------------
-      # X) Collect coverage (.NET: coverlet JSON via dotnet test)
+      # Coverage normalization (your existing approach)
       # -----------------------------------------------------------------------
       - name: Normalize coverage → coverage.json
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
@@ -118,176 +188,90 @@ jobs:
           set -euo pipefail
           echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
 
-          # 1) Try common root-level location first.
-          if [ -f "TestResults/coverage.net.json" ]; then
-            export COVERLET_JSON="TestResults/coverage.net.json"
-          elif [ -f "TestResults/coverage.net..json" ]; then
-            export COVERLET_JSON="TestResults/coverage.net..json"
-          else
-            echo "❌ Coverlet JSON not found at TestResults/coverage.net*.json; searching under working directory..."
-            # Search entire working directory for any coverage.net*.json
-            FOUND=$(find . -type f -name "coverage.net*.json" | head -n 1 || true)
-            if [ -z "$FOUND" ]; then
-              echo "❌ No Coverlet JSON file found under working directory."
-              ls -R
-              exit 1
-            fi
-            echo "ℹ️ Using detected Coverlet JSON: $FOUND"
-            export COVERLET_JSON="$FOUND"
+          # Prefer deterministic shard-specific file if your Makefile emits it.
+          FOUND=$(find . -type f -name "coverage.net*.json" | head -n 1 || true)
+          if [ -z "$FOUND" ]; then
+            echo "❌ No Coverlet JSON file found under working directory."
+            ls -R
+            exit 1
           fi
+          echo "ℹ️ Using detected Coverlet JSON: $FOUND"
+          export COVERLET_JSON="$FOUND"
 
-          python - << 'EOF'
-          import json
-          import os
+          python - << 'PY'
+          import json, os
           from pathlib import Path
-          import xml.etree.ElementTree as ET
 
-          # -------------------------------
-          # Helper: load existing coverage.json (may be stub)
-          # -------------------------------
           cov_dir = Path("out")
           cov_dir.mkdir(parents=True, exist_ok=True)
           cov_path = cov_dir / "coverage.json"
 
-          try:
-            cov = json.loads(cov_path.read_text(encoding="utf-8"))
-          except FileNotFoundError:
-            cov = {}
+          cov = json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.exists() else {}
+
+          coverlet_path = Path(os.environ["COVERLET_JSON"])
+          data = json.loads(coverlet_path.read_text(encoding="utf-8"))
 
           percent = None
-          total = None
-          covered = None
 
-          # -------------------------------
-          # Try to read percent from Coverlet JSON
-          # -------------------------------
-          cj = os.environ.get("COVERLET_JSON")
-          if cj:
-            coverlet_path = Path(cj)
-            if coverlet_path.is_file():
-              data = json.loads(coverlet_path.read_text(encoding="utf-8"))
+          # --- Coverlet: Summary.LineCoverage (most common) -------------------
+          if percent is None and isinstance(data.get("Summary"), dict):
+            s = data["Summary"]
+            percent = (
+              s.get("LineCoverage") or s.get("lineCoverage") or
+              s.get("SequenceCoverage") or s.get("sequenceCoverage")
+            )
 
-              # Shape 1: top-level "Line"
-              line_summary = data.get("Line")
-              if isinstance(line_summary, dict):
-                percent = line_summary.get("Percent")
-                total = line_summary.get("Total")
-                covered = line_summary.get("Covered")
-
-              # Shape 2: "Summary": { "Line": {...} }
-              if percent is None and isinstance(data.get("Summary"), dict):
-                ls = data["Summary"].get("Line") or data["Summary"].get("line")
-                if isinstance(ls, dict):
-                  percent = ls.get("Percent") or ls.get("percent")
-                  total = ls.get("Total") or ls.get("total")
-                  covered = ls.get("Covered") or ls.get("covered")
-
-              # Shape 3: "Modules": { name -> { Summary.Line } }
-              modules = None
-              if isinstance(data.get("Modules"), dict):
-                modules = data["Modules"]
-
-              # Shape 4: top-level assemblies map:
-              #   { "SomeAssembly.dll": { ... }, ... }
-              if modules is None and isinstance(data, dict):
-                if all(isinstance(v, dict) for v in data.values()):
-                  modules = data
-
-              if percent is None and isinstance(modules, dict):
-                t_total = 0
-                t_cov = 0
-                for mod_name, mod in modules.items():
-                  ls = None
-
-                  # Option A: module["Line"]
-                  if isinstance(mod.get("Line"), dict):
-                    ls = mod["Line"]
-
-                  # Option B: module["Summary"]["Line"]
-                  if ls is None and isinstance(mod.get("Summary"), dict):
-                    cand = mod["Summary"].get("Line") or mod["Summary"].get("line")
-                    if isinstance(cand, dict):
-                      ls = cand
-
-                  if isinstance(ls, dict):
-                    tt = ls.get("Total") or ls.get("total")
-                    cc = ls.get("Covered") or ls.get("covered")
-                    if isinstance(tt, (int, float)) and isinstance(cc, (int, float)):
-                      t_total += tt
-                      t_cov += cc
-                      continue
-
-                  # Option C: raw "Lines": { "12": 1, "13": 0, ... }
-                  lines_map = mod.get("Lines") or mod.get("lines")
-                  if isinstance(lines_map, dict):
-                    for _, hits in lines_map.items():
-                      try:
-                        h = int(hits)
-                      except Exception:
-                        continue
-                      t_total += 1
-                      if h > 0:
-                        t_cov += 1
-
-                if t_total > 0:
-                  total = t_total
-                  covered = t_cov
-                  percent = (t_cov / t_total) * 100.0
-
-          # -------------------------------
-          # Fallback: parse OpenCover XML if percent still unknown
-          # -------------------------------
+          # --- Aggregate from modules if Summary missing ----------------------
           if percent is None:
-            print("ℹ️ JSON did not yield a summary; trying OpenCover XML...")
-            xml_path: Path | None = None
+            modules = data.get("Modules")
+            if isinstance(modules, dict):
+              module_iter = modules.values()
+            elif isinstance(modules, list):
+              module_iter = modules
+            else:
+              module_iter = []
 
-            # Search for coverage.net*.opencover.xml under working dir
-            for p in Path(".").rglob("coverage.net*.opencover.xml"):
-              xml_path = p
-              break
+            total_lines = 0
+            covered_lines = 0
 
-            if xml_path and xml_path.is_file():
-              tree = ET.parse(str(xml_path))
-              root = tree.getroot()
-              summary = root.find(".//Summary")
-              if summary is not None:
-                num_sp = summary.attrib.get("numSequencePoints")
-                vis_sp = summary.attrib.get("visitedSequencePoints")
-                try:
-                  if num_sp is not None and vis_sp is not None:
-                    total = int(num_sp)
-                    covered = int(vis_sp)
-                    if total > 0:
-                      percent = covered / total * 100.0
-                except ValueError:
-                  pass
+            for mod in module_iter:
+              if not isinstance(mod, dict):
+                continue
+              s = mod.get("Summary")
+              if not isinstance(s, dict):
+                continue
 
-          # -------------------------------
-          # Final: require percent to be set
-          # -------------------------------
+              num = s.get("NumLines") or s.get("numLines")
+              covd = s.get("CoveredLines") or s.get("coveredLines")
+              if isinstance(num, (int, float)) and isinstance(covd, (int, float)):
+                total_lines += int(num)
+                covered_lines += int(covd)
+
+            if total_lines > 0:
+              percent = (covered_lines / total_lines) * 100.0
+
           if percent is None:
-            # Last-resort debug info
-            print("⚠️ Unable to determine coverage percent from Coverlet JSON or OpenCover XML.")
-            raise SystemExit("Cannot determine coverage percent from coverage artifacts")
+            raise SystemExit("Cannot determine coverage percent from Coverlet JSON")
 
           cov.setdefault("summary", {})
           cov["summary"]["line"] = float(percent)
           cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
-          print(f"✅ Updated out/coverage.json with summary.line = {percent:.2f}")
-          EOF
+          print(f"✅ Updated out/coverage.json with summary.line = {float(percent):.2f}")
+          PY
 
-          echo "✅ coverage.json after normalization:"
           cat out/coverage.json
+
 
       - name: Upload Dotnet coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ env.LANGUAGE }}
+          # If you shard, make this unique per shard (or merge later).
+          name: coverage-dotnet-shard${{ env.UNIT_SHARD }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/TestResults/
-            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
+            ${{ env.WORKING_DIRECTORY }}/out/junit-shard${{ env.UNIT_SHARD }}.xml
           if-no-files-found: ignore
