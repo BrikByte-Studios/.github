@@ -89,7 +89,7 @@ jobs:
   # 2) TEST: run shards from matrix computed in plan job
   # ------------------------------------------------------------
   test:
-    name: "Java: Unit Tests • shard ${{ matrix.shard }}/${{ matrix.shards }}"
+    name: "Java: Unit Tests • shard ${{ matrix.shard }}"
     needs: plan
     runs-on: ubuntu-latest
 
