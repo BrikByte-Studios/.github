@@ -263,7 +263,6 @@ jobs:
 
           cat out/coverage.json
 
-
       - name: Upload Dotnet coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
