@@ -24,26 +24,27 @@ global:
 defaults:
   unit:
     default_shards: 6
-    cap: 8
+    max_shards: 8
 
   integration:
     default_shards: 3
-    cap: 4
+    max_shards: 4
 
   e2e:
     default_shards: 4
-    cap: 6
+    max_shards: 6
     browsers:
       - chromium
       - firefox
 
   performance:
     default_shards: 1
-    cap: 2
+    max_shards: 2
 
 overrides_example:
   unit:
     default_shards: 8
   e2e:
     browsers: [chromium, webkit]
+
 
