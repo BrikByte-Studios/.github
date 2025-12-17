@@ -81,7 +81,11 @@ jobs:
 
       # shard metadata (defined by matrix-plan output)
       SHARD_INDEX: ${{ matrix.shard }}
-      SHARD_TOTAL: ${{ matrix.shards }}
+      SHARD_TOTAL: ${{ fromJson(needs.plan.outputs.matrix_json).shard.size }}
+
+      # standardized contract for Makefile runners
+      UNIT_SHARD: ${{ matrix.shard }}
+      UNIT_SHARD_TOTAL: ${{ fromJson(needs.plan.outputs.matrix_json).shard.size }}
 
     steps:
       - name: Checkout repository
@@ -146,10 +150,6 @@ jobs:
 
           START_TS=$(date +%s)
 
-          # NOTE:
-          #   Your Makefile SHOULD honor SHARD_INDEX + SHARD_TOTAL
-          #   (or safely ignore them).
-          #   Recommended: make test routes to a shard runner script.
           make test
 
           END_TS=$(date +%s)
