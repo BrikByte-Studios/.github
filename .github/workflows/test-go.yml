@@ -81,11 +81,11 @@ jobs:
 
       # shard metadata (defined by matrix-plan output)
       SHARD_INDEX: ${{ matrix.shard }}
-      SHARD_TOTAL: ${{ fromJson(needs.plan.outputs.matrix_json).shard.size }}
+      SHARD_TOTAL: ${{ strategy.job-total }}
 
       # standardized contract for Makefile runners
       UNIT_SHARD: ${{ matrix.shard }}
-      UNIT_SHARD_TOTAL: ${{ fromJson(needs.plan.outputs.matrix_json).shard.size }}
+      UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
     steps:
       - name: Checkout repository
