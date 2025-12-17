@@ -211,55 +211,53 @@ jobs:
           coverlet_path = Path(os.environ["COVERLET_JSON"])
           data = json.loads(coverlet_path.read_text(encoding="utf-8"))
 
-          percent = None
+          def iter_lines_maps(obj):
+            """
+            Yield any dict that looks like a Coverlet 'Lines' map:
+              { "12": 1, "13": 0, ... }
+            """
+            if isinstance(obj, dict):
+              for k, v in obj.items():
+                if k in ("Lines", "lines") and isinstance(v, dict):
+                  yield v
+                else:
+                  yield from iter_lines_maps(v)
+            elif isinstance(obj, list):
+              for item in obj:
+                yield from iter_lines_maps(item)
 
-          # --- Coverlet: Summary.LineCoverage (most common) -------------------
-          if percent is None and isinstance(data.get("Summary"), dict):
-            s = data["Summary"]
-            percent = (
-              s.get("LineCoverage") or s.get("lineCoverage") or
-              s.get("SequenceCoverage") or s.get("sequenceCoverage")
-            )
+          total = 0
+          covered = 0
 
-          # --- Aggregate from modules if Summary missing ----------------------
-          if percent is None:
-            modules = data.get("Modules")
-            if isinstance(modules, dict):
-              module_iter = modules.values()
-            elif isinstance(modules, list):
-              module_iter = modules
-            else:
-              module_iter = []
+          # 1) Prefer fast paths if present
+          if isinstance(data, dict):
+            # Some coverlet formats put Modules at top-level
+            pass
 
-            total_lines = 0
-            covered_lines = 0
-
-            for mod in module_iter:
-              if not isinstance(mod, dict):
+          # 2) Generic: count from all Lines maps anywhere in JSON
+          for lines_map in iter_lines_maps(data):
+            for _, hits in lines_map.items():
+              try:
+                h = int(hits)
+              except Exception:
                 continue
-              s = mod.get("Summary")
-              if not isinstance(s, dict):
-                continue
+              total += 1
+              if h > 0:
+                covered += 1
 
-              num = s.get("NumLines") or s.get("numLines")
-              covd = s.get("CoveredLines") or s.get("coveredLines")
-              if isinstance(num, (int, float)) and isinstance(covd, (int, float)):
-                total_lines += int(num)
-                covered_lines += int(covd)
+          if total <= 0:
+            raise SystemExit("Cannot determine coverage: no line hit data found in Coverlet JSON (no Lines maps).")
 
-            if total_lines > 0:
-              percent = (covered_lines / total_lines) * 100.0
-
-          if percent is None:
-            raise SystemExit("Cannot determine coverage percent from Coverlet JSON")
+          percent = (covered / total) * 100.0
 
           cov.setdefault("summary", {})
           cov["summary"]["line"] = float(percent)
           cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
-          print(f"✅ Updated out/coverage.json with summary.line = {float(percent):.2f}")
+          print(f"✅ Updated out/coverage.json with summary.line = {percent:.2f} (covered={covered}, total={total})")
           PY
+
 
           cat out/coverage.json
 
