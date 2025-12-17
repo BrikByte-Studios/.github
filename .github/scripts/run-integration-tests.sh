@@ -93,6 +93,25 @@ run_one_item() {
   if [ -n "${TEST_COMMAND:-}" ]; then
     local cmd
     cmd="$(expand_test_command "${TEST_COMMAND}" "${service}" "${scenario}")"
+
+    # ---- Java safety: normalize "./mvn" to something real -------------------
+    # People frequently write "./mvn" but repo actually uses mvnw or mvn.
+    if [[ "${cmd}" =~ ^\./mvn(\ |$) ]]; then
+      if [ -f "./mvnw" ]; then
+        log WARN "TEST_COMMAND uses './mvn' but mvnw exists. Rewriting to './mvnw'..."
+        cmd="${cmd/\.\/mvn/\.\/mvnw}"
+        chmod +x ./mvnw || true
+      elif command -v mvn >/dev/null 2>&1; then
+        log WARN "TEST_COMMAND uses './mvn' but mvn is available. Rewriting to 'mvn'..."
+        cmd="${cmd/\.\/mvn/mvn}"
+      else
+        log ERROR "TEST_COMMAND uses './mvn' but neither ./mvnw nor mvn is available in the runner container."
+        log ERROR "Fix: use './mvnw ...' (preferred) or ensure Maven is installed in integration-test-runner image."
+        return 127
+      fi
+    fi
+    # ------------------------------------------------------------------------
+    
     log INFO "   TEST_COMMAND: ${cmd}"
     sh -c "${cmd}"
     return
