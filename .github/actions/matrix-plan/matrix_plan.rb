@@ -35,12 +35,26 @@ if config_path.nil? || config_path.strip.empty?
 end
 
 config = YAML.load_file(config_path)
-defaults = config.fetch("defaults").fetch(test_type)
+
+unless config.is_a?(Hash) && config.key?("defaults")
+  abort("Invalid matrix config: missing top-level 'defaults' in #{config_path}")
+end
+
+defaults_root = config.fetch("defaults")
+defaults = defaults_root.fetch(test_type) do
+  abort("Invalid matrix config: defaults missing key '#{test_type}' in #{config_path}")
+end
+
+global = config["global"].is_a?(Hash) ? config["global"] : {}
+min_shards_global = (global["min_shards"] || 1).to_i
+clamp_to_caps = global.key?("clamp_to_caps") ? !!global["clamp_to_caps"] : true
 
 # --- Helpers ---------------------------------------------------------------
 
 def int_or_nil(value)
-  value.nil? || value.strip.empty? ? nil : value.to_i
+  return nil if value.nil?
+  s = value.to_s.strip
+  s.empty? ? nil : s.to_i
 end
 
 def csv_to_list(csv)
@@ -49,12 +63,38 @@ def csv_to_list(csv)
 end
 
 # --- Shard calculation (governed + capped) ---------------------------------
+#
+# Option A YAML contract:
+#   defaults.<type>.default_shards
+#   defaults.<type>.max_shards
+#
+# override_shards:
+#   - if provided -> requested
+#   - else -> default_shards
+#
+# final shards:
+#   - min bound: global.min_shards (default 1)
+#   - max bound: defaults.max_shards
+#   - clamped only if global.clamp_to_caps=true
 
-requested = int_or_nil(override_shards) || defaults.fetch("max_shards")
-cap = defaults.fetch("cap")
+default_shards = defaults.fetch("default_shards")
+max_shards     = defaults.fetch("max_shards")
 
-# Clamp shard count to safe bounds
-shards = [[requested, 1].max, cap].min
+requested = int_or_nil(override_shards) || default_shards.to_i
+
+# Minimum bound
+requested = [requested, min_shards_global].max
+
+# Cap / clamp
+shards =
+  if clamp_to_caps
+    [requested, max_shards.to_i].min
+  else
+    requested
+  end
+
+# Safety: never allow 0 or negative
+shards = [shards, 1].max
 
 # --- Deterministic inputs ---------------------------------------------------
 
