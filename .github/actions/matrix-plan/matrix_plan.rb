@@ -1,7 +1,4 @@
 #!/usr/bin/env ruby
-# -----------------------------------------------------------------------------
-# matrix_plan.rb
-# -----------------------------------------------------------------------------
 # Purpose:
 #   Deterministically generates a GitHub Actions matrix for a given test type
 #   while enforcing platform-level shard caps.
@@ -9,7 +6,7 @@
 # Guarantees:
 #   - No randomness
 #   - Stable shard numbering (1..N)
-#   - Explicit browser / scenario lists
+#   - Stable ordering (sorted inputs)
 #   - Hard caps to prevent CI cost explosions
 #
 # Inputs (ARGV):
@@ -17,7 +14,15 @@
 #   1: config_path      (parallel-matrix.yml)
 #   2: override_shards  (optional int)
 #   3: browsers_csv     (optional CSV, E2E only)
-#   4: items_csv        (optional CSV of scenario/service IDs)
+#   4: items_csv        (optional CSV; semantics depend on test_type)
+#   5: services_csv     (optional CSV, integration only)
+#   6: scenarios_csv    (optional CSV, integration only)
+#
+# Integration strategy:
+#   - Prefer explicit pairs if items_csv provided (service::scenario)
+#   - Else compute cross-product services_csv × scenarios_csv
+#   - Distribute pairs across shards deterministically (round-robin)
+#   - Emit strategy.matrix as { "include": [ {shard, items_csv}, ... ] }
 #
 # Output:
 #   Writes `matrix_json=<json>` to GITHUB_OUTPUT
@@ -26,7 +31,7 @@
 require "yaml"
 require "json"
 
-test_type, config_path, override_shards, browsers_csv, items_csv = ARGV
+test_type, config_path, override_shards, browsers_csv, items_csv, services_csv, scenarios_csv = ARGV
 
 # If the caller didn't provide a config_path, use the action's bundled config.
 if config_path.nil? || config_path.strip.empty?
@@ -58,24 +63,49 @@ def int_or_nil(value)
 end
 
 def csv_to_list(csv)
-  return [] if csv.nil? || csv.strip.empty?
-  csv.split(",").map(&:strip).reject(&:empty?)
+  return [] if csv.nil?
+  s = csv.to_s.strip
+  return [] if s.empty?
+  s.split(",").map(&:strip).reject(&:empty?)
+end
+
+def stable_list(list)
+  list.compact.map(&:to_s).map(&:strip).reject(&:empty?).sort
+end
+
+def parse_pairs_from_items(items)
+  # items like: ["users::happy_path", "payments::timeout"]
+  pairs = []
+  items.each do |t|
+    svc, sc = t.split("::", 2)
+    next if svc.nil? || sc.nil?
+    svc = svc.strip
+    sc  = sc.strip
+    next if svc.empty? || sc.empty?
+    pairs << [svc, sc]
+  end
+  pairs.sort_by { |svc, sc| [svc, sc] }
+end
+
+def cross_product_pairs(services, scenarios)
+  pairs = []
+  services.each do |svc|
+    scenarios.each do |sc|
+      pairs << [svc, sc]
+    end
+  end
+  pairs.sort_by { |svc, sc| [svc, sc] }
+end
+
+def shard_round_robin(pairs, shards)
+  buckets = Array.new(shards) { [] }
+  pairs.each_with_index do |pair, idx|
+    buckets[idx % shards] << pair
+  end
+  buckets
 end
 
 # --- Shard calculation (governed + capped) ---------------------------------
-#
-# Option A YAML contract:
-#   defaults.<type>.default_shards
-#   defaults.<type>.max_shards
-#
-# override_shards:
-#   - if provided -> requested
-#   - else -> default_shards
-#
-# final shards:
-#   - min bound: global.min_shards (default 1)
-#   - max bound: defaults.max_shards
-#   - clamped only if global.clamp_to_caps=true
 
 default_shards = defaults.fetch("default_shards")
 max_shards     = defaults.fetch("max_shards")
@@ -98,8 +128,10 @@ shards = [shards, 1].max
 
 # --- Deterministic inputs ---------------------------------------------------
 
-browsers = csv_to_list(browsers_csv)
-items    = csv_to_list(items_csv)
+browsers  = stable_list(csv_to_list(browsers_csv))
+items     = stable_list(csv_to_list(items_csv))
+services  = stable_list(csv_to_list(services_csv))
+scenarios = stable_list(csv_to_list(scenarios_csv))
 
 if test_type == "e2e" && browsers.empty?
   browsers = defaults.fetch("browsers", [])
@@ -110,26 +142,49 @@ end
 matrix =
   case test_type
   when "unit"
-    # Simple shard-based fan-out
     { "shard" => (1..shards).to_a }
 
   when "integration"
-    # Deterministic service/scenario grouping if provided
-    items.empty? ? { "shard" => (1..shards).to_a } : { "item" => items }
+    pairs =
+      if !items.empty?
+        # Explicit pairs: service::scenario
+        parse_pairs_from_items(items)
+      elsif !services.empty? && !scenarios.empty?
+        # Service × scenario
+        cross_product_pairs(services, scenarios)
+      else
+        []
+      end
+
+    if pairs.empty?
+      { "shard" => (1..shards).to_a }
+    else
+      buckets = shard_round_robin(pairs, shards)
+
+      include_rows = []
+      buckets.each_with_index do |bucket, i|
+        shard_index = i + 1
+        csv = bucket.map { |svc, sc| "#{svc}::#{sc}" }.join(",")
+
+        include_rows << {
+          "shard" => shard_index,
+          "items_csv" => csv
+        }
+      end
+
+      { "include" => include_rows }
+    end
 
   when "e2e"
-    # Cross-product: browser × shard
     { "browser" => browsers, "shard" => (1..shards).to_a }
 
   when "performance"
-    # Prefer explicit scenario groups, fallback to minimal sharding
     items.empty? ? { "shard" => (1..shards).to_a } : { "group" => items }
 
   else
     abort("Unsupported test_type: #{test_type}")
   end
 
-# GitHub Actions expects a JSON object for strategy.matrix
 matrix_json = JSON.generate(matrix)
 
 # --- Output ----------------------------------------------------------------

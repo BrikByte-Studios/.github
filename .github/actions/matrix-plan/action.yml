@@ -35,6 +35,14 @@ inputs:
       Used for integration/performance grouping.
     required: false
     default: ""
+  
+  # NEW (integration)
+  services_csv:
+    required: false
+    default: ""
+  scenarios_csv:
+    required: false
+    default: ""
 
 outputs:
   matrix_json:
@@ -61,10 +69,14 @@ runs:
         echo "[MATRIX-PLAN] override_shards=${{ inputs.override_shards }}"
         echo "[MATRIX-PLAN] browsers=${{ inputs.browsers }}"
         echo "[MATRIX-PLAN] items=${{ inputs.items }}"
+        echo "[MATRIX-PLAN] services_csv=${{ inputs.services_csv }}"
+        echo "[MATRIX-PLAN] scenarios_csv=${{ inputs.scenarios_csv }}"
 
         ruby "${{ github.action_path }}/matrix_plan.rb" \
           "${{ inputs.test_type }}" \
           "${CONFIG_PATH}" \
           "${{ inputs.override_shards }}" \
           "${{ inputs.browsers }}" \
-          "${{ inputs.items }}"
+          "${{ inputs.items }}" \
+          "${{ inputs.services_csv }}" \
+          "${{ inputs.scenarios_csv }}"

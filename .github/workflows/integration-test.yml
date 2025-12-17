@@ -121,12 +121,60 @@ on:
         required: false
         type: string
         default: ""
+      services_csv:
+        description: "CSV of service IDs (integration only)."
+        required: false
+        type: string
+        default: ""
+
+      scenarios_csv:
+        description: "CSV of scenario IDs (integration only)."
+        required: false
+        type: string
+        default: ""
+
+      override_shards:
+        description: "Optional requested shard count for integration (clamped to caps 2–4)."
+        required: false
+        type: string
+        default: ""
+
+      matrix_config_path:
+        description: "Optional path to parallel-matrix.yml (leave empty to use default in .github action)."
+        required: false
+        type: string
+        default: ""
 
 jobs:
+  # 0) PLAN: compute governed matrix for integration service×scenario
+  plan:
+    name: "Matrix Plan (integration)"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix_json: ${{ steps.matrix.outputs.matrix_json }}
+    steps:
+      - name: "Compute matrix plan (integration)"
+        id: matrix
+        uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
+        with:
+          test_type: "integration"
+          config_path: ${{ inputs.matrix_config_path }}
+          override_shards: ${{ inputs.override_shards }}
+          services_csv: ${{ inputs.services_csv }}
+          scenarios_csv: ${{ inputs.scenarios_csv }}
+
+      - name: Debug
+        run: echo "matrix_json=${{ steps.matrix.outputs.matrix_json }}"
+
   integration-tests:
-    name: "Containerized Integration Tests"
+    name: "Integration • shard ${{ matrix.shard }}"
     runs-on: ubuntu-latest
     timeout-minutes: 5  # DoD: sample repos under 5 minutes
+    needs: plan
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix_json) }}
 
     # Use GitHub Environment "integration"
     environment: integration
@@ -145,6 +193,10 @@ jobs:
       ENABLE_CACHE_SERVICE: ${{ inputs.enable_cache_service }}
       TEST_LANGUAGE: ${{ inputs.test_language }}
       SERVICE_WORKDIR: ${{ inputs.context }}
+
+      # shard meta
+      INTEG_SHARD: ${{ matrix.shard }}
+      INTEG_ITEMS_CSV: ${{ matrix.items_csv }}  # <-- service::scenario pairs for this shard
 
       # Standardized integration secrets (INTEG_* naming)
       INTEG_DB_USER: ${{ secrets.INTEG_DB_USER }}
@@ -426,6 +478,7 @@ jobs:
 
           APP_BASE_URL="http://app:${APP_PORT}"
           APP_HEALTH_URL="${APP_BASE_URL}${HEALTHCHECK_PATH}"
+          
 
           echo "Running integration tests with:"
           echo "  APP_BASE_URL        : ${APP_BASE_URL}"
@@ -436,6 +489,8 @@ jobs:
           echo "  TEST_LANGUAGE       : ${TEST_LANGUAGE}"
           echo "  TEST_COMMAND        : ${TEST_COMMAND}"
           echo "  SERVICE_WORKDIR     : ${SERVICE_WORKDIR}"
+          echo "Shard: ${INTEG_SHARD}"
+          echo "Items: ${INTEG_ITEMS_CSV}"
 
           # Mark job start time for audit metadata
           INTEG_JOB_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -453,6 +508,8 @@ jobs:
             -e TEST_LANGUAGE="${TEST_LANGUAGE}" \
             -e TEST_COMMAND="${TEST_COMMAND}" \
             -e SERVICE_WORKDIR="${SERVICE_WORKDIR}" \
+            -e INTEG_SHARD="${INTEG_SHARD}" \
+            -e INTEG_ITEMS_CSV="${INTEG_ITEMS_CSV}" \
             brikpipe/integration-test-runner:latest
 
       - name: "Dump service logs on failure (diagnostic aid)"
