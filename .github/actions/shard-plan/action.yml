@@ -62,7 +62,11 @@ runs:
         #
         # NOTE: This step is allowed to fail (caller decides fallback).
         #
-        npx -y ts-node "$GITHUB_WORKSPACE/.github/scripts/shard-planner.ts" \
+        PLANNER="${{ github.action_path }}/../../scripts/shard-planner.ts"
+        echo "[SHARD-PLAN] Using planner: ${PLANNER}"
+        ls -la "$(dirname "${PLANNER}")"
+
+        npx -y ts-node "${PLANNER}" \
           --mode "${{ inputs.mode }}" \
           --shard-count "${{ inputs.shard_count }}" \
           --test-type "${{ inputs.test_type }}" \
