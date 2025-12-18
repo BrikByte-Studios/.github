@@ -59,6 +59,12 @@ on:
         type: string
         default: ""
 
+      parallel_mode:
+        description: "Parallel mode: static|dynamic (default static)"
+        required: false
+        type: string
+        default: "static"
+
 permissions:
   contents: read
 
@@ -110,6 +116,8 @@ jobs:
       UNIT_SHARD: ${{ matrix.shard }}
       UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
+      PARALLEL_MODE: ${{ inputs.parallel_mode }}
+
       FORCE_COLOR: "0"
 
     steps:
@@ -150,6 +158,52 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
+
+      - name: "Discover test items (unit) — deterministic"
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+
+          # Example strategy: treat each test project as an item
+          # Adjust per language (e.g., *.spec.ts for e2e, etc.)
+          find . -maxdepth 5 -name "*.csproj" | sort > out/test-items.txt
+
+          echo "Discovered $(wc -l < out/test-items.txt) items"
+          head -n 20 out/test-items.txt
+
+      - name: "Plan shards (static/dynamic) — non-blocking"
+        id: shardplan
+        continue-on-error: true
+        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+        with:
+          mode: ${{ env.PARALLEL_MODE }}
+          shard_count: ${{ env.SHARD_TOTAL }}
+          test_type: "unit"
+          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+          workdir: "${{ env.WORKING_DIRECTORY }}"
+          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
+          audit_root: ".audit"
+          seed: "${{ github.sha }}" # deterministic input
+
+      - name: "Fallback to static if shard planner failed"
+        if: steps.shardplan.outcome != 'success'
+        run: |
+          echo "::warning::Shard planner failed; falling back to static mode."
+          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
+
+      - name: "Export shard map to audit (always if exists)"
+        if: always()
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f out/shard-map.json ]; then
+            node $GITHUB_WORKSPACE/.github/scripts/export-parallel-audit.mjs \
+              --shard-map out/shard-map.json \
+              --audit-root "$GITHUB_WORKSPACE/.audit"
+          else
+            echo "::notice::No shard-map.json found; skipping audit export."
+          fi
 
       - name: Run .NET unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}

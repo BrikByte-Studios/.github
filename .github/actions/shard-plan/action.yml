@@ -1,0 +1,75 @@
+name: "BrikByteOS Shard Plan"
+description: >
+  Generates deterministic shard-map.json for static or dynamic modes.
+  Safe-by-default: workflows should fall back to static if this step fails.
+
+inputs:
+  mode:
+    description: "static|dynamic"
+    required: false
+    default: "static"
+  shard_count:
+    description: "Number of shards."
+    required: true
+  test_type:
+    description: "unit|integration|e2e|performance (helps find history under .audit)."
+    required: false
+    default: ""
+  items:
+    description: "Comma-separated list of test items (paths/ids)."
+    required: false
+    default: ""
+  items_file:
+    description: "Newline-delimited file of items."
+    required: false
+    default: ""
+  history_path:
+    description: "Optional explicit history file path."
+    required: false
+    default: ""
+  workdir:
+    description: "Working directory used for file-size heuristic."
+    required: false
+    default: "."
+  out_dir:
+    description: "Output directory (default out/)."
+    required: false
+    default: "out"
+  audit_root:
+    description: "Audit root directory (default .audit/)."
+    required: false
+    default: ".audit"
+  seed:
+    description: "Optional deterministic seed (not random)."
+    required: false
+    default: ""
+
+outputs:
+  shard_map_path:
+    description: "Path to shard-map.json"
+    value: "${{ inputs.out_dir }}/shard-map.json"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Generate shard map (static/dynamic)"
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Prefer repo-provided node + ts-node approach later; for v1 use npx ts-node.
+        # Your governance runner image can include ts-node, or you can compile to JS.
+        #
+        # NOTE: This step is allowed to fail (caller decides fallback).
+        #
+        npx -y ts-node "${{ github.action_path }}/../../scripts/shard-planner.ts" \
+          --mode "${{ inputs.mode }}" \
+          --shard-count "${{ inputs.shard_count }}" \
+          --test-type "${{ inputs.test_type }}" \
+          --items "${{ inputs.items }}" \
+          --items-file "${{ inputs.items_file }}" \
+          --history-path "${{ inputs.history_path }}" \
+          --audit-root "${{ inputs.audit_root }}" \
+          --workdir "${{ inputs.workdir }}" \
+          --out-dir "${{ inputs.out_dir }}" \
+          --seed "${{ inputs.seed }}"
