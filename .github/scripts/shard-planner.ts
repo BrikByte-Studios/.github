@@ -1,32 +1,22 @@
 /**
- * PIPE-PARALLEL-SHARD-DYNAMIC-003
+ * Deterministically generates shard-map.json for static or dynamic modes.
  *
- * Deterministically plans shard allocations for CI test execution.
+ * Sources of weights:
+ * - Historical timings (from .audit) when available
+ * - Heuristics when history is missing (default weight=1; optional file size)
  *
- * Supports:
- *  - static  : deterministic slicing (sorted list -> chunked)
- *  - dynamic : deterministic greedy bin-packing using weights
+ * Outputs:
+ * - <out_dir>/shard-map.json
+ * - <out_dir>/shard-planner-metadata.json
  *
- * Weight sources (priority):
- *  1) Historical durations (from .audit/**/timings.json or results.json)
- *  2) Heuristics when history missing:
- *       - default weight = 1
- *       - optional: file size (bytes) if item is a file path that exists
- *
- * Output:
- *   out/shard-map.json
- *
- * Audit exports (handled by workflow or export script):
- *   .audit/<YYYY-MM-DD>/parallel/shard-map.json
- *   .audit/<YYYY-MM-DD>/parallel/shard-planner-metadata.json
- *
- * Safety guarantees:
- *  - If planner fails, caller should fall back to static and continue.
- *  - Every input item is assigned exactly once.
- *  - Deterministic tie-breaking (lowest shard index).
+ * Safety:
+ * - Planner can fail without breaking pipelines (workflow should fallback to static)
+ * - Every input item must be assigned exactly once
+ * - Tie-breaking is deterministic (lowest shard index)
+ * -----------------------------------------------------------------------------
  */
 
-import fs from "fs";
+import fs from "node:fs";
 import path from "path";
 import crypto from "crypto";
 

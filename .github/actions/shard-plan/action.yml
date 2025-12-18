@@ -62,7 +62,7 @@ runs:
         #
         # NOTE: This step is allowed to fail (caller decides fallback).
         #
-        npx -y ts-node "${{ github.action_path }}/../../scripts/shard-planner.ts" \
+        npx -y ts-node "$GITHUB_WORKSPACE/.github/scripts/shard-planner.ts" \
           --mode "${{ inputs.mode }}" \
           --shard-count "${{ inputs.shard_count }}" \
           --test-type "${{ inputs.test_type }}" \
