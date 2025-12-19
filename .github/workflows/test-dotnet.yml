@@ -198,7 +198,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f out/shard-map.json ]; then
-            node $GITHUB_WORKSPACE/.github/scripts/export-parallel-audit.mjs \
+            node "${{ github.action_path }}/../../scripts/export-parallel-audit.mjs" \
               --shard-map out/shard-map.json \
               --audit-root "$GITHUB_WORKSPACE/.audit"
           else
