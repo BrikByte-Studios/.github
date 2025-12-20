@@ -53,19 +53,32 @@ runs:
   using: "composite"
   steps:
     - name: "Generate shard map (static/dynamic)"
+      id: plan
       shell: bash
       run: |
         set -euo pipefail
 
-        # Prefer repo-provided node + ts-node approach later; for v1 use npx ts-node.
-        # Your governance runner image can include ts-node, or you can compile to JS.
-        #
-        # NOTE: This step is allowed to fail (caller decides fallback).
-        #
         PLANNER="${{ github.action_path }}/../../scripts/shard-planner.ts"
-        echo "[SHARD-PLAN] Using planner: ${PLANNER}"
-        ls -la "$(dirname "${PLANNER}")"
+        OUT_DIR="${{ inputs.out_dir }}"
+        AUDIT_ROOT="${{ inputs.audit_root }}"
 
+        echo "[SHARD-PLAN] mode=${{ inputs.mode }}"
+        echo "[SHARD-PLAN] shard_count=${{ inputs.shard_count }}"
+        echo "[SHARD-PLAN] test_type=${{ inputs.test_type }}"
+        echo "[SHARD-PLAN] out_dir=${OUT_DIR}"
+        echo "[SHARD-PLAN] audit_root=${AUDIT_ROOT}"
+        echo "[SHARD-PLAN] planner=${PLANNER}"
+
+        if [ ! -f "${PLANNER}" ]; then
+          echo "::error::Shard planner not found at ${PLANNER}"
+          exit 1
+        fi
+
+        mkdir -p "${OUT_DIR}"
+
+        # IMPORTANT:
+        # - tsx must be executed via npx so it can transpile TS at runtime
+        # - pin node flags to avoid ESM/TS weirdness
         npx -y tsx "${PLANNER}" \
           --mode "${{ inputs.mode }}" \
           --shard-count "${{ inputs.shard_count }}" \
@@ -73,7 +86,42 @@ runs:
           --items "${{ inputs.items }}" \
           --items-file "${{ inputs.items_file }}" \
           --history-path "${{ inputs.history_path }}" \
-          --audit-root "${{ inputs.audit_root }}" \
+          --audit-root "${AUDIT_ROOT}" \
           --workdir "${{ inputs.workdir }}" \
-          --out-dir "${{ inputs.out_dir }}" \
+          --out-dir "${OUT_DIR}" \
           --seed "${{ inputs.seed }}"
+
+        MAP="${OUT_DIR}/shard-map.json"
+        if [ ! -f "${MAP}" ]; then
+          echo "::error::Planner finished but did not produce ${MAP}"
+          exit 1
+        fi
+
+        echo "[SHARD-PLAN] shard-map.json produced at ${MAP}"
+
+    - name: "Export shard plan audit (non-blocking)"
+      if: always()
+      continue-on-error: true
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        MAP="${{ inputs.out_dir }}/shard-map.json"
+        if [ ! -f "${MAP}" ]; then
+          echo "::notice::No shard-map.json produced; skipping audit export."
+          exit 0
+        fi
+
+        # Put this file INSIDE this action folder:
+        # .github/actions/shard-plan/export-parallel-audit.mjs
+        EXPORTER="${{ github.action_path }}/export-parallel-audit.mjs"
+
+        if [ ! -f "${EXPORTER}" ]; then
+          echo "::warning::Exporter missing at ${EXPORTER}; skipping audit export."
+          exit 0
+        fi
+
+        echo "[SHARD-PLAN] Exporting audit..."
+        node "${EXPORTER}" \
+          --shard-map "${MAP}" \
+          --audit-root "${{ inputs.audit_root }}"

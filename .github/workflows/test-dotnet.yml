@@ -192,18 +192,6 @@ jobs:
           echo "::warning::Shard planner failed; falling back to static mode."
           echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
 
-      - name: "Export shard map to audit (always if exists)"
-        if: always()
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: |
-          set -euo pipefail
-          if [ -f out/shard-map.json ]; then
-            node "${{ github.action_path }}/../../scripts/export-parallel-audit.mjs" \
-              --shard-map out/shard-map.json \
-              --audit-root "$GITHUB_WORKSPACE/.audit"
-          else
-            echo "::notice::No shard-map.json found; skipping audit export."
-          fi
 
       - name: Run .NET unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
