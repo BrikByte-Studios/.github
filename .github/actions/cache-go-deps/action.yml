@@ -103,33 +103,32 @@ runs:
         echo "🔍 Inspecting Go module at: ${MODULE_PATH}"
 
         if [ ! -f "${MODULE_PATH}/go.mod" ]; then
-          echo "::notice::No go.mod found at '${MODULE_PATH}'. Go cache will be skipped."
-          echo "module-path="       >> "$GITHUB_OUTPUT"
-          echo "gomodcache-path="   >> "$GITHUB_OUTPUT"
-          echo "gobuildcache-path=" >> "$GITHUB_OUTPUT"
+          echo "::notice::No go.mod found at '${MODULE_PATH}'. Skipping Go cache."
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
-        echo "✅ go.mod found at '${MODULE_PATH}/go.mod'."
+        echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-        # Determine module cache location:
-        #   - Prefer `go env GOMODCACHE` if available.
-        #   - Fallback: GOPATH/pkg/mod
+        # Build cache (safe)
+        GOCACHE="$(go env GOCACHE || true)"
+        if [ -z "${GOCACHE}" ]; then
+          GOCACHE="${HOME}/.cache/go-build"
+        fi
+
+        # Module download cache (safe subset)
         GOMODCACHE="$(go env GOMODCACHE || true)"
         if [ -z "${GOMODCACHE}" ]; then
           GOPATH_VAL="$(go env GOPATH)"
           GOMODCACHE="${GOPATH_VAL}/pkg/mod"
         fi
+        GODOWNLOADCACHE="${GOMODCACHE}/cache/download"
 
-        # Build cache (standard Go):
-        GOBUILDCACHE="${HOME}/.cache/go-build"
+        echo "🧱 GOCACHE:          ${GOCACHE}"
+        echo "📥 Download cache:   ${GODOWNLOADCACHE}"
 
-        echo "📦 Go module cache:  ${GOMODCACHE}"
-        echo "🧱 Go build cache:   ${GOBUILDCACHE}"
-
-        echo "module-path=${MODULE_PATH}"        >> "$GITHUB_OUTPUT"
-        echo "gomodcache-path=${GOMODCACHE}"     >> "$GITHUB_OUTPUT"
-        echo "gobuildcache-path=${GOBUILDCACHE}" >> "$GITHUB_OUTPUT"
+        echo "gocache=${GOCACHE}" >> "$GITHUB_OUTPUT"
+        echo "godownloadcache=${GODOWNLOADCACHE}" >> "$GITHUB_OUTPUT"
 
     # -------------------------------------------------------------------
     # 2) Cache Go module + build cache
@@ -144,7 +143,7 @@ runs:
     # -------------------------------------------------------------------
     - name: "Cache Go modules & build cache"
       id: cache-go
-      if: ${{ steps.detect.outputs.module-path != '' }}
+      if: ${{ steps.detect.outputs.enabled == 'true' }}
       uses: actions/cache@v4
       with:
         path: |
@@ -164,22 +163,22 @@ runs:
     # 3) Log cache result for observability
     # -------------------------------------------------------------------
     - name: "Summarize Go cache result"
-      if: ${{ steps.detect.outputs.module-path != '' }}
+      id: summary
+      if: ${{ steps.detect.outputs.enabled == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
 
         CACHE_HIT="${{ steps.cache-go.outputs.cache-hit }}"
-        GOMODCACHE="${{ steps.detect.outputs.gomodcache-path }}"
-        GOBUILDCACHE="${{ steps.detect.outputs.gobuildcache-path }}"
+        GOCACHE="${{ steps.detect.outputs.gocache }}"
+        GODOWNLOADCACHE="${{ steps.detect.outputs.godownloadcache }}"
 
         if [ "${CACHE_HIT}" = "true" ]; then
-          echo "✅ Go cache HIT (modules + build)."
+          echo "✅ Go cache HIT."
         else
-          echo "ℹ️ Go cache MISS — a new cache archive will be created."
+          echo "ℹ️ Go cache MISS — will save after job."
         fi
 
-        echo "   • Module cache: ${GOMODCACHE}"
-        echo "   • Build cache : ${GOBUILDCACHE}"
-
-        echo "cache-paths=${GOMODCACHE},${GOBUILDCACHE}" >> "$GITHUB_OUTPUT"
+        echo "   • GOCACHE        : ${GOCACHE}"
+        echo "   • Download cache : ${GODOWNLOADCACHE}"
+        echo "cache-paths=${GOCACHE},${GODOWNLOADCACHE}" >> "$GITHUB_OUTPUT"
