@@ -46,8 +46,8 @@ inputs:
 
 outputs:
   shard_map_path:
-    description: "Path to shard-map.json"
-    value: "${{ inputs.out_dir }}/shard-map.json"
+    description: "Absolute path to shard-map.json"
+    value: ${{ steps.plan.outputs.shard_map_path }}
 
 runs:
   using: "composite"
@@ -84,10 +84,12 @@ runs:
         echo "[SHARD-PLAN] audit_root=${AUDIT_ROOT}"
         echo "[SHARD-PLAN] planner=${PLANNER}"
 
-        # Guard: file must exist + not empty
+        # Guard: items_file must exist + not empty (if provided)
         if [[ -n "${ITEMS_FILE}" ]]; then
           if [[ ! -f "${ITEMS_FILE}" ]]; then
             echo "::error::items_file not found: ${ITEMS_FILE}"
+            echo "::error::pwd=$(pwd)"
+            echo "::error::ls_out_dir=$(ls -la "${ROOT}" || true)"
             exit 2
           fi
           if [[ ! -s "${ITEMS_FILE}" ]]; then
@@ -96,16 +98,13 @@ runs:
           fi
         fi
 
-        if [ ! -f "${PLANNER}" ]; then
+        if [[ ! -f "${PLANNER}" ]]; then
           echo "::error::Shard planner not found at ${PLANNER}"
           exit 1
         fi
 
         mkdir -p "${OUT_DIR}"
 
-        # IMPORTANT:
-        # - tsx must be executed via npx so it can transpile TS at runtime
-        # - pin node flags to avoid ESM/TS weirdness
         npx -y tsx "${PLANNER}" \
           --mode "${{ inputs.mode }}" \
           --shard-count "${{ inputs.shard_count }}" \
@@ -119,25 +118,13 @@ runs:
           --seed "${{ inputs.seed }}"
 
         MAP="${OUT_DIR}/shard-map.json"
-        if [ ! -f "${MAP}" ]; then
+        if [[ ! -f "${MAP}" ]]; then
           echo "::error::Planner finished but did not produce ${MAP}"
           exit 1
         fi
 
         echo "[SHARD-PLAN] shard-map.json produced at ${MAP}"
-
-    - name: "Assert test-items.txt exists (hard fail)"
-      shell: bash
-      run: |
-        set -euo pipefail
-        echo "PWD=$(pwd)"
-        echo "WORKING_DIRECTORY=${WORKING_DIRECTORY}"
-        ls -la "${WORKING_DIRECTORY}" || true
-        ls -la "${WORKING_DIRECTORY}/out" || true
-        test -f "${WORKING_DIRECTORY}/out/test-items.txt"
-        test -s "${WORKING_DIRECTORY}/out/test-items.txt"
-        echo "✅ Found ${WORKING_DIRECTORY}/out/test-items.txt"
-
+        echo "shard_map_path=${MAP}" >> "$GITHUB_OUTPUT"
 
     - name: "Export shard plan audit (non-blocking)"
       if: always()
@@ -146,17 +133,25 @@ runs:
       run: |
         set -euo pipefail
 
-        MAP="${{ inputs.out_dir }}/shard-map.json"
-        if [ ! -f "${MAP}" ]; then
+        ROOT="$GITHUB_WORKSPACE"
+        OUT_DIR="${{ inputs.out_dir }}"
+        AUDIT_ROOT="${{ inputs.audit_root }}"
+
+        if [[ -n "${OUT_DIR}" && "${OUT_DIR}" != /* ]]; then
+          OUT_DIR="${ROOT}/${OUT_DIR}"
+        fi
+        if [[ -n "${AUDIT_ROOT}" && "${AUDIT_ROOT}" != /* ]]; then
+          AUDIT_ROOT="${ROOT}/${AUDIT_ROOT}"
+        fi
+
+        MAP="${OUT_DIR}/shard-map.json"
+        if [[ ! -f "${MAP}" ]]; then
           echo "::notice::No shard-map.json produced; skipping audit export."
           exit 0
         fi
 
-        # Put this file INSIDE this action folder:
-        # .github/actions/shard-plan/export-parallel-audit.mjs
         EXPORTER="${{ github.action_path }}/export-parallel-audit.mjs"
-
-        if [ ! -f "${EXPORTER}" ]; then
+        if [[ ! -f "${EXPORTER}" ]]; then
           echo "::warning::Exporter missing at ${EXPORTER}; skipping audit export."
           exit 0
         fi
@@ -164,4 +159,4 @@ runs:
         echo "[SHARD-PLAN] Exporting audit..."
         node "${EXPORTER}" \
           --shard-map "${MAP}" \
-          --audit-root "${{ inputs.audit_root }}"
+          --audit-root "${AUDIT_ROOT}"
