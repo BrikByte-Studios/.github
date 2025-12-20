@@ -144,6 +144,25 @@ jobs:
           echo "${GOPATH}/bin" >> "$GITHUB_PATH"
           echo "✅ go-junit-report installed and added to PATH"
 
+      - name: "Discover test items (go) — deterministic"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${{ env.WORKING_DIRECTORY }}"
+
+          mkdir -p out
+
+          # Option A (recommended): shard by package
+          go list ./... | sort > out/test-items.txt
+
+          echo "Created: $(pwd)/out/test-items.txt"
+          wc -l out/test-items.txt
+          head -n 30 out/test-items.txt
+
+          # Extra proof (so we never guess again)
+          ls -la out
+
+
       - name: "Plan shards (static/dynamic) — non-blocking"
         id: shardplan
         continue-on-error: true
