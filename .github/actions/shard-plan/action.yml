@@ -59,15 +59,42 @@ runs:
         set -euo pipefail
 
         PLANNER="${{ github.action_path }}/../../scripts/shard-planner.ts"
+
+        ROOT="$GITHUB_WORKSPACE"
         OUT_DIR="${{ inputs.out_dir }}"
         AUDIT_ROOT="${{ inputs.audit_root }}"
+        ITEMS_FILE="${{ inputs.items_file }}"
+
+        # Normalize to absolute if provided and not already absolute
+        if [[ -n "${ITEMS_FILE}" && "${ITEMS_FILE}" != /* ]]; then
+          ITEMS_FILE="${ROOT}/${ITEMS_FILE}"
+        fi
+        if [[ -n "${OUT_DIR}" && "${OUT_DIR}" != /* ]]; then
+          OUT_DIR="${ROOT}/${OUT_DIR}"
+        fi
+        if [[ -n "${AUDIT_ROOT}" && "${AUDIT_ROOT}" != /* ]]; then
+          AUDIT_ROOT="${ROOT}/${AUDIT_ROOT}"
+        fi
 
         echo "[SHARD-PLAN] mode=${{ inputs.mode }}"
         echo "[SHARD-PLAN] shard_count=${{ inputs.shard_count }}"
         echo "[SHARD-PLAN] test_type=${{ inputs.test_type }}"
         echo "[SHARD-PLAN] out_dir=${OUT_DIR}"
+        echo "[SHARD-PLAN] items_file=${ITEMS_FILE}"
         echo "[SHARD-PLAN] audit_root=${AUDIT_ROOT}"
         echo "[SHARD-PLAN] planner=${PLANNER}"
+
+        # Guard: file must exist + not empty
+        if [[ -n "${ITEMS_FILE}" ]]; then
+          if [[ ! -f "${ITEMS_FILE}" ]]; then
+            echo "::error::items_file not found: ${ITEMS_FILE}"
+            exit 2
+          fi
+          if [[ ! -s "${ITEMS_FILE}" ]]; then
+            echo "::error::items_file is empty: ${ITEMS_FILE}"
+            exit 2
+          fi
+        fi
 
         if [ ! -f "${PLANNER}" ]; then
           echo "::error::Shard planner not found at ${PLANNER}"
@@ -84,7 +111,7 @@ runs:
           --shard-count "${{ inputs.shard_count }}" \
           --test-type "${{ inputs.test_type }}" \
           --items "${{ inputs.items }}" \
-          --items-file "${{ inputs.items_file }}" \
+          --items-file "${ITEMS_FILE}" \
           --history-path "${{ inputs.history_path }}" \
           --audit-root "${AUDIT_ROOT}" \
           --workdir "${{ inputs.workdir }}" \
