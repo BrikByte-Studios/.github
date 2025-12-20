@@ -40,6 +40,12 @@ on:
         type: string
         default: ""
 
+      parallel_mode:
+        description: "Parallel mode: static|dynamic (default static)"
+        required: false
+        type: string
+        default: "static"
+
 permissions:
   contents: read
 
@@ -86,6 +92,8 @@ jobs:
       # standardized contract for Makefile runners
       UNIT_SHARD: ${{ matrix.shard }}
       UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
+
+      PARALLEL_MODE: ${{ inputs.parallel_mode }}
 
     steps:
       - name: Checkout repository
@@ -135,6 +143,26 @@ jobs:
           echo "📁 GOPATH is: ${GOPATH}"
           echo "${GOPATH}/bin" >> "$GITHUB_PATH"
           echo "✅ go-junit-report installed and added to PATH"
+
+      - name: "Plan shards (static/dynamic) — non-blocking"
+        id: shardplan
+        continue-on-error: true
+        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+        with:
+          mode: ${{ env.PARALLEL_MODE }}
+          shard_count: ${{ env.SHARD_TOTAL }}
+          test_type: "unit"
+          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+          workdir: "${{ env.WORKING_DIRECTORY }}"
+          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
+          audit_root: ".audit"
+          seed: "${{ github.sha }}" # deterministic input
+
+      - name: "Fallback to static if shard planner failed"
+        if: steps.shardplan.outcome != 'success'
+        run: |
+          echo "::warning::Shard planner failed; falling back to static mode."
+          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
 
       - name: Run Go unit tests (make test)
         working-directory: ${{ env.WORKING_DIRECTORY }}
