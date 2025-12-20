@@ -130,6 +130,14 @@ runs:
         echo "gocache=${GOCACHE}" >> "$GITHUB_OUTPUT"
         echo "godownloadcache=${GODOWNLOADCACHE}" >> "$GITHUB_OUTPUT"
 
+    - name: "Debug cache paths"
+      if: ${{ steps.detect.outputs.enabled == 'true' }}
+      shell: bash
+      run: |
+        echo "gocache='${{ steps.detect.outputs.gocache }}'"
+        echo "godownloadcache='${{ steps.detect.outputs.godownloadcache }}'"
+
+
     # -------------------------------------------------------------------
     # 2) Cache Go module + build cache
     #
@@ -141,14 +149,14 @@ runs:
     #        • <GOMODCACHE>
     #        • ~/.cache/go-build
     # -------------------------------------------------------------------
-    - name: "Cache Go modules & build cache"
-      id: cache-go
-      if: ${{ steps.detect.outputs.enabled == 'true' }}
+    - name: "Cache Go (build + download cache)"
+      id: cache
+      if: ${{ steps.detect.outputs.enabled == 'true' && steps.detect.outputs.gocache != '' && steps.detect.outputs.godownloadcache != '' }}
       uses: actions/cache@v4
       with:
         path: |
-          ${{ steps.detect.outputs.gomodcache-path }}
-          ${{ steps.detect.outputs.gobuildcache-path }}
+          ${{ steps.detect.outputs.gocache }}
+          ${{ steps.detect.outputs.godownloadcache }}
         key: >
           go-${{ runner.os }}-${{ inputs.go-version }}-${{
             hashFiles(
@@ -158,6 +166,7 @@ runs:
           }}
         restore-keys: |
           go-${{ runner.os }}-${{ inputs.go-version }}-
+
 
     # -------------------------------------------------------------------
     # 3) Log cache result for observability
