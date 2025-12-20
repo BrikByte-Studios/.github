@@ -126,6 +126,19 @@ runs:
 
         echo "[SHARD-PLAN] shard-map.json produced at ${MAP}"
 
+    - name: "Assert test-items.txt exists (hard fail)"
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "PWD=$(pwd)"
+        echo "WORKING_DIRECTORY=${WORKING_DIRECTORY}"
+        ls -la "${WORKING_DIRECTORY}" || true
+        ls -la "${WORKING_DIRECTORY}/out" || true
+        test -f "${WORKING_DIRECTORY}/out/test-items.txt"
+        test -s "${WORKING_DIRECTORY}/out/test-items.txt"
+        echo "✅ Found ${WORKING_DIRECTORY}/out/test-items.txt"
+
+
     - name: "Export shard plan audit (non-blocking)"
       if: always()
       continue-on-error: true
