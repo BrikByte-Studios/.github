@@ -145,15 +145,17 @@ jobs:
 
       - name: Parallel runner (serial/static/dynamic)
         id: pr
-        uses: BrikByte-Studios/.github/.github/workflows/partials/parallel-runner.yml@main
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          test_type: unit
-          workdir: ${{ env.WORKING_DIRECTORY }}
+          parallel_enabled: "true"
           parallel_mode: ${{ env.PARALLEL_MODE }}
-          shard_index: ${{ env.SHARD_INDEX }}
-          shard_total: ${{ env.SHARD_TOTAL }}
-          items_out: out/test-items.txt
-          audit_root: .audit
+          shard_index: ${{ matrix.shard }}          # 0-based
+          shard_total: ${{ strategy.job-total }}
+          selection_mode: "file-split"
+          working_directory: ${{ env.WORKING_DIRECTORY }}
+          test_glob: "tests/unit/**/*.test.*"
+          out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
+          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
           # optional knobs:
           # allow_empty_items: true
           # selection_mode: file-split|shard-map|framework-native
@@ -219,6 +221,7 @@ jobs:
 
           START_TS=$(date +%s)
           export UNIT_SHARD UNIT_SHARD_TOTAL
+          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selected_items_file }}"
           make test
 
           END_TS=$(date +%s)
