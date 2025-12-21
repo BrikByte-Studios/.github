@@ -170,7 +170,7 @@ runs:
           exit 2
         fi
 
-        node ".github/scripts/shard-select.mjs" \
+        node "${GITHUB_ACTION_PATH}/shard-select.mjs" \
           --workdir "${{ inputs.working_directory }}" \
           --glob "${GLOB}" \
           --index "${SHARD_INDEX}" \
