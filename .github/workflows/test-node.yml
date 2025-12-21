@@ -83,7 +83,9 @@ jobs:
       WORKING_DIRECTORY: ${{ inputs.working-directory || '.' }}
 
       # Shard contract (consumed by your Makefile/test runner when implemented)
-      UNIT_SHARD: ${{ matrix.shard }}
+      SHARD_INDEX: ${{ matrix.shard }}              # 0-based
+      SHARD_TOTAL: ${{ strategy.job-total }}
+      UNIT_SHARD: ${{ matrix.shard }} + 1
       UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
       # Optional generic contract (if you want to standardize across languages)
@@ -91,6 +93,7 @@ jobs:
       E2E_SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
+      PARALLEL: "true"
 
     steps:
       # -----------------------------------------------------------------------
@@ -140,41 +143,57 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Discover Node unit test items
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ${{ env.WORKING_DIRECTORY }}/out
-
-          # Pick patterns that match your repo (examples):
-          find ${{ env.WORKING_DIRECTORY }} -type f \( \
-            -path "*/tests/unit/*" -o -path "*/test/*" -o -path "*/__tests__/*" \
-          \) \( \
-            -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" \
-          \) | sort > ${{ env.WORKING_DIRECTORY }}/out/test-items.txt
-          echo "Discovered $(wc -l < ${{ env.WORKING_DIRECTORY }}/out/test-items.txt) items"
-          head -n 20 ${{ env.WORKING_DIRECTORY }}/out/test-items.txt || true
-          ls -la ${{ env.WORKING_DIRECTORY }}/out
-
-      - name: "Plan shards (static/dynamic) — non-blocking"
-        id: shardplan
-        continue-on-error: true
-        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+      - name: Parallel runner (serial/static/dynamic)
+        id: pr
+        uses: BrikByte-Studios/.github/.github/workflows/partials/parallel-runner.yml@main
         with:
-          mode: ${{ env.PARALLEL_MODE }}
-          shard_count: ${{ env.UNIT_SHARD_TOTAL }}
-          test_type: "unit"
-          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          workdir: "${{ env.WORKING_DIRECTORY }}"
-          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
-          audit_root: ".audit"
-          seed: "${{ github.sha }}" # deterministic input
+          test_type: unit
+          workdir: ${{ env.WORKING_DIRECTORY }}
+          parallel_mode: ${{ env.PARALLEL_MODE }}
+          shard_index: ${{ env.SHARD_INDEX }}
+          shard_total: ${{ env.SHARD_TOTAL }}
+          items_out: out/test-items.txt
+          audit_root: .audit
+          # optional knobs:
+          # allow_empty_items: true
+          # selection_mode: file-split|shard-map|framework-native
 
-      - name: "Fallback to static if shard planner failed"
-        if: steps.shardplan.outcome != 'success'
-        run: |
-          echo "::warning::Shard planner failed; falling back to static mode."
-          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
+
+      # - name: Discover Node unit test items
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
+      #     mkdir -p ${{ env.WORKING_DIRECTORY }}/out
+
+      #     # Pick patterns that match your repo (examples):
+      #     find ${{ env.WORKING_DIRECTORY }} -type f \( \
+      #       -path "*/tests/unit/*" -o -path "*/test/*" -o -path "*/__tests__/*" \
+      #     \) \( \
+      #       -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" \
+      #     \) | sort > ${{ env.WORKING_DIRECTORY }}/out/test-items.txt
+      #     echo "Discovered $(wc -l < ${{ env.WORKING_DIRECTORY }}/out/test-items.txt) items"
+      #     head -n 20 ${{ env.WORKING_DIRECTORY }}/out/test-items.txt || true
+      #     ls -la ${{ env.WORKING_DIRECTORY }}/out
+
+      # - name: "Plan shards (static/dynamic) — non-blocking"
+      #   id: shardplan
+      #   continue-on-error: true
+      #   uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+      #   with:
+      #     mode: ${{ env.PARALLEL_MODE }}
+      #     shard_count: ${{ env.UNIT_SHARD_TOTAL }}
+      #     test_type: "unit"
+      #     items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+      #     workdir: "${{ env.WORKING_DIRECTORY }}"
+      #     out_dir: "${{ env.WORKING_DIRECTORY }}/out"
+      #     audit_root: ".audit"
+      #     seed: "${{ github.sha }}" # deterministic input
+
+      # - name: "Fallback to static if shard planner failed"
+      #   if: steps.shardplan.outcome != 'success'
+      #   run: |
+      #     echo "::warning::Shard planner failed; falling back to static mode."
+      #     echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
 
       # -----------------------------------------------------------------------
       # 5) Run unit tests via `make test`
@@ -185,6 +204,7 @@ jobs:
       #   will run the full suite (wasteful but still correct).
       # -----------------------------------------------------------------------
       - name: Run Node.js unit tests (make test)
+        if: steps.pr.outputs.is_empty_shard != 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -194,6 +214,7 @@ jobs:
           echo "🧪 [TEST] Directory     : ${PWD}"
           echo "🧪 [TEST] Command       : make test"
           echo "🧪 [TEST] Shard         : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "🧪 [TEST] Mode          : ${PARALLEL_MODE}"
           echo "🧪 [TEST] Status        : STARTING"
 
           START_TS=$(date +%s)
@@ -205,6 +226,10 @@ jobs:
 
           echo "✅ [TEST] Status        : COMPLETED"
           echo "⏱  [TEST] Duration      : ${DURATION} seconds"
+
+      - name: Empty shard (skip)
+        if: steps.pr.outputs.is_empty_shard == 'true'
+        run: echo "ℹ️ Empty shard — nothing to run."
 
       - name: Detect coverage presence
         id: cov
