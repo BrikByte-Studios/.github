@@ -108,20 +108,16 @@ function workloads() {
   return {
     "node-api-unit": {
       root: "node-api-example",
-      discoverItems: ["bash", ["-lc", "node scripts/list-tests.cjs > out/test-items.txt || true"]],
+      discoverItems: ["bash", ["-lc", "mkdir -p out && node scripts/list-tests.cjs > out/test-items.txt || true"]],
       run: async ({ repoRoot, mode, shardCount }) => {
         const cwd = path.join(repoRoot, "node-api-example");
         ensureDir(path.join(cwd, "out"));
 
+        // ⚠️ If npm ci is expensive, consider doing it once per mode (v2 improvement).
         if (mode === "serial") {
-          // Single run, no sharding env vars.
-          return await execTimed("bash", ["-lc", "npm ci && npm test"], cwd, {
-            PARALLEL_MODE: "serial",
-          });
+          return await execTimed("bash", ["-lc", "npm ci && npm test"], cwd, { PARALLEL_MODE: "serial" });
         }
 
-        // Simulate shard totals by executing each shard sequentially in this job.
-        // In real CI, these would be separate matrix jobs.
         const shardTotals = [];
         let allPassed = true;
         let totalWall = 0;
@@ -137,48 +133,25 @@ function workloads() {
           if (!r.passed) allPassed = false;
         }
 
-        return {
-          start_ts: null,
-          end_ts: null,
-          wall_clock_ms: totalWall, // sum of simulated shard runs
-          exit_code: allPassed ? 0 : 1,
-          passed: allPassed,
-          shard_totals_ms: shardTotals,
-        };
+        return { wall_clock_ms: totalWall, exit_code: allPassed ? 0 : 1, passed: allPassed, shard_totals_ms: shardTotals };
       },
     },
 
     "go-api-unit": {
       root: "go-api-example",
-      discoverItems: [
-        "bash",
-        [
-          "-lc",
-          [
-            "mkdir -p out",
-            // Lists packages; adjust if you want per-test granularity later.
-            "go list ./... > out/test-items.txt",
-          ].join(" && "),
-        ],
-      ],
+      discoverItems: ["bash", ["-lc", "mkdir -p out && go list ./... > out/test-items.txt || true"]],
       run: async ({ repoRoot, mode, shardCount }) => {
         const cwd = path.join(repoRoot, "go-api-example");
         ensureDir(path.join(cwd, "out"));
 
         if (mode === "serial") {
-          return await execTimed("bash", ["-lc", "go test ./... -count=1"], cwd, {
-            PARALLEL_MODE: "serial",
-          });
+          return await execTimed("bash", ["-lc", "go test ./... -count=1"], cwd, { PARALLEL_MODE: "serial" });
         }
 
         const shardTotals = [];
         let allPassed = true;
         let totalWall = 0;
 
-        // NOTE:
-        // This assumes your Go Makefile/runner supports shard selection
-        // via UNIT_SHARD/UNIT_SHARD_TOTAL, or you can replace this with
-        // a shard-aware go test runner script.
         for (let i = 1; i <= shardCount; i++) {
           const r = await execTimed("bash", ["-lc", "make test"], cwd, {
             PARALLEL_MODE: mode,
@@ -190,18 +163,100 @@ function workloads() {
           if (!r.passed) allPassed = false;
         }
 
-        return {
-          start_ts: null,
-          end_ts: null,
-          wall_clock_ms: totalWall,
-          exit_code: allPassed ? 0 : 1,
-          passed: allPassed,
-          shard_totals_ms: shardTotals,
-        };
+        return { wall_clock_ms: totalWall, exit_code: allPassed ? 0 : 1, passed: allPassed, shard_totals_ms: shardTotals };
+      },
+    },
+
+    "java-api-unit": {
+      root: "java-api-example",
+      discoverItems: [
+        "bash",
+        [
+          "-lc",
+          [
+            "mkdir -p out",
+            // Broader + more realistic than "*Test.java" at shallow depth.
+            // Captures typical Maven/Gradle layouts.
+            "find . -type f \\( -path '*/src/test/java/*' -o -path '*/test/*' \\) \\( -name '*Test.java' -o -name '*Tests.java' -o -name '*IT.java' \\) | sort > out/test-items.txt || true",
+          ].join(" && "),
+        ],
+      ],
+      run: async ({ repoRoot, mode, shardCount }) => {
+        const cwd = path.join(repoRoot, "java-api-example");
+        ensureDir(path.join(cwd, "out"));
+
+        if (mode === "serial") {
+          // Adjust to your repo: mvn test OR gradle test OR make test.
+          // If your repo standard is Makefile-driven, use "make test" here instead.
+          return await execTimed("bash", ["-lc", "mvn -q -DskipTests=false test"], cwd, {
+            PARALLEL_MODE: "serial",
+          });
+        }
+
+        const shardTotals = [];
+        let allPassed = true;
+        let totalWall = 0;
+
+        // Assumes your Java example honors shard env vars inside make/mvn wrapper.
+        // If not, replace with a shard runner that reads shard-map.json and runs selected tests.
+        for (let i = 1; i <= shardCount; i++) {
+          const r = await execTimed("bash", ["-lc", "make test"], cwd, {
+            PARALLEL_MODE: mode,
+            UNIT_SHARD: String(i),
+            UNIT_SHARD_TOTAL: String(shardCount),
+          });
+          shardTotals.push(r.wall_clock_ms);
+          totalWall += r.wall_clock_ms;
+          if (!r.passed) allPassed = false;
+        }
+
+        return { wall_clock_ms: totalWall, exit_code: allPassed ? 0 : 1, passed: allPassed, shard_totals_ms: shardTotals };
+      },
+    },
+
+    "python-api-unit": {
+      root: "python-api-example",
+      discoverItems: [
+        "bash",
+        [
+          "-lc",
+          [
+            "mkdir -p out",
+            "python -c \"import glob; tests=sorted(glob.glob('**/test_*.py', recursive=True)); print('\\\\n'.join(tests))\" > out/test-items.txt || true",
+          ].join(" && "),
+        ],
+      ],
+      run: async ({ repoRoot, mode, shardCount }) => {
+        const cwd = path.join(repoRoot, "python-api-example");
+        ensureDir(path.join(cwd, "out"));
+
+        if (mode === "serial") {
+          return await execTimed("bash", ["-lc", "pytest -q"], cwd, { PARALLEL_MODE: "serial" });
+        }
+
+        const shardTotals = [];
+        let allPassed = true;
+        let totalWall = 0;
+
+        // Assumes your Python example honors shard env vars in a wrapper.
+        // If not, replace with a runner that selects tests via shard-map.json.
+        for (let i = 1; i <= shardCount; i++) {
+          const r = await execTimed("bash", ["-lc", "make test"], cwd, {
+            PARALLEL_MODE: mode,
+            UNIT_SHARD: String(i),
+            UNIT_SHARD_TOTAL: String(shardCount),
+          });
+          shardTotals.push(r.wall_clock_ms);
+          totalWall += r.wall_clock_ms;
+          if (!r.passed) allPassed = false;
+        }
+
+        return { wall_clock_ms: totalWall, exit_code: allPassed ? 0 : 1, passed: allPassed, shard_totals_ms: shardTotals };
       },
     },
   };
 }
+
 
 /**
  * Compute shard imbalance percentage:
