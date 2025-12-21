@@ -49,7 +49,7 @@ on:
     - cron: "0 4 * * 0"
 
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
     paths:
       - ".github/actions/shard-plan/**"
       - ".github/actions/shard-run/**"
@@ -77,8 +77,8 @@ jobs:
 
       # Benchmark settings
       TARGET_REPO: ${{ inputs.target_repo || 'BrikByte-Studios/brik-pipe-examples' }}
-      TARGET_REF:  ${{ inputs.ref || 'main' }}
-      WORKLOAD:    ${{ inputs.workload || 'node-api-unit' }}
+      TARGET_REF: ${{ inputs.ref || 'main' }}
+      WORKLOAD: ${{ inputs.workload || 'node-api-unit' }}
       SHARD_COUNT: ${{ inputs.shard_count || '4' }}
       ENABLE_DYNAMIC: ${{ inputs.enable_dynamic || 'true' }}
       REPEATS: ${{ inputs.repeats || '1' }}
