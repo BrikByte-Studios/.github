@@ -62,8 +62,8 @@ inputs:
   allow_missing_items_file:
     description: "If true, missing items_file won't fail the job."
     required: false
-    default: true
-    type: boolean
+    default: "true"
+
 
 outputs:
   parallel:
@@ -129,9 +129,20 @@ runs:
           exit 2
         fi
         if [[ "${INDEX}" -lt 0 || "${INDEX}" -ge "${TOTAL}" ]]; then
-          echo "::error::shard_index must be in [0, shard_total-1] (got ${INDEX}/${TOTAL})"
+          MAX=$((TOTAL - 1))
+          HINT=""
+          # common mistake: user passes 1-based shard number
+          if [[ "${INDEX}" -eq "${TOTAL}" ]]; then
+            HINT=" Did you mean shard_index=${MAX} for shard_total=${TOTAL}? (0-based: 0..${MAX})"
+          elif [[ "${INDEX}" -ge 1 && "${INDEX}" -le "${TOTAL}" ]]; then
+            CAND=$((INDEX - 1))
+            HINT=" If you meant 1-based shard numbers, use shard_index=$((INDEX - 1)) (0-based) or change your caller."
+          fi
+
+          echo "::error::shard_index must be in [0, shard_total-1] (got ${INDEX}/${TOTAL}). Valid: 0..${MAX}.${HINT}"
           exit 2
         fi
+
         if [[ "${MODE}" != "serial" && "${MODE}" != "static" && "${MODE}" != "dynamic" ]]; then
           echo "::error::parallel_mode must be serial|static|dynamic (got ${MODE})"
           exit 2
