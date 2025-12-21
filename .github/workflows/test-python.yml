@@ -142,6 +142,26 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
+      - name: "Plan shards (static/dynamic) — non-blocking"
+        id: shardplan
+        continue-on-error: true
+        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+        with:
+          mode: ${{ env.PARALLEL_MODE }}
+          shard_count: ${{ env.UNIT_SHARD_TOTAL }}
+          test_type: "unit"
+          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+          workdir: "${{ env.WORKING_DIRECTORY }}"
+          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
+          audit_root: ".audit"
+          seed: "${{ github.sha }}" # deterministic input
+
+      - name: "Fallback to static if shard planner failed"
+        if: steps.shardplan.outcome != 'success'
+        run: |
+          echo "::warning::Shard planner failed; falling back to static mode."
+          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
+
       # -----------------------------------------------------------------------
       # Run unit tests via `make test`
       # -----------------------------------------------------------------------
