@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * shard-select.mjs
  *
@@ -6,26 +5,32 @@
  *
  * Contract:
  * - SHARD_INDEX is 0-based
- * - SHARD_TOTAL is total shards (>= 1)
+ * - SHARD_TOTAL is total shards
  *
  * Algorithm (stable + deterministic):
  * 1) Glob + sort file paths
  * 2) Select items where (fileIndex % total) === index
  *
- * Usage (example):
- *   node shard-select.mjs \
+ * Why this approach:
+ * - deterministic (same inputs => same selection)
+ * - debuggable (print counts + sample)
+ * - simple, avoids "random shards" drift
+ *
+ * Usage:
+ *   node .github/scripts/shard-select.mjs \
  *     --workdir node-api-example \
- *     --glob "tests/unit/**/\\*.test.js" \
+ *     --glob "tests/unit/**__WILDCARD__/*.test.js" \
  *     --index 0 --total 4 \
  *     --out out/shard-files.txt
- *
- * NOTE:
- * - Avoid putting globs containing "**/" in a /* block comment */ because the
- *   substring "*/" can terminate the comment early in JavaScript.
  */
 
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Use a tiny glob implementation via Node's built-in recursion.
+// Avoid extra deps so this works in minimal environments.
+import { readdirSync, statSync } from "fs";
 
 function parseArgs() {
   const args = new Map();
@@ -34,7 +39,7 @@ function parseArgs() {
     const k = raw[i];
     if (!k.startsWith("--")) continue;
     const v = raw[i + 1] && !raw[i + 1].startsWith("--") ? raw[++i] : "true";
-    args.set(k.slice(2), v);
+    args.set(k.replace(/^--/, ""), v);
   }
   return args;
 }
@@ -44,11 +49,13 @@ function ensureDir(p) {
 }
 
 /**
- * Convert a minimal subset of glob patterns into a RegExp.
+ * Convert a very small subset of glob patterns into a RegExp.
  * Supported:
- * - **  => any nested directories
- * - *   => any characters except path separator
- * - ?   => exactly one character except path separator
+ * - ** for any nested directories
+ * - *  for any characters except path separator
+ * - ?  for single character
+ *
+ * This is intentionally minimal to avoid dependency weight.
  */
 function globToRegExp(glob) {
   // Normalize slashes
@@ -57,37 +64,26 @@ function globToRegExp(glob) {
   // Escape regex meta
   const escaped = g.replace(/[.+^${}()|[\]\\]/g, "\\$&");
 
-  // Protect ** first so the later * replacement doesn't interfere
-  const DS = "__DOUBLE_STAR__";
-  const protectedDS = escaped.replace(/\*\*/g, DS);
+  // Convert glob tokens
+  const withDoubleStar = escaped.replace(/\\\*\\\*/g, "###DOUBLESTAR###");
+  const withStar = withDoubleStar.replace(/\\\*/g, "[^/]*");
+  const withQ = withStar.replace(/\\\?/g, ".");
+  const withDS = withQ.replace(/###DOUBLESTAR###/g, ".*");
 
-  // Single-star: any chars except '/'
-  const withStar = protectedDS.replace(/\*/g, "[^/]*");
-
-  // Question: exactly one char except '/'
-  const withQ = withStar.replace(/\?/g, "[^/]");
-
-  // Restore **
-  const finalSrc = withQ.replaceAll(DS, ".*");
-
-  return new RegExp("^" + finalSrc + "$");
+  return new RegExp("^" + withDS + "$");
 }
 
 function walk(dirAbs) {
   const out = [];
-  const stack = [dirAbs];
-
-  while (stack.length) {
-    const cur = stack.pop();
-    const entries = fs.readdirSync(cur, { withFileTypes: true });
-
-    for (const e of entries) {
-      const p = path.join(cur, e.name);
-      if (e.isDirectory()) stack.push(p);
-      else if (e.isFile()) out.push(p);
+  const entries = readdirSync(dirAbs, { withFileTypes: true });
+  for (const e of entries) {
+    const p = path.join(dirAbs, e.name);
+    if (e.isDirectory()) {
+      out.push(...walk(p));
+    } else if (e.isFile()) {
+      out.push(p);
     }
   }
-
   return out;
 }
 
@@ -95,69 +91,65 @@ function relFrom(rootAbs, fileAbs) {
   return path.relative(rootAbs, fileAbs).replace(/\\/g, "/");
 }
 
-function fail(msg) {
-  console.error(`::error::${msg}`);
-  process.exit(2);
-}
-
-function main() {
+async function main() {
   const args = parseArgs();
 
   const workdir = args.get("workdir") ?? ".";
   const glob = args.get("glob");
   const index = Number(args.get("index"));
   const total = Number(args.get("total"));
-  const outPathRel = args.get("out") ?? "out/shard-files.txt";
+  const outPath = args.get("out") ?? "out/shard-files.txt";
 
-  if (!glob) fail("--glob is required");
-  if (!Number.isInteger(index) || index < 0) fail("--index must be a 0-based integer");
-  if (!Number.isInteger(total) || total < 1) fail("--total must be an integer >= 1");
-  if (index >= total) fail("--index must be < --total");
+  if (!glob) throw new Error("--glob is required");
+  if (!Number.isInteger(index) || index < 0) throw new Error("--index must be a 0-based integer");
+  if (!Number.isInteger(total) || total < 1) throw new Error("--total must be an integer >= 1");
+  if (index >= total) throw new Error("--index must be < --total");
 
   const repoRoot = process.cwd();
   const rootAbs = path.resolve(repoRoot, workdir);
 
-  if (!fs.existsSync(rootAbs)) fail(`workdir does not exist: ${rootAbs}`);
+  if (!fs.existsSync(rootAbs)) {
+    throw new Error(`workdir does not exist: ${rootAbs}`);
+  }
 
   const rx = globToRegExp(glob);
 
-  // Walk all files under workdir, filter by glob, sort deterministically
-  const matched = walk(rootAbs)
-    .map((abs) => relFrom(rootAbs, abs))
-    .filter((rel) => rx.test(rel))
+  // Walk all files under workdir and filter by glob
+  const allAbs = walk(rootAbs);
+  const allRel = allAbs.map((p) => relFrom(rootAbs, p));
+
+  const matched = allRel
+    .filter((p) => rx.test(p))
+    .map((p) => p.replace(/\\/g, "/"))
     .sort((a, b) => a.localeCompare(b));
 
-  const outAbs = path.resolve(repoRoot, outPathRel);
-  ensureDir(path.dirname(outAbs));
-
   if (matched.length === 0) {
-    fs.writeFileSync(outAbs, "", "utf-8");
-    console.log(`[SHARD-SELECT] glob matched 0 files; wrote empty list -> ${outPathRel}`);
+    // Allow empty -> treat as "nothing to run", but still create output file.
+    ensureDir(path.dirname(path.resolve(repoRoot, outPath)));
+    fs.writeFileSync(outPath, "", "utf-8");
+    console.log(`[SHARD-SELECT] glob matched 0 files; wrote empty list -> ${outPath}`);
     process.exit(0);
   }
 
   const selected = matched.filter((_, i) => i % total === index);
-  fs.writeFileSync(outAbs, selected.join("\n") + (selected.length ? "\n" : ""), "utf-8");
 
-  // Log summary (debuggable + stable)
+  ensureDir(path.dirname(path.resolve(repoRoot, outPath)));
+  fs.writeFileSync(outPath, selected.join("\n") + (selected.length ? "\n" : ""), "utf-8");
+
   const sample = selected.slice(0, 12);
-  console.log("============================================================");
-  console.log("🧩 [SHARD-SELECT] Deterministic file split");
-  console.log(`  workdir        : ${workdir}`);
-  console.log(`  glob           : ${glob}`);
-  console.log(`  shard          : ${index}/${total} (0-based)`);
-  console.log(`  total matched  : ${matched.length}`);
-  console.log(`  selected count : ${selected.length}`);
-  console.log(`  out            : ${outPathRel}`);
-  console.log("------------------------------------------------------------");
-  console.log(sample.map((s) => `  - ${s}`).join("\n") || "  (none)");
-  if (selected.length > sample.length) console.log(`  ... (${selected.length - sample.length} more)`);
-  console.log("============================================================");
+  console.log(`[SHARD-SELECT] workdir: ${workdir}`);
+  console.log(`[SHARD-SELECT] glob   : ${glob}`);
+  console.log(`[SHARD-SELECT] shard  : ${index}/${total} (0-based)`);
+  console.log(`[SHARD-SELECT] total matched  : ${matched.length}`);
+  console.log(`[SHARD-SELECT] selected count : ${selected.length}`);
+  console.log(`[SHARD-SELECT] out: ${outPath}`);
+  if (sample.length) {
+    console.log(`[SHARD-SELECT] sample:`);
+    for (const s of sample) console.log(`  - ${s}`);
+  }
 }
 
-try {
-  main();
-} catch (err) {
+main().catch((err) => {
   console.error(`[SHARD-SELECT] ERROR: ${err?.stack || err}`);
   process.exit(1);
-}
+});
