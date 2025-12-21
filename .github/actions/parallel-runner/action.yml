@@ -59,6 +59,12 @@ inputs:
     required: false
     default: ""
 
+  allow_missing_items_file:
+    description: "If true, missing items_file won't fail the job."
+    required: false
+    default: true
+    type: boolean
+
 outputs:
   parallel:
     description: "true|false"
@@ -81,12 +87,6 @@ outputs:
   selected_count:
     description: "selected file count (file-split mode)"
     value: ${{ steps.out.outputs.selected_count }}
-  allow_missing_items_file:
-    description: "If true, missing items_file won't fail the job."
-    required: false
-    default: true
-    type: boolean
-
 
 runs:
   using: "composite"
