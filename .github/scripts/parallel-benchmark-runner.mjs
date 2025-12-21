@@ -254,6 +254,64 @@ function workloads() {
         return { wall_clock_ms: totalWall, exit_code: allPassed ? 0 : 1, passed: allPassed, shard_totals_ms: shardTotals };
       },
     },
+
+    "dotnet-api-unit": {
+        root: "dotnet-api-example",
+        discoverItems: [
+            "bash",
+            [
+            "-lc",
+            [
+                "mkdir -p out",
+                // Conventional discovery: test projects often end with *Tests.csproj or *Test*.csproj
+                "find . -type f \\( -name '*Tests.csproj' -o -name '*Test*.csproj' \\) | sort > out/test-items.txt || true",
+                "echo \"Discovered $(wc -l < out/test-items.txt) items\"",
+                "head -n 20 out/test-items.txt || true",
+            ].join(" && "),
+            ],
+        ],
+        run: async ({ repoRoot, mode, shardCount }) => {
+            const cwd = path.join(repoRoot, "dotnet-api-example");
+            ensureDir(path.join(cwd, "out"));
+
+            if (mode === "serial") {
+            // Serial run: run all tests once
+            return await execTimed("bash", ["-lc", "dotnet test -c Release --logger \"trx;LogFileName=out/test-results.trx\""], cwd, {
+                PARALLEL_MODE: "serial",
+            });
+            }
+
+            // Sharded run: execute shard selections sequentially (benchmark simulation)
+            const shardTotals = [];
+            let allPassed = true;
+            let totalWall = 0;
+
+            for (let i = 1; i <= shardCount; i++) {
+            // This script is provided below (scripts/shard-dotnet-tests.sh)
+            const r = await execTimed(
+                "bash",
+                ["-lc", `bash scripts/shard-dotnet-tests.sh "${i}" "${shardCount}"`],
+                cwd,
+                {
+                PARALLEL_MODE: mode,
+                UNIT_SHARD: String(i),
+                UNIT_SHARD_TOTAL: String(shardCount),
+                }
+            );
+
+            shardTotals.push(r.wall_clock_ms);
+            totalWall += r.wall_clock_ms;
+            if (!r.passed) allPassed = false;
+            }
+
+            return {
+            wall_clock_ms: totalWall,
+            exit_code: allPassed ? 0 : 1,
+            passed: allPassed,
+            shard_totals_ms: shardTotals,
+            };
+        },
+    },
   };
 }
 
