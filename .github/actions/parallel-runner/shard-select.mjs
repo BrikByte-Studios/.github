@@ -49,29 +49,51 @@ function ensureDir(p) {
 }
 
 /**
- * Convert a very small subset of glob patterns into a RegExp.
+ * Convert a minimal glob into a RegExp (stable + safe).
  * Supported:
- * - ** for any nested directories
- * - *  for any characters except path separator
- * - ?  for single character
- *
- * This is intentionally minimal to avoid dependency weight.
+ *  - **  => any nested path segments (including empty)
+ *  - *   => any chars except '/'
+ *  - ?   => exactly one char except '/'
  */
 function globToRegExp(glob) {
-  // Normalize slashes
   const g = glob.replace(/\\/g, "/");
 
-  // Escape regex meta
-  const escaped = g.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  let rx = "^";
+  for (let i = 0; i < g.length; i++) {
+    const ch = g[i];
 
-  // Convert glob tokens
-  const withDoubleStar = escaped.replace(/\\\*\\\*/g, "###DOUBLESTAR###");
-  const withStar = withDoubleStar.replace(/\\\*/g, "[^/]*");
-  const withQ = withStar.replace(/\\\?/g, ".");
-  const withDS = withQ.replace(/###DOUBLESTAR###/g, ".*");
+    // ** => .*
+    if (ch === "*" && g[i + 1] === "*") {
+      rx += ".*";
+      i++; // skip next '*'
+      continue;
+    }
 
-  return new RegExp("^" + withDS + "$");
+    // * => [^/]* (single segment wildcard)
+    if (ch === "*") {
+      rx += "[^/]*";
+      continue;
+    }
+
+    // ? => [^/] (single char)
+    if (ch === "?") {
+      rx += "[^/]";
+      continue;
+    }
+
+    // Escape regex-special chars
+    if ("\\.^$+()[]{}|".includes(ch)) {
+      rx += "\\" + ch;
+      continue;
+    }
+
+    rx += ch;
+  }
+
+  rx += "$";
+  return new RegExp(rx);
 }
+
 
 function walk(dirAbs) {
   const out = [];
