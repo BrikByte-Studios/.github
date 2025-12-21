@@ -44,6 +44,11 @@ on:
         required: false
         type: string
         default: "static"
+
+      enable_parallel:
+        description: "Enable parallel mode (default true)"
+        required: false
+        type: "string"
 permissions:
   contents: read
 
@@ -173,7 +178,7 @@ jobs:
           shard_total: ${{ strategy.job-total }}
           selection_mode: "file-split"
           working_directory: ${{ env.WORKING_DIRECTORY }}
-          test_glob: "**/*.test.*"
+          test_glob: "tests/unit/**/*.{test,spec}.*"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
           # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
           # optional knobs:
@@ -241,7 +246,7 @@ jobs:
 
           START_TS=$(date +%s)
           export UNIT_SHARD UNIT_SHARD_TOTAL
-          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selected_items_file }}"
+          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
           make test
 
           END_TS=$(date +%s)
