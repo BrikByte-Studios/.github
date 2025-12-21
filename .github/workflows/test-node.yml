@@ -140,6 +140,23 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
+      - name: Discover Node unit test items
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p node-api-example/out
+
+          # Pick patterns that match your repo (examples):
+          find node-api-example -type f \( \
+            -path "*/tests/unit/*" -o -path "*/test/*" -o -path "*/__tests__/*" \
+          \) \( \
+            -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" \
+          \) | sort > node-api-example/out/test-items.txt
+
+          echo "Discovered $(wc -l < node-api-example/out/test-items.txt) items"
+          head -n 20 node-api-example/out/test-items.txt || true
+          ls -la node-api-example/out
+
       - name: "Plan shards (static/dynamic) — non-blocking"
         id: shardplan
         continue-on-error: true
