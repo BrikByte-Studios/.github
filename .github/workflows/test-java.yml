@@ -152,6 +152,15 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
+      - name: "Discover test items (unit) — deterministic"
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          find . -maxdepth 6 -type f \( -name "*Test.java" -o -name "*Tests.java" \) | sort > out/test-items.txt
+          echo "Discovered $(wc -l < out/test-items.txt) items"
+          head -n 20 out/test-items.txt
+
       - name: "Plan shards (static/dynamic) — non-blocking"
         id: shardplan
         continue-on-error: true
