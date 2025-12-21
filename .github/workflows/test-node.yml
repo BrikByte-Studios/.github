@@ -197,24 +197,24 @@ jobs:
       #     echo "::warning::Shard planner failed; falling back to static mode."
       #     echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
 
-      - name: Compute shard env (1-based for Makefile)
-        shell: bash
-        run: |
-          set -euo pipefail
+      # - name: Compute shard env (1-based for Makefile)
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
 
-          # matrix.shard is 0-based
-          SHARD0='${{ matrix.shard }}'
-          TOTAL='${{ strategy.job-total }}'
+      #     # matrix.shard is 0-based
+      #     SHARD0='${{ matrix.shard }}'
+      #     TOTAL='${{ strategy.job-total }}'
 
-          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
-          SHARD1=$((SHARD0 + 1))
+      #     # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
+      #     SHARD1=$((SHARD0 + 1))
 
-          {
-            echo "UNIT_SHARD=${SHARD1}"
-            echo "UNIT_SHARD_TOTAL=${TOTAL}"
-          } >> "$GITHUB_ENV"
+      #     {
+      #       echo "UNIT_SHARD=${SHARD1}"
+      #       echo "UNIT_SHARD_TOTAL=${TOTAL}"
+      #     } >> "$GITHUB_ENV"
 
-          echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
+      #     echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
       # -----------------------------------------------------------------------
       # 5) Run unit tests via `make test`
