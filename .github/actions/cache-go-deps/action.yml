@@ -151,7 +151,9 @@ runs:
     # -------------------------------------------------------------------
     - name: "Cache Go (build + download cache)"
       id: cache
-      if: ${{ steps.detect.outputs.enabled == 'true' && steps.detect.outputs.gocache != '' && steps.detect.outputs.godownloadcache != '' }}
+      if: ${{ steps.detect.outputs.enabled == 'true'
+            && steps.detect.outputs.gocache != ''
+            && steps.detect.outputs.godownloadcache != '' }}
       uses: actions/cache@v4
       with:
         path: |

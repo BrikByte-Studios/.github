@@ -86,7 +86,9 @@ on:
       # Deterministic override of browsers for the main matrix (chrome+firefox only).
       # Edge is intentionally handled in a separate job to allow separate timeout.
       browsers:
-        description: "Comma-separated browsers for main matrix (chrome,firefox). If empty => chrome,firefox. (Edge handled separately.)"
+        description: >
+          "Comma-separated browsers for main matrix (chrome,firefox).
+          If empty => chrome,firefox. (Edge handled separately.)"
         type: string
         required: false
         default: ""

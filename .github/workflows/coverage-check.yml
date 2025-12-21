@@ -101,7 +101,10 @@ jobs:
           find .artifacts/coverage -maxdepth 8 -type f -print || true
 
           # Find coverage.json anywhere inside the artifact payload
-          found="$(find .artifacts/coverage -type f \( -path "*/out/coverage.json" -o -name "coverage.json" \) -print -quit 2>/dev/null || true)"
+          found="$(find .artifacts/coverage \
+            -type f \
+            \( -path "*/out/coverage.json" -o -name "coverage.json" \) \
+            -print -quit 2>/dev/null || true)"
 
           if [[ -z "${found}" ]]; then
             echo "[COVERAGE] ERROR: Could not find coverage.json in downloaded artifact."
@@ -109,6 +112,7 @@ jobs:
           fi
 
           echo "[COVERAGE] using: ${found}"
+
           mkdir -p "$(dirname "${TARGET}")"
           cp "${found}" "${TARGET}"
 

@@ -1,0 +1,150 @@
+name: "CI Parallel Benchmark"
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "Owner/repo to benchmark (default brik-pipe-examples)."
+        required: false
+        default: "BrikByte-Studios/brik-pipe-examples"
+        type: string
+      ref:
+        description: "Git ref (branch/tag/SHA) to benchmark."
+        required: false
+        default: "main"
+        type: string
+      workload:
+        description: "Workload id (e.g., node-api-unit, go-api-unit)."
+        required: false
+        default: "node-api-unit"
+        type: string
+      shard_count:
+        description: "Shard count for parallel runs (ignored for serial)."
+        required: false
+        default: "4"
+        type: string
+      enable_dynamic:
+        description: "If true, run dynamic mode too."
+        required: false
+        default: "true"
+        type: string
+      repeats:
+        description: "Runs per mode (v1 supports 1; v2 supports N>1)."
+        required: false
+        default: "1"
+        type: string
+      slowdown_threshold_pct:
+        description: "Fail if >= this slowdown vs baseline."
+        required: false
+        default: "15"
+        type: string
+      required_improvement_pct:
+        description: "Expected min improvement for parallel vs serial (informational in v1)."
+        required: false
+        default: "30"
+        type: string
+
+  schedule:
+    # Weekly Sunday 06:00 Africa/Johannesburg ~= 04:00 UTC
+    - cron: "0 4 * * 0"
+
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - ".github/actions/shard-plan/**"
+      - ".github/actions/shard-run/**"
+      - ".github/scripts/shard-*.ts"
+      - ".github/workflows/**parallel**"
+      - ".github/workflows/**orchestration**"
+      - ".github/actions/cache-*/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "ci-parallel-benchmark-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: "Benchmark: serial vs static vs dynamic"
+    runs-on: ubuntu-latest
+
+    env:
+      # Governance settings
+      SLOWDOWN_THRESHOLD_PCT: ${{ inputs.slowdown_threshold_pct || '15' }}
+      REQUIRED_IMPROVEMENT_PCT: ${{ inputs.required_improvement_pct || '30' }}
+
+      # Benchmark settings
+      TARGET_REPO: ${{ inputs.target_repo || 'BrikByte-Studios/brik-pipe-examples' }}
+      TARGET_REF:  ${{ inputs.ref || 'main' }}
+      WORKLOAD:    ${{ inputs.workload || 'node-api-unit' }}
+      SHARD_COUNT: ${{ inputs.shard_count || '4' }}
+      ENABLE_DYNAMIC: ${{ inputs.enable_dynamic || 'true' }}
+      REPEATS: ${{ inputs.repeats || '1' }}
+
+    steps:
+      - name: Checkout BrikByte-Studios/.github (this repo)
+        uses: actions/checkout@v4
+
+      - name: Setup Node (runner + evaluator)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ env.TARGET_REF }}
+          path: .target
+
+      - name: Run benchmark runner (generates audit json + summary)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out .audit
+
+          echo "[BENCH] TARGET_REPO=${TARGET_REPO}"
+          echo "[BENCH] TARGET_REF=${TARGET_REF}"
+          echo "[BENCH] WORKLOAD=${WORKLOAD}"
+          echo "[BENCH] SHARD_COUNT=${SHARD_COUNT}"
+          echo "[BENCH] ENABLE_DYNAMIC=${ENABLE_DYNAMIC}"
+          echo "[BENCH] REPEATS=${REPEATS}"
+
+          node .github/scripts/parallel-benchmark-runner.mjs \
+            --repo-root ".target" \
+            --workload "${WORKLOAD}" \
+            --shard-count "${SHARD_COUNT}" \
+            --enable-dynamic "${ENABLE_DYNAMIC}" \
+            --repeats "${REPEATS}" \
+            --audit-root ".audit" \
+            --out-md "out/parallel-benchmark-summary.md"
+
+      - name: Evaluate benchmark vs baseline (regression gate)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/scripts/parallel-benchmark-eval.mjs \
+            --benchmark-json ".audit/latest/parallel-benchmark.json" \
+            --baseline-json ".audit/parallel-benchmark-baseline.json" \
+            --slowdown-threshold-pct "${SLOWDOWN_THRESHOLD_PCT}"
+
+      - name: Print summary to logs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "---- parallel-benchmark-summary.md ----"
+          sed -n '1,200p' out/parallel-benchmark-summary.md || true
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallel-benchmark
+          retention-days: 14
+          path: |
+            out/parallel-benchmark-summary.md
+            .audit/latest/parallel-benchmark.json
+            .audit/latest/parallel-benchmark.raw.json

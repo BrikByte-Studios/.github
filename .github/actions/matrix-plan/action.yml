@@ -35,12 +35,14 @@ inputs:
       Used for integration/performance grouping.
     required: false
     default: ""
-  
+
   # NEW (integration)
   services_csv:
+    description: "Optional CSV with services configuration."
     required: false
     default: ""
   scenarios_csv:
+    description: "Optional CSV with scenario configuration."
     required: false
     default: ""
 

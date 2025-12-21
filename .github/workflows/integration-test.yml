@@ -478,7 +478,6 @@ jobs:
 
           APP_BASE_URL="http://app:${APP_PORT}"
           APP_HEALTH_URL="${APP_BASE_URL}${HEALTHCHECK_PATH}"
-          
 
           echo "Running integration tests with:"
           echo "  APP_BASE_URL        : ${APP_BASE_URL}"
