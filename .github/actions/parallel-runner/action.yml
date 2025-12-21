@@ -81,6 +81,12 @@ outputs:
   selected_count:
     description: "selected file count (file-split mode)"
     value: ${{ steps.out.outputs.selected_count }}
+  allow_missing_items_file:
+    description: "If true, missing items_file won't fail the job."
+    required: false
+    default: true
+    type: boolean
+
 
 runs:
   using: "composite"
@@ -183,9 +189,11 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # If the caller already generated a list (e.g. out/test-items.txt),
-        # keep it available for frameworks that consume it directly.
         if [[ ! -f "${{ inputs.items_file }}" ]]; then
+          if [[ "${{ inputs.allow_missing_items_file }}" == "true" ]]; then
+            echo "::warning::items_file not found (continuing): ${{ inputs.items_file }}"
+            exit 0
+          fi
           echo "::error::items_file not found: ${{ inputs.items_file }}"
           exit 2
         fi
