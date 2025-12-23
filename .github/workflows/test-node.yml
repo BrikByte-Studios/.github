@@ -167,7 +167,7 @@ jobs:
 
           echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
-      - name: Debug: list test-like files
+      - name: Debug - list test-like files
         shell: bash
         run: |
           set -euo pipefail
@@ -181,6 +181,7 @@ jobs:
           echo
           echo "Find tests directories:"
           find . -maxdepth 4 -type d \( -name "tests" -o -name "__tests__" -o -name "test" \) | sort
+
 
       - name: Parallel runner (serial/static/dynamic)
         id: pr
