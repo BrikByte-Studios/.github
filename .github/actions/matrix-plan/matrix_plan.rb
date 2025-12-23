@@ -142,28 +142,27 @@ end
 matrix =
   case test_type
   when "unit"
-    { "shard" => (1..shards).to_a }
+    # 0-based shards: 0..(shards-1)
+    { "shard" => (0...shards).to_a }
 
   when "integration"
     pairs =
       if !items.empty?
-        # Explicit pairs: service::scenario
         parse_pairs_from_items(items)
       elsif !services.empty? && !scenarios.empty?
-        # Service × scenario
         cross_product_pairs(services, scenarios)
       else
         []
       end
 
     if pairs.empty?
-      { "shard" => (1..shards).to_a }
+      { "shard" => (0...shards).to_a }
     else
       buckets = shard_round_robin(pairs, shards)
 
       include_rows = []
       buckets.each_with_index do |bucket, i|
-        shard_index = i + 1
+        shard_index = i # 0-based
         csv = bucket.map { |svc, sc| "#{svc}::#{sc}" }.join(",")
 
         include_rows << {
@@ -176,10 +175,10 @@ matrix =
     end
 
   when "e2e"
-    { "browser" => browsers, "shard" => (1..shards).to_a }
+    { "browser" => browsers, "shard" => (0...shards).to_a }
 
   when "performance"
-    items.empty? ? { "shard" => (1..shards).to_a } : { "group" => items }
+    items.empty? ? { "shard" => (0...shards).to_a } : { "group" => items }
 
   else
     abort("Unsupported test_type: #{test_type}")
