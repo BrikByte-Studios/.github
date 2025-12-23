@@ -4,33 +4,23 @@
  * Deterministically selects a subset of test files for a shard.
  *
  * Contract:
- * - SHARD_INDEX is 0-based
- * - SHARD_TOTAL is total shards
+ * - index is 0-based
+ * - total is total shards
  *
  * Algorithm (stable + deterministic):
- * 1) Glob + sort file paths
- * 2) Select items where (fileIndex % total) === index
+ * 1) Walk workdir, build relative file list
+ * 2) Filter by glob (converted to RegExp)
+ * 3) Sort paths
+ * 4) Select items where (fileIndex % total) === index
  *
- * Why this approach:
- * - deterministic (same inputs => same selection)
- * - debuggable (print counts + sample)
- * - simple, avoids "random shards" drift
- *
- * Usage:
- *   node .github/scripts/shard-select.mjs \
- *     --workdir node-api-example \
- *     --glob "tests/unit/**/*.test.js" \
- *     --index 0 --total 4 \
- *     --out out/shard-files.txt
+ * Usage (avoid block-comment sequences like "**/"):
+ *   node shard-select.mjs --workdir node-api-example --glob "tests/unit/**STARSTAR**.test.js" --index 0 --total 4 --out out/shard-files.txt
+ *   (In real calls, pass normal glob patterns; this comment avoids "*/" inside block comments.)
  */
 
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
-
-// Use a tiny glob implementation via Node's built-in recursion.
-// Avoid extra deps so this works in minimal environments.
-import { readdirSync, statSync } from "fs";
+import { readdirSync } from "fs";
 
 function parseArgs() {
   const args = new Map();
@@ -49,28 +39,97 @@ function ensureDir(p) {
 }
 
 /**
- * Convert a very small subset of glob patterns into a RegExp.
+ * Convert a (minimal) glob pattern to RegExp.
  * Supported:
- * - ** for any nested directories
- * - *  for any characters except path separator
- * - ?  for single character
+ *  - **  : match across path segments (including "/")
+ *  - *   : match within a segment (no "/")
+ *  - ?   : match single char within segment (no "/")
+ *  - {a,b,c} : brace alternation (no nesting)
  *
- * This is intentionally minimal to avoid dependency weight.
+ * Notes:
+ *  - glob is matched against POSIX-style "/" paths
+ *  - pattern is relative to the workdir root
  */
 function globToRegExp(glob) {
-  // Normalize slashes
-  const g = glob.replace(/\\/g, "/");
+  const g = String(glob).replace(/\\/g, "/");
 
-  // Escape regex meta
-  const escaped = g.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const isRegexSpecial = (ch) => /[\\^$+?.()|[\]{}]/.test(ch);
 
-  // Convert glob tokens
-  const withDoubleStar = escaped.replace(/\\\*\\\*/g, "###DOUBLESTAR###");
-  const withStar = withDoubleStar.replace(/\\\*/g, "[^/]*");
-  const withQ = withStar.replace(/\\\?/g, ".");
-  const withDS = withQ.replace(/###DOUBLESTAR###/g, ".*");
+  function escapeLiteral(ch) {
+    return isRegexSpecial(ch) ? `\\${ch}` : ch;
+  }
 
-  return new RegExp("^" + withDS + "$");
+  // Parse {a,b} (non-nested)
+  function parseBrace(i) {
+    let j = i + 1;
+    let buf = "";
+    while (j < g.length && g[j] !== "}") {
+      buf += g[j];
+      j++;
+    }
+    if (j >= g.length) {
+      // no closing brace -> treat "{" literally
+      return { re: "\\{", next: i + 1 };
+    }
+
+    const parts = buf.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) return { re: "", next: j + 1 };
+
+    // Escape each part literally (no glob tokens expanded inside braces in this minimal impl)
+    const alts = parts.map((p) => p.split("").map(escapeLiteral).join("")).join("|");
+    return { re: `(?:${alts})`, next: j + 1 };
+  }
+
+  let re = "^";
+  for (let i = 0; i < g.length; ) {
+    const ch = g[i];
+
+    if (ch === "{") {
+      const { re: braceRe, next } = parseBrace(i);
+      re += braceRe;
+      i = next;
+      continue;
+    }
+
+    if (ch === "*") {
+      // ** => cross directories
+      if (g[i + 1] === "*") {
+        i += 2;
+
+        // If followed by a slash, consume it and allow "zero or more directories"
+        if (g[i] === "/") {
+          i += 1;
+          re += "(?:.*/)?";
+        } else {
+          re += ".*";
+        }
+        continue;
+      }
+
+      // * => within segment (no slash)
+      re += "[^/]*";
+      i += 1;
+      continue;
+    }
+
+    if (ch === "?") {
+      re += "[^/]";
+      i += 1;
+      continue;
+    }
+
+    if (ch === "/") {
+      re += "/";
+      i += 1;
+      continue;
+    }
+
+    re += escapeLiteral(ch);
+    i += 1;
+  }
+
+  re += "$";
+  return new RegExp(re);
 }
 
 function walk(dirAbs) {
@@ -78,11 +137,8 @@ function walk(dirAbs) {
   const entries = readdirSync(dirAbs, { withFileTypes: true });
   for (const e of entries) {
     const p = path.join(dirAbs, e.name);
-    if (e.isDirectory()) {
-      out.push(...walk(p));
-    } else if (e.isFile()) {
-      out.push(p);
-    }
+    if (e.isDirectory()) out.push(...walk(p));
+    else if (e.isFile()) out.push(p);
   }
   return out;
 }
@@ -123,22 +179,23 @@ async function main() {
     .map((p) => p.replace(/\\/g, "/"))
     .sort((a, b) => a.localeCompare(b));
 
+  ensureDir(path.dirname(path.resolve(repoRoot, outPath)));
+
   if (matched.length === 0) {
-    // Allow empty -> treat as "nothing to run", but still create output file.
-    ensureDir(path.dirname(path.resolve(repoRoot, outPath)));
     fs.writeFileSync(outPath, "", "utf-8");
     console.log(`[SHARD-SELECT] glob matched 0 files; wrote empty list -> ${outPath}`);
+    console.log(`[SHARD-SELECT] debug: workdir=${workdir} glob=${glob} regex=${rx}`);
     process.exit(0);
   }
 
   const selected = matched.filter((_, i) => i % total === index);
 
-  ensureDir(path.dirname(path.resolve(repoRoot, outPath)));
   fs.writeFileSync(outPath, selected.join("\n") + (selected.length ? "\n" : ""), "utf-8");
 
   const sample = selected.slice(0, 12);
   console.log(`[SHARD-SELECT] workdir: ${workdir}`);
   console.log(`[SHARD-SELECT] glob   : ${glob}`);
+  console.log(`[SHARD-SELECT] regex  : ${rx}`);
   console.log(`[SHARD-SELECT] shard  : ${index}/${total} (0-based)`);
   console.log(`[SHARD-SELECT] total matched  : ${matched.length}`);
   console.log(`[SHARD-SELECT] selected count : ${selected.length}`);
