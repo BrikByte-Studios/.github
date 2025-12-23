@@ -44,11 +44,11 @@ on:
         required: false
         type: string
         default: "static"
-
-      enable_parallel:
-        description: "Enable parallel mode (default true)"
+      parallel_enabled:
+        description: "Enable parallel shard execution (true|false)"
         required: false
-        type: "string"
+        type: string
+        default: "true"
 permissions:
   contents: read
 
@@ -93,12 +93,12 @@ jobs:
       UNIT_SHARD: ${{ matrix.shard }}
       UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
-      # Optional generic contract (if you want to standardize across languages)
+      # Optional generic contract (if you want to standardize across languages).
       E2E_SHARD: ${{ matrix.shard }}
       E2E_SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
-      PARALLEL: "true"
+      PARALLEL: ${{ inputs.parallel_enabled }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -140,7 +140,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # -----------------------------------------------------------------------
-      # 4) Cache deps
+      # 4) Cache deps.
       # -----------------------------------------------------------------------
       - name: "Cache Node dependencies (npm / Yarn / pnpm)"
         uses: BrikByte-Studios/.github/.github/actions/cache-node-deps@main
@@ -148,31 +148,30 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Compute shard env (1-based for Makefile)
-        shell: bash
-        run: |
-          set -euo pipefail
+      # - name: Compute shard env (1-based for Makefile)
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
 
-          # matrix.shard is 0-based
-          SHARD0='${{ matrix.shard }}'
-          TOTAL='${{ strategy.job-total }}'
+      #     # matrix.shard is 0-based
+      #     SHARD0='${{ matrix.shard }}'
+      #     TOTAL='${{ strategy.job-total }}'
 
-          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
-          SHARD1=$((SHARD0 + 1))
+      #     # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
+      #     SHARD1=$((SHARD0 + 1))
 
-          {
-            echo "UNIT_SHARD=${SHARD1}"
-            echo "UNIT_SHARD_TOTAL=${TOTAL}"
-          } >> "$GITHUB_ENV"
+      #     {
+      #       echo "UNIT_SHARD=${SHARD1}"
+      #       echo "UNIT_SHARD_TOTAL=${TOTAL}"
+      #     } >> "$GITHUB_ENV"
 
-          echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
-
+      #     echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
       - name: Parallel runner (serial/static/dynamic)
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          parallel_enabled: "true"
+          parallel_enabled: ${{ env.PARALLEL }}
           parallel_mode: ${{ env.PARALLEL_MODE }}
           shard_index: ${{ matrix.shard }}          # 0-based
           shard_total: ${{ strategy.job-total }}
@@ -240,7 +239,9 @@ jobs:
           echo "🧪 [TEST] Runtime       : Node.js ${NODE_VERSION}"
           echo "🧪 [TEST] Directory     : ${PWD}"
           echo "🧪 [TEST] Command       : make test"
-          echo "🧪 [TEST] Shard         : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "🧪 [TEST] Shard (Makefile 1-based): ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "🧪 [TEST] Shard (Runner 0-based)  : ${SHARD_INDEX}/${SHARD_TOTAL}"
+          echo "🧪 [TEST] Selection               : ${{ steps.pr.outputs.selection_path }}"
           echo "🧪 [TEST] Mode          : ${PARALLEL_MODE}"
           echo "🧪 [TEST] Status        : STARTING"
 
