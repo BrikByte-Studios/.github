@@ -13,14 +13,12 @@
  * 3) Sort paths
  * 4) Select items where (fileIndex % total) === index
  *
- * Usage (avoid block-comment sequences like "**/"):
- *   node shard-select.mjs --workdir node-api-example --glob "tests/unit/**STARSTAR**.test.js" --index 0 --total 4 --out out/shard-files.txt
- *   (In real calls, pass normal glob patterns; this comment avoids "*/" inside block comments.)
+ * Usage (avoid block-comment sequences like ")
  */
 
-import fs from "fs";
-import path from "path";
-import { readdirSync } from "fs";
+import { readFileSync } from "node:fs";
+import fs from "node:fs";
+import path from "node:path";
 
 function parseArgs() {
   const args = new Map();
