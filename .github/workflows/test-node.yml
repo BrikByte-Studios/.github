@@ -90,8 +90,6 @@ jobs:
       # Shard contract (consumed by your Makefile/test runner when implemented)
       SHARD_INDEX: ${{ matrix.shard }}              # 0-based
       SHARD_TOTAL: ${{ strategy.job-total }}
-      # UNIT_SHARD: ${{ matrix.shard }}
-      # UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
       # Optional generic contract (if you want to standardize across languages).
       E2E_SHARD: ${{ matrix.shard }}

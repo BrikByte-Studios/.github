@@ -58,6 +58,11 @@ on:
         required: false
         type: string
         default: "static"
+      parallel_enabled:
+        description: "Enable parallel shard execution (true|false)"
+        required: false
+        type: string
+        default: "true"
 permissions:
   contents: read
 
@@ -102,17 +107,12 @@ jobs:
       PYTHON_VERSION: ${{ inputs.python-version != '' && inputs.python-version || '3.11' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
-      # -----------------------------------------------------------------------
-      # Shard contract (optional for repos; no-op unless Makefile/pytest uses it)
-      # -----------------------------------------------------------------------
-      UNIT_SHARD: ${{ matrix.shard }}
-      UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
-
       # Optional alias (if you want one shared env naming style across runners)
       E2E_SHARD: ${{ matrix.shard }}
       E2E_SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
+      PARALLEL: ${{ inputs.parallel_enabled }}
 
       FORCE_COLOR: "0"
 
@@ -148,46 +148,83 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Discover Python unit test items
+      - name: Compute shard env (1-based for Makefile)
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p python-api-example/out
 
-          # Adjust patterns if your repo differs
-          find python-api-example -type f \( \
-            -path "*/tests/*" -o -path "*/test/*" \
-          \) \( \
-            -name "test_*.py" -o -name "*_test.py" \
-          \) | sort > python-api-example/out/test-items.txt
+          SHARD0='${{ matrix.shard }}'          # 0-based from matrix
+          TOTAL='${{ strategy.job-total }}'     # total jobs in this matrix
 
-          echo "Discovered $(wc -l < python-api-example/out/test-items.txt) items"
-          head -n 30 python-api-example/out/test-items.txt || true
-          ls -la python-api-example/out
-      - name: "Plan shards (static/dynamic) — non-blocking"
-        id: shardplan
-        continue-on-error: true
-        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
+          SHARD1=$((SHARD0 + 1))
+
+          {
+            echo "UNIT_SHARD=${SHARD1}"
+            echo "UNIT_SHARD_TOTAL=${TOTAL}"
+          } >> "$GITHUB_ENV"
+
+          echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
+
+
+      - name: Parallel runner (serial/static/dynamic)
+        id: pr
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          mode: ${{ env.PARALLEL_MODE }}
-          shard_count: ${{ env.UNIT_SHARD_TOTAL }}
-          test_type: "unit"
-          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          workdir: "${{ env.WORKING_DIRECTORY }}"
-          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
-          audit_root: ".audit"
-          seed: "${{ github.sha }}" # deterministic input
+          parallel_enabled: ${{ env.PARALLEL }}
+          parallel_mode: ${{ env.PARALLEL_MODE }}
+          shard_index: ${{ matrix.shard }}          # 0-based
+          shard_total: ${{ strategy.job-total }}
+          selection_mode: "file-split"
+          working_directory: ${{ env.WORKING_DIRECTORY }}
+          test_glob: "tests/**/*test*.py"
+          out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
+          # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+          # optional knobs:
+          # allow_empty_items: true
+          # selection_mode: file-split|shard-map|framework-native
 
-      - name: "Fallback to static if shard planner failed"
-        if: steps.shardplan.outcome != 'success'
-        run: |
-          echo "::warning::Shard planner failed; falling back to static mode."
-          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
+      # - name: Discover Python unit test items
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
+      #     mkdir -p python-api-example/out
+
+      #     # Adjust patterns if your repo differs
+      #     find python-api-example -type f \( \
+      #       -path "*/tests/*" -o -path "*/test/*" \
+      #     \) \( \
+      #       -name "test_*.py" -o -name "*_test.py" \
+      #     \) | sort > python-api-example/out/test-items.txt
+
+      #     echo "Discovered $(wc -l < python-api-example/out/test-items.txt) items"
+      #     head -n 30 python-api-example/out/test-items.txt || true
+      #     ls -la python-api-example/out
+      # - name: "Plan shards (static/dynamic) — non-blocking"
+      #   id: shardplan
+      #   continue-on-error: true
+      #   uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+      #   with:
+      #     mode: ${{ env.PARALLEL_MODE }}
+      #     shard_count: ${{ env.UNIT_SHARD_TOTAL }}
+      #     test_type: "unit"
+      #     items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+      #     workdir: "${{ env.WORKING_DIRECTORY }}"
+      #     out_dir: "${{ env.WORKING_DIRECTORY }}/out"
+      #     audit_root: ".audit"
+      #     seed: "${{ github.sha }}" # deterministic input
+
+      # - name: "Fallback to static if shard planner failed"
+      #   if: steps.shardplan.outcome != 'success'
+      #   run: |
+      #     echo "::warning::Shard planner failed; falling back to static mode."
+      #     echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
 
       # -----------------------------------------------------------------------
       # Run unit tests via `make test`
       # -----------------------------------------------------------------------
       - name: "Run Python unit tests (make test)"
+        if: steps.pr.outputs.is_empty_shard != 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -201,12 +238,9 @@ jobs:
 
           START_TS=$(date +%s)
 
-          # NOTE:
-          # Your Makefile/pytest may optionally consume:
-          #   UNIT_SHARD / UNIT_SHARD_TOTAL
-          # If it doesn't, all shards will run the full suite (wasteful but correct).
           export UNIT_SHARD="${UNIT_SHARD}"
           export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL}"
+          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
           make test
 
           END_TS=$(date +%s)
@@ -215,6 +249,10 @@ jobs:
           echo "✅ [TEST] Status       : COMPLETED"
           echo "⏱  [TEST] Duration    : ${DURATION} seconds"
           echo "ℹ️  [TEST] See pytest summary above for test counts."
+
+      - name: Empty shard (skip)
+        if: steps.pr.outputs.is_empty_shard == 'true'
+        run: echo "ℹ️ Empty shard — nothing to run."
 
       - name: "Detect coverage outputs (this shard)"
         id: cov
