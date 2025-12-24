@@ -63,6 +63,13 @@ on:
         type: string
         default: "static"
 
+      parallel_enabled:
+        description: "Enable parallel shard execution (true|false)"
+        required: false
+        type: string
+        default: "true"
+
+
 permissions:
   contents: read
 
@@ -113,6 +120,7 @@ jobs:
       SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
+      PARALLEL: ${{ inputs.parallel_enabled }}
 
     steps:
       - name: Checkout repository
@@ -152,34 +160,40 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Discover Java test items (unit)
-        working-directory: ${{ env.WORKING_DIRECTORY }}
+      - name: Compute shard env (1-based for Makefile)
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out
-          find . -type f \( -name "*Test.java" -o -name "*Tests.java" \) | sort > out/test-items.txt
-          echo "Discovered $(wc -l < out/test-items.txt) items"
-          head -n 20 out/test-items.txt
 
-      - name: "Plan shards (static/dynamic) — non-blocking"
-        id: shardplan
-        continue-on-error: true
-        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+          SHARD0="${SHARD_INDEX}"
+          TOTAL="${SHARD_TOTAL}"
+
+          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
+          SHARD1=$((SHARD0 + 1))
+
+          {
+            echo "UNIT_SHARD=${SHARD1}"
+            echo "UNIT_SHARD_TOTAL=${TOTAL}"
+          } >> "$GITHUB_ENV"
+
+          echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
+
+      - name: Parallel runner (serial/static/dynamic)
+        id: pr
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          mode: ${{ env.PARALLEL_MODE }}
-          shard_count: ${{ env.SHARD_TOTAL }}
-          test_type: "unit"
-          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          workdir: "${{ env.WORKING_DIRECTORY }}"
-          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
-          audit_root: ".audit"
-          seed: "${{ github.sha }}" # deterministic input
-
-      - name: "Fallback to static if shard planner failed"
-        if: steps.shardplan.outcome != 'success'
-        run: |
-          echo "::warning::Shard planner failed; falling back to static mode."
-          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
+          parallel_enabled: ${{ env.PARALLEL }}
+          parallel_mode: ${{ env.PARALLEL_MODE }}
+          shard_index: ${{ matrix.shard }}          # 0-based
+          shard_total: ${{ strategy.job-total }}
+          selection_mode: "file-split"
+          working_directory: ${{ env.WORKING_DIRECTORY }}
+          test_glob: "**/*{Test,Tests}.java"
+          out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
+          # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+          # optional knobs:
+          # allow_empty_items: true
+          # selection_mode: file-split|shard-map|framework-native
 
       # -----------------------------------------------------------------------
       # Run unit tests via `make test`
@@ -190,10 +204,12 @@ jobs:
       #     make test => scripts/shard-tests.sh "$SHARD_INDEX" "$SHARD_TOTAL"
       # -----------------------------------------------------------------------
       - name: Run Java unit tests (make test)
+        if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         env:
           UNIT_SHARD: ${{ env.SHARD_INDEX }}
           UNIT_SHARD_TOTAL: ${{ env.SHARD_TOTAL }}
+          TEST_ITEMS_FILE: ${{ steps.pr.outputs.selection_path }}
         run: |
           set -euo pipefail
 
@@ -214,6 +230,12 @@ jobs:
           echo "✅ [TEST] Status       : COMPLETED"
           echo "⏱  [TEST] Duration    : ${DURATION} seconds"
           echo "ℹ️  [TEST] See Maven/Gradle test summary above."
+
+      - name: Empty shard (nothing to run)
+        if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
+        run: |
+          echo "ℹ️ Empty shard ${{ env.SHARD_INDEX }}/${{ env.SHARD_TOTAL }} — skipping tests."
+
 
       # -----------------------------------------------------------------------
       # Detect JaCoCo presence (empty shard => no jacoco.xml)

@@ -165,22 +165,6 @@ jobs:
 
           echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
-      # - name: Debug - list test-like files
-      #   shell: bash
-      #   run: |
-      #     set -euo pipefail
-      #     cd "${{ env.WORKING_DIRECTORY }}"
-      #     echo "PWD=$(pwd)"
-      #     echo "Top-level dirs:"
-      #     ls -la
-      #     echo
-      #     echo "Find any *.test.* or *.spec.*:"
-      #     find . -type f \( -name "*.test.*" -o -name "*.spec.*" \) | sort | head -n 200
-      #     echo
-      #     echo "Find tests directories:"
-      #     find . -maxdepth 4 -type d \( -name "tests" -o -name "__tests__" -o -name "test" \) | sort
-
-
       - name: Parallel runner (serial/static/dynamic)
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
@@ -198,43 +182,6 @@ jobs:
           # allow_empty_items: true
           # selection_mode: file-split|shard-map|framework-native
           
-
-
-      # - name: Discover Node unit test items
-      #   shell: bash
-      #   run: |
-      #     set -euo pipefail
-      #     mkdir -p ${{ env.WORKING_DIRECTORY }}/out
-
-      #     # Pick patterns that match your repo (examples):
-      #     find ${{ env.WORKING_DIRECTORY }} -type f \( \
-      #       -path "*/tests/unit/*" -o -path "*/test/*" -o -path "*/__tests__/*" \
-      #     \) \( \
-      #       -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" \
-      #     \) | sort > ${{ env.WORKING_DIRECTORY }}/out/test-items.txt
-      #     echo "Discovered $(wc -l < ${{ env.WORKING_DIRECTORY }}/out/test-items.txt) items"
-      #     head -n 20 ${{ env.WORKING_DIRECTORY }}/out/test-items.txt || true
-      #     ls -la ${{ env.WORKING_DIRECTORY }}/out
-
-      # - name: "Plan shards (static/dynamic) — non-blocking"
-      #   id: shardplan
-      #   continue-on-error: true
-      #   uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
-      #   with:
-      #     mode: ${{ env.PARALLEL_MODE }}
-      #     shard_count: ${{ env.UNIT_SHARD_TOTAL }}
-      #     test_type: "unit"
-      #     items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-      #     workdir: "${{ env.WORKING_DIRECTORY }}"
-      #     out_dir: "${{ env.WORKING_DIRECTORY }}/out"
-      #     audit_root: ".audit"
-      #     seed: "${{ github.sha }}" # deterministic input
-
-      # - name: "Fallback to static if shard planner failed"
-      #   if: steps.shardplan.outcome != 'success'
-      #   run: |
-      #     echo "::warning::Shard planner failed; falling back to static mode."
-      #     echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
 
       # -----------------------------------------------------------------------
       # 5) Run unit tests via `make test`
