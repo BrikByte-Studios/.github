@@ -305,6 +305,8 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/coverage/
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
+            ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
+            ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14

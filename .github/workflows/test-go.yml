@@ -46,6 +46,12 @@ on:
         type: string
         default: "static"
 
+      parallel_enabled:
+        description: "Enable parallel shard execution (true|false)"
+        required: false
+        type: string
+        default: "true"
+
 permissions:
   contents: read
 
@@ -94,6 +100,7 @@ jobs:
       UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
+      PARALLEL: ${{ inputs.parallel_enabled }}
 
     steps:
       - name: Checkout repository
@@ -144,46 +151,43 @@ jobs:
           echo "${GOPATH}/bin" >> "$GITHUB_PATH"
           echo "✅ go-junit-report installed and added to PATH"
 
-      - name: "Discover test items (go) — deterministic"
+      - name: Compute shard env (1-based for Makefile)
         shell: bash
         run: |
           set -euo pipefail
-          cd "${{ env.WORKING_DIRECTORY }}"
 
-          mkdir -p out
+          SHARD0="${SHARD_INDEX}"
+          TOTAL="${SHARD_TOTAL}"
 
-          # Option A (recommended): shard by package
-          go list ./... | sort > out/test-items.txt
+          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
+          SHARD1=$((SHARD0 + 1))
 
-          echo "Created: $(pwd)/out/test-items.txt"
-          wc -l out/test-items.txt
-          head -n 30 out/test-items.txt
+          {
+            echo "UNIT_SHARD=${SHARD1}"
+            echo "UNIT_SHARD_TOTAL=${TOTAL}"
+          } >> "$GITHUB_ENV"
 
-          # Extra proof (so we never guess again)
-          ls -la out
+          echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
-
-      - name: "Plan shards (static/dynamic) — non-blocking"
-        id: shardplan
-        continue-on-error: true
-        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+      - name: Parallel runner (serial/static/dynamic)
+        id: pr
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          mode: ${{ env.PARALLEL_MODE }}
-          shard_count: ${{ env.SHARD_TOTAL }}
-          test_type: "unit"
-          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          workdir: "${{ env.WORKING_DIRECTORY }}"
-          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
-          audit_root: ".audit"
-          seed: "${{ github.sha }}" # deterministic input
-
-      - name: "Fallback to static if shard planner failed"
-        if: steps.shardplan.outcome != 'success'
-        run: |
-          echo "::warning::Shard planner failed; falling back to static mode."
-          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
+          parallel_enabled: ${{ env.PARALLEL }}
+          parallel_mode: ${{ env.PARALLEL_MODE }}
+          shard_index: ${{ matrix.shard }}          # 0-based
+          shard_total: ${{ strategy.job-total }}
+          selection_mode: "file-split"
+          working_directory: ${{ env.WORKING_DIRECTORY }}
+          test_glob: "**/*{Test,Tests}.java"
+          out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
+          # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+          # optional knobs:
+          # allow_empty_items: true
+          # selection_mode: file-split|shard-map|framework-native
 
       - name: Run Go unit tests (make test)
+        if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -193,10 +197,11 @@ jobs:
           echo "🧪 [TEST] Directory  : ${PWD}"
           echo "🧪 [TEST] Shard      : ${SHARD_INDEX}/${SHARD_TOTAL}"
           echo "🧪 [TEST] Command    : make test"
+          echo "📌 TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}""
           echo "🧪 [TEST] Status     : STARTING"
 
           START_TS=$(date +%s)
-
+          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
           make test
 
           END_TS=$(date +%s)
@@ -204,6 +209,17 @@ jobs:
 
           echo "✅ [TEST] Status     : COMPLETED"
           echo "⏱  [TEST] Duration   : ${DURATION} seconds"
+
+      # If this shard is empty, succeed quickly.
+      - name: Empty shard (nothing to run)
+        if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          echo "ℹ️ Empty shard; skipping tests."
+          mkdir -p out
+          : > out/junit.xml
+          : > coverage.out || true
 
       # -----------------------------------------------------------------------
       # X) Collect coverage (Go: go test -coverprofile=coverage.out)
@@ -264,6 +280,8 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/coverage.out
             ${{ env.WORKING_DIRECTORY }}/coverage-func.txt
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
+            ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
+            ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
