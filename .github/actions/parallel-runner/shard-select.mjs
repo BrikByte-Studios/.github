@@ -16,7 +16,8 @@
  * Usage (avoid block-comment sequences like ")
  */
 
-import { readdirSync, fs } from "node:fs";
+import { readdirSync } from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 
 function parseArgs() {
