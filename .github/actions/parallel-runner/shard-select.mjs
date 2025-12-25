@@ -145,16 +145,30 @@ function relFrom(rootAbs, fileAbs) {
   return path.relative(rootAbs, fileAbs).replace(/\\/g, "/");
 }
 
+// ---- parse multi-glob input --------------------
+function parseGlobList(raw) {
+  if (!raw) return [];
+  return String(raw)
+    // split on newlines or commas
+    .split(/\r?\n|,/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+
 async function main() {
   const args = parseArgs();
 
   const workdir = args.get("workdir") ?? ".";
-  const glob = args.get("glob");
+  const globRaw = args.get("glob");
+  const globs = parseGlobList(globRaw);
+
   const index = Number(args.get("index"));
   const total = Number(args.get("total"));
   const outPath = args.get("out") ?? "out/shard-files.txt";
 
-  if (!glob) throw new Error("--glob is required");
+  if (!globs.length) throw new Error("--glob is required (one or more patterns)");
+
   if (!Number.isInteger(index) || index < 0) throw new Error("--index must be a 0-based integer");
   if (!Number.isInteger(total) || total < 1) throw new Error("--total must be an integer >= 1");
   if (index >= total) throw new Error("--index must be < --total");
@@ -166,14 +180,14 @@ async function main() {
     throw new Error(`workdir does not exist: ${rootAbs}`);
   }
 
-  const rx = globToRegExp(glob);
+  const rxs = globs.map(globToRegExp);
 
   // Walk all files under workdir and filter by glob
   const allAbs = walk(rootAbs);
   const allRel = allAbs.map((p) => relFrom(rootAbs, p));
 
   const matched = allRel
-    .filter((p) => rx.test(p))
+    .filter((p) => rxs.some((rx) => rx.test(p)))
     .map((p) => p.replace(/\\/g, "/"))
     .sort((a, b) => a.localeCompare(b));
 
@@ -182,7 +196,11 @@ async function main() {
   if (matched.length === 0) {
     fs.writeFileSync(outPath, "", "utf-8");
     console.log(`[SHARD-SELECT] glob matched 0 files; wrote empty list -> ${outPath}`);
-    console.log(`[SHARD-SELECT] debug: workdir=${workdir} glob=${glob} regex=${rx}`);
+    console.log(`[SHARD-SELECT] debug: workdir=${workdir}`);
+    console.log(`[SHARD-SELECT] globs:`);
+    for (const g of globs) console.log(`  - ${g}`);
+    console.log(`[SHARD-SELECT] regexes:`);
+    for (const rx of rxs) console.log(`  - ${rx}`);
     process.exit(0);
   }
 
@@ -192,8 +210,8 @@ async function main() {
 
   const sample = selected.slice(0, 12);
   console.log(`[SHARD-SELECT] workdir: ${workdir}`);
-  console.log(`[SHARD-SELECT] glob   : ${glob}`);
-  console.log(`[SHARD-SELECT] regex  : ${rx}`);
+  console.log(`[SHARD-SELECT] globs:`);
+  for (const g of globs) console.log(`  - ${g}`);
   console.log(`[SHARD-SELECT] shard  : ${index}/${total} (0-based)`);
   console.log(`[SHARD-SELECT] total matched  : ${matched.length}`);
   console.log(`[SHARD-SELECT] selected count : ${selected.length}`);
