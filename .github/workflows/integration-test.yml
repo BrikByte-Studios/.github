@@ -152,6 +152,12 @@ on:
         type: string
         default: ""
 
+      service_name:
+        description: "Unique service identifier for artifact naming (e.g., python-api-example)"
+        required: false
+        type: string
+        default: ""
+
     secrets:
       INTEG_DB_USER:
         required: false
@@ -537,9 +543,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-audit-${{ github.run_id }}-shard-${{ env.INTEG_SHARD }}
+          name: integration-audit-${{ inputs.service_name != '' && inputs.service_name || github.workflow }}-${{ github.run_id }}-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: .audit
           if-no-files-found: warn
           retention-days: 14
           include-hidden-files: true
+
 
