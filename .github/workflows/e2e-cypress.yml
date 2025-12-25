@@ -1,35 +1,11 @@
-# ==============================================================================
-# Reusable Cypress E2E Workflow — BrikByteOS
-# ==============================================================================
-#
-# Reusable via workflow_call
-# Stable ENV CONTRACT
-# Always set E2E_STATUS
-# Always export via export-e2e-artifacts (single source of truth)
-# Always upload .audit/**/e2e/artifacts/**
-#
-# Matrix governance:
-# - Uses BrikPipe matrix-plan to produce a deterministic matrix.
-# - Cypress defaults to NO sharding (override_shards forced to 1) until spec-splitting
-#   is implemented. We still govern the browser fan-out to control cost.
-#
-# ENV CONTRACT (stable across repos and runners)
-# ---------------------------------------------
-# Required:
-#   - E2E_TARGET_URL           Base URL of app under test
-#   - E2E_RUNNER               cypress
-#
-# Exporter contract:
-#   - E2E_STATUS               success|failed
-#   - E2E_VIDEO                true|false
-#   - E2E_TRACE                true|false (typically false for Cypress)
-#   - E2E_ARTIFACTS_ALWAYS     true|false
-#
-# Notes:
-# - This workflow intentionally does NOT implement legacy copy logic into .audit.
-# - Normalization is done by:
-#     BrikByte-Studios/.github/.github/actions/export-e2e-artifacts
-# ==============================================================================
+# =============================================================================
+# BrikByteOS — Reusable Cypress E2E Workflow (governed browser matrix)
+# -------------------------------------------------------------------
+# - Uses BrikPipe matrix-plan for deterministic browser matrix
+# - Wires BrikByteOS parallel-runner for standard shard contract (framework-native)
+#   (Cypress spec sharding NOT enabled yet; shard_total will be 1)
+# - Exports diagnostics + artifacts using BrikByteOS actions
+# =============================================================================
 
 name: "E2E - Cypress (Reusable)"
 
@@ -49,7 +25,7 @@ on:
         default: "/health"
 
       service_workdir:
-        description: "Working directory for the service under test."
+        description: "Working directory for the Cypress project."
         type: string
         required: false
         default: "."
@@ -126,7 +102,7 @@ on:
       override_shards:
         description: >
           Requested shard count (future: Cypress spec sharding). Clamped.
-          NOTE: Cypress sharding is not enabled yet in this workflow; forced to 1.
+          NOTE: Cypress spec sharding is NOT enabled in this workflow yet.
         type: string
         required: false
         default: ""
@@ -138,6 +114,18 @@ on:
         type: string
         required: false
         default: "chrome"
+
+      parallel_mode:
+        description: "Parallel runner mode: serial|static|dynamic (dynamic reserved)."
+        type: string
+        required: false
+        default: "static"
+
+      parallel_enabled:
+        description: "Enable parallel-runner contract (true|false)."
+        type: string
+        required: false
+        default: "true"
 
       # -----------------------------------------------------------------------
       # Cross-runner artifact export toggles (BrikByteOS standard)
@@ -168,12 +156,19 @@ on:
 
     secrets: {}
 
+permissions:
+  contents: read
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # 0) PLAN: governed browser matrix
+  # ---------------------------------------------------------------------------
   plan:
     name: "Plan governed Cypress matrix"
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix_json }}
+
     steps:
       - name: "Checkout (future-proof for repo-level config)"
         uses: actions/checkout@v4
@@ -183,12 +178,19 @@ jobs:
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
         with:
           test_type: e2e
-          # Cypress sharding not implemented here → keep at 1 to avoid job explosion.
+          # Cypress spec sharding not implemented yet -> force shard_total=1 to avoid job explosion.
           override_shards: "1"
           browsers: ${{ inputs.browsers }}
 
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.plan.outputs.matrix_json }}"
+
+  # ---------------------------------------------------------------------------
+  # 1) RUN: Cypress E2E per browser (and future shards)
+  # ---------------------------------------------------------------------------
   cypress-e2e:
-    name: "Cypress E2E • ${{ matrix.browser }}"
+    name: "Cypress E2E • ${{ matrix.browser }} • shard ${{ matrix.shard }}"
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.job_timeout_minutes }}
@@ -198,14 +200,16 @@ jobs:
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
 
     env:
-      # Runner contract
+      # ----------------------------------------------------------
+      # Test runner contract
+      # ----------------------------------------------------------
       E2E_RUNNER: cypress
       E2E_TARGET_URL: ${{ inputs.target_url }}
 
       # Cypress convention
       CYPRESS_BASE_URL: ${{ inputs.target_url }}
 
-      # Retry controls (read by your cypress.config.cjs)
+      # Retry controls (read by your cypress.config.*)
       CYPRESS_RUN_MODE_RETRIES: ${{ inputs.run_mode_retries }}
       CYPRESS_OPEN_MODE_RETRIES: ${{ inputs.open_mode_retries }}
 
@@ -221,20 +225,27 @@ jobs:
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
+      # -----------------------------------------------------------------------
+      # Standard shard contract (even if shard_total=1 today)
+      # NOTE: framework-native -> no glob selection; avoids 0-match surprises.
+      # -----------------------------------------------------------------------
+      - name: "Parallel runner (framework-native contract)"
+        id: pr
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
+        with:
+          parallel_enabled: ${{ inputs.parallel_enabled }}
+          parallel_mode: ${{ inputs.parallel_mode }}
+          shard_index: ${{ matrix.shard }}          # 0-based
+          shard_total: ${{ strategy.job-total }}    # 1 today
+          selection_mode: "framework-native"
+          working_directory: ${{ inputs.service_workdir }}
+
       - name: "Honor disable flag"
         env:
           ALLOW_DISABLE: ${{ inputs.allow_disable }}
           DISABLE: ${{ inputs.disable_cypress_e2e }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Honor disable flag
-
-          Purpose:
-            Allow repos to temporarily disable Cypress E2E (emergency stop),
-            but only if allow_disable=true.
-          DOCSTRING
-
           echo "[CYPRESS] allow_disable=${ALLOW_DISABLE}"
           echo "[CYPRESS] disable_cypress_e2e=${DISABLE}"
 
@@ -256,12 +267,6 @@ jobs:
           DOCKER_IMAGE_NAME: ${{ inputs.docker_image_name }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Build app image for docker mode.
-
-          Notes:
-            The Dockerfile must exist in service_workdir.
-          DOCSTRING
           docker build -t "${DOCKER_IMAGE_NAME}" .
 
       - name: "Start UI Docker container (docker mode)"
@@ -271,12 +276,6 @@ jobs:
           DOCKER_PORT: ${{ inputs.docker_port }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Start app container for Cypress docker mode.
-
-          Notes:
-            App is reachable on the docker network as http://app:<port>.
-          DOCSTRING
           docker run -d --rm \
             --name app \
             --network e2e-net \
@@ -292,14 +291,6 @@ jobs:
           TARGET_URL: ${{ inputs.target_url }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Resolve HEALTH_URL
-
-          Purpose:
-            Compute the correct health endpoint depending on whether the app is started
-            inside Docker (reachable as app:<port>) or externally via target_url.
-          DOCSTRING
-
           if [ "${START_WITH_DOCKER}" = "true" ]; then
             echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
           else
@@ -312,13 +303,6 @@ jobs:
           START_WITH_DOCKER: ${{ inputs.start_with_docker }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Wait for service readiness
-
-          Purpose:
-            Ensure the app under test responds before Cypress runs.
-          DOCSTRING
-
           echo "[CYPRESS] Waiting for ${HEALTH_URL}"
 
           timeout=120
@@ -360,6 +344,8 @@ jobs:
             done
           fi
 
+          echo "[CYPRESS] Ready ✅"
+
       - name: "Run Cypress E2E"
         id: run_cypress
         env:
@@ -370,16 +356,6 @@ jobs:
           NON_BLOCKING: ${{ inputs.non_blocking }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Run Cypress E2E in a container
-
-          Purpose:
-            Execute Cypress in a consistent, isolated environment using a pinned image.
-            The repo is mounted into /e2e and Cypress runs within the service folder.
-
-          Notes:
-            Browser selection comes from strategy.matrix (governed).
-          DOCSTRING
 
           PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
           CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
@@ -398,6 +374,12 @@ jobs:
           if [ "${START_WITH_DOCKER}" = "true" ]; then
             NET_ARGS="--network e2e-net"
           fi
+
+          echo "[CYPRESS] Browser=${E2E_BROWSER}"
+          echo "[CYPRESS] Target=${E2E_TARGET_URL}"
+          echo "[CYPRESS] Shard=${SHARD_INDEX}/${SHARD_TOTAL} (contract)"
+          echo "[CYPRESS] Workdir=${SERVICE_WORKDIR}"
+          echo "[CYPRESS] Image=${CYPRESS_IMAGE}"
 
           set +e
           docker run --rm ${NET_ARGS} \
