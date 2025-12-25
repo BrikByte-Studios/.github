@@ -498,24 +498,40 @@ jobs:
           docker rm -f tests app db cache 2>/dev/null || true
           docker network rm "${NETWORK_NAME}" 2>/dev/null || true
 
+      - name: "Ensure .audit root exists (always)"
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p .audit
+          echo "Audit root ready: $(pwd)/.audit"
+
       - name: "Export integration audit bundle"
         if: always()
         run: |
           set -euo pipefail
+
+          mkdir -p .audit
 
           JUNIT_PATH="${SERVICE_WORKDIR}/out/junit-integration.xml"
           RESULTS_PATH="${SERVICE_WORKDIR}/out/integration-results.json"
           LOGS_DIR="${SERVICE_WORKDIR}/out/integration-logs"
           COVERAGE_PATH="${SERVICE_WORKDIR}/out/coverage-integration.json"
 
+          echo "Exporting integration audit bundle..."
+          echo "JUNIT_PATH=${JUNIT_PATH}"
+          echo "RESULTS_PATH=${RESULTS_PATH}"
+          echo "LOGS_DIR=${LOGS_DIR}"
+          echo "COVERAGE_PATH=${COVERAGE_PATH}"
+
           node .github/scripts/export-integration-audit.mjs \
             --junit "${JUNIT_PATH}" \
             --results "${RESULTS_PATH}" \
             --logs-dir "${LOGS_DIR}" \
             --coverage "${COVERAGE_PATH}"
-        env:
-          SERVICE_IMAGE: "${{ env.SERVICE_IMAGE }}"
-          SERVICE_WORKDIR: "${{ env.SERVICE_WORKDIR }}"
+
+          echo "==== .audit tree ===="
+          find .audit -maxdepth 6 -type f -print || true
+
 
       - name: "Upload integration audit artifact"
         if: always()
@@ -525,3 +541,4 @@ jobs:
           path: .audit
           if-no-files-found: warn
           retention-days: 14
+          include-hidden-files: true
