@@ -374,11 +374,12 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload shard coverage artifacts
-        if: steps.covdetect.outputs.has_coverage == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-dotnet-shard${{ env.UNIT_SHARD }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/TestResults/
+            ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
+            ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
           if-no-files-found: ignore
