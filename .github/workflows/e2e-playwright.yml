@@ -324,18 +324,21 @@ jobs:
       - name: "Run Playwright tests"
         working-directory: ${{ inputs.service_workdir }}
         env:
-          # Make shard contract available to scripts/config if needed
-          SHARD_INDEX: ${{ steps.pr.outputs.shard_index }}
+          SHARD_INDEX: ${{ steps.pr.outputs.shard_index }}   # 0-based
           SHARD_TOTAL: ${{ steps.pr.outputs.shard_total }}
         run: |
           set -euo pipefail
+
+          # Playwright requires 1-based shard numbering
+          SHARD_1=$((SHARD_INDEX + 1))
+
           echo "[E2E] Browser=${PW_BROWSER}"
           echo "[E2E] Target=${E2E_TARGET_URL}"
-          echo "[E2E] Shard=${SHARD_INDEX}/${SHARD_TOTAL}"
+          echo "[E2E] Shard=${SHARD_1}/${SHARD_TOTAL} (playwright 1-based; contract index=${SHARD_INDEX})"
 
           npx playwright test \
             --project="${PW_BROWSER}" \
-            --shard="${SHARD_INDEX}/${SHARD_TOTAL}"
+            --shard="${SHARD_1}/${SHARD_TOTAL}"
 
       # -----------------------------------------------------------------------
       # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
