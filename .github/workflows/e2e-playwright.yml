@@ -1,29 +1,13 @@
-name: "E2E (Playwright • Cross-Browser)"
+# =============================================================================
+# BrikByteOS — Reusable Playwright E2E Workflow (governed browser × shard matrix)
+# -----------------------------------------------------------------------------
+# - plan job computes governed matrix via matrix-plan@main
+# - e2e job runs Playwright shards via --shard
+# - parallel-runner is used ONLY to standardize shard contract + env vars
+#   (selection_mode=framework-native; Playwright does the real sharding)
+# =============================================================================
 
-# -----------------------------------------------------------------------------
-# Reusable Playwright E2E workflow (BrikByteOS standard)
-#
-# ENV CONTRACT:
-#   Required:
-#     - E2E_TARGET_URL
-#
-# Exporter / Audit:
-#   - E2E_RUNNER=playwright
-#   - E2E_STATUS=success|failed
-#   - E2E_VIDEO=true|false
-#   - E2E_TRACE=true|false
-#   - E2E_ARTIFACTS_ALWAYS=true|false
-#
-# Optional app lifecycle (CI localhost mode):
-#   - start_app=true runs docker compose up -d --build
-#   - health_url can be used to wait for readiness
-#
-# Always-on guarantees:
-#   - Always set E2E_STATUS
-#   - Always export artifacts (best-effort, non-fatal)
-#   - Always upload .audit evidence
-#   - Always teardown app (if started here)
-# -----------------------------------------------------------------------------
+name: "BrikByteOS — Playwright E2E (Reusable)"
 
 on:
   workflow_call:
@@ -156,25 +140,43 @@ on:
         required: false
         default: ""
 
+      # -----------------------------------------------------------------------
+      # Standard shard contract wiring (parallel-runner)
+      # -----------------------------------------------------------------------
+      parallel_enabled:
+        description: "Enable parallel-runner contract (true|false)."
+        type: string
+        required: false
+        default: "true"
+
+      parallel_mode:
+        description: "serial|static|dynamic"
+        type: string
+        required: false
+        default: "static"
+
+permissions:
+  contents: read
+
 jobs:
   plan:
     name: "Plan governed E2E matrix"
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix_json }}
+
     steps:
       - uses: actions/checkout@v4
+
       - name: "Compute browser list (deterministic)"
         id: browsers
         shell: bash
         run: |
           set -euo pipefail
-          # Always include chromium; add optional browsers based on inputs.
           csv="chromium"
           if [[ "${{ inputs.enable_firefox }}" == "true" ]]; then csv="${csv},firefox"; fi
           if [[ "${{ inputs.enable_webkit }}" == "true" ]]; then csv="${csv},webkit"; fi
 
-          # If caller provided explicit browsers CSV, it wins (still deterministic).
           if [[ -n "${{ inputs.browsers }}" ]]; then
             csv="${{ inputs.browsers }}"
           fi
@@ -190,6 +192,10 @@ jobs:
           override_shards: ${{ inputs.override_shards }}
           browsers: ${{ steps.browsers.outputs.browsers_csv }}
 
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.plan.outputs.matrix_json }}"
+
   e2e:
     name: "Playwright E2E • ${{ matrix.browser }} • shard ${{ matrix.shard }}"
     needs: plan
@@ -199,7 +205,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
-
 
     env:
       # ----------------------------------------------------------
@@ -211,7 +216,6 @@ jobs:
       PW_RETRIES: ${{ inputs.retries }}
       PW_TRACE_MODE: ${{ inputs.trace_mode }}
       PW_VIDEO_MODE: ${{ inputs.video_mode }}
-
 
       # ----------------------------------------------------------
       # Artifact exporter contract
@@ -229,6 +233,17 @@ jobs:
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
+
+      - name: "Parallel runner (framework-native sharding)"
+        id: pr
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
+        with:
+          parallel_enabled: ${{ inputs.parallel_enabled }}
+          parallel_mode: ${{ inputs.parallel_mode }}
+          shard_index: ${{ matrix.shard }}       # 0-based
+          shard_total: ${{ strategy.job-total }} # total shards for this browser
+          selection_mode: "framework-native"
+          working_directory: ${{ inputs.service_workdir }}
 
       - name: "Setup Node.js"
         uses: actions/setup-node@v4
@@ -262,16 +277,6 @@ jobs:
         working-directory: ${{ inputs.app_service_workdir }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Start app under test (docker compose)
-
-          Purpose:
-            Bring up the UI service so Playwright can hit E2E_TARGET_URL.
-
-          Notes:
-            - Use inputs.target_url pointing to this runner host, e.g. http://localhost:3000
-            - This step must not print secrets.
-          DOCSTRING
           docker compose -f "${{ inputs.app_compose_file }}" up -d --build
           docker compose -f "${{ inputs.app_compose_file }}" ps
 
@@ -279,17 +284,9 @@ jobs:
         if: ${{ inputs.health_url != '' }}
         run: |
           set -euo pipefail
-          : <<'DOCSTRING'
-          Wait for app readiness
-
-          Purpose:
-            Ensure health endpoint responds before Playwright starts.
-          DOCSTRING
-
           echo "[APP] Waiting for: ${{ inputs.health_url }}"
           timeout=${{ inputs.app_wait_seconds }}
           elapsed=0
-
           until curl -fsS "${{ inputs.health_url }}" >/dev/null 2>&1; do
             sleep 2
             elapsed=$((elapsed+2))
@@ -298,7 +295,6 @@ jobs:
               exit 1
             fi
           done
-
           echo "[APP] Ready ✅"
 
       # -----------------------------------------------------------------------
@@ -308,7 +304,7 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
         run: |
           set -euo pipefail
-          if [ -f package-lock.json ]; then
+          if [ -f "package-lock.json" ]; then
             npm ci
           else
             npm install
@@ -327,16 +323,19 @@ jobs:
 
       - name: "Run Playwright tests"
         working-directory: ${{ inputs.service_workdir }}
+        env:
+          # Make shard contract available to scripts/config if needed
+          SHARD_INDEX: ${{ steps.pr.outputs.shard_index }}
+          SHARD_TOTAL: ${{ steps.pr.outputs.shard_total }}
         run: |
           set -euo pipefail
           echo "[E2E] Browser=${PW_BROWSER}"
           echo "[E2E] Target=${E2E_TARGET_URL}"
-          echo "[E2E] Shard=${{ matrix.shard }}/${{ strategy.job-total }}"
+          echo "[E2E] Shard=${SHARD_INDEX}/${SHARD_TOTAL}"
 
           npx playwright test \
             --project="${PW_BROWSER}" \
-            --shard="${{ matrix.shard }}/${{ strategy.job-total }}"
-
+            --shard="${SHARD_INDEX}/${SHARD_TOTAL}"
 
       # -----------------------------------------------------------------------
       # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
@@ -349,24 +348,13 @@ jobs:
           browser: ${{ matrix.browser }}
           status: ${{ job.status }}
         env:
-          # Where the Playwright diagnostics producer writes files
           PLAYWRIGHT_DIAG_DIR: "${{ inputs.service_workdir }}/test-results/diagnostics"
-
-          # Future-proofing for other runners (no-op here)
           CYPRESS_DIAG_DIR: "cypress/diagnostics"
           SELENIUM_DIAG_DIR: "target/selenium-artifacts/diagnostics"
-          # Mitigation 1: heavy only on failure (retain-on-failure)
           E2E_DIAG_HEAVY_ON_FAILURE_ONLY: "true"
-
-          # Contingency: HAR off by default (esp. good for Selenium/Cypress)
           E2E_DIAG_DISABLE_HAR_BY_DEFAULT: "true"
-
-          # Mitigation 2: size budget
           E2E_DIAG_MAX_TOTAL_MB: "150"
 
-      # -----------------------------------------------------------------------
-      # ALWAYS: normalize status for exporter
-      # -----------------------------------------------------------------------
       - name: "Set E2E_STATUS for exporter (always)"
         if: always()
         run: |
@@ -378,9 +366,6 @@ jobs:
             echo "E2E_STATUS=success" >> "${GITHUB_ENV}"
           fi
 
-      # -----------------------------------------------------------------------
-      # ALWAYS: export artifacts into .audit (via reusable action)
-      # -----------------------------------------------------------------------
       - name: "Export E2E artifacts (always)"
         if: always()
         uses: BrikByte-Studios/.github/.github/actions/export-e2e-artifacts@main
@@ -394,15 +379,11 @@ jobs:
         env:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
-
           PLAYWRIGHT_SCREENSHOTS_DIR: "${{ inputs.service_workdir }}/test-results"
           PLAYWRIGHT_VIDEOS_DIR: "${{ inputs.service_workdir }}/test-results"
           PLAYWRIGHT_TRACES_DIR: "${{ inputs.service_workdir }}/test-results"
           PLAYWRIGHT_REPORT_DIR: "${{ inputs.service_workdir }}/playwright-report"
 
-      # -----------------------------------------------------------------------
-      # ALWAYS: teardown app under test (if started here)
-      # -----------------------------------------------------------------------
       - name: "Teardown app under test (always)"
         if: ${{ always() && inputs.start_app }}
         working-directory: ${{ inputs.app_service_workdir }}
@@ -410,9 +391,6 @@ jobs:
           set -euo pipefail
           docker compose -f "${{ inputs.app_compose_file }}" down -v || true
 
-      # -----------------------------------------------------------------------
-      # ALWAYS: upload audit artifacts
-      # -----------------------------------------------------------------------
       - name: "Upload E2E artifacts (always)"
         if: always()
         uses: actions/upload-artifact@v4
