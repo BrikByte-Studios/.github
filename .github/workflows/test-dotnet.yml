@@ -65,6 +65,12 @@ on:
         type: string
         default: "static"
 
+      parallel_enabled:
+        description: "Enable parallel shard execution (true|false)"
+        required: false
+        type: string
+        default: "true"
+
 permissions:
   contents: read
 
@@ -117,6 +123,7 @@ jobs:
       UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
+      PARALLEL: ${{ inputs.parallel_enabled }}
 
       FORCE_COLOR: "0"
 
@@ -159,41 +166,75 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: "Discover test items (unit) — deterministic"
-        working-directory: ${{ env.WORKING_DIRECTORY }}
+      - name: Compute shard env (1-based for Makefile)
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out
 
-          # Example strategy: treat each test project as an item
-          # Adjust per language (e.g., *.spec.ts for e2e, etc.)
-          find . -maxdepth 5 -name "*.csproj" | sort > out/test-items.txt
+          SHARD0="${SHARD_INDEX}"
+          TOTAL="${SHARD_TOTAL}"
 
-          echo "Discovered $(wc -l < out/test-items.txt) items"
-          head -n 20 out/test-items.txt
+          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
+          SHARD1=$((SHARD0 + 1))
 
-      - name: "Plan shards (static/dynamic) — non-blocking"
-        id: shardplan
-        continue-on-error: true
-        uses: BrikByte-Studios/.github/.github/actions/shard-plan@main
+          {
+            echo "UNIT_SHARD=${SHARD1}"
+            echo "UNIT_SHARD_TOTAL=${TOTAL}"
+          } >> "$GITHUB_ENV"
+
+          echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
+
+      # ---------------------------------------------------------------------------
+      # Parallel runner (serial/static/dynamic) — wire BrikByteOS parallel-runner here
+      # ---------------------------------------------------------------------------
+      # Goal:
+      #   - Produce a deterministic per-shard selection file
+      #   - Export TEST_ITEMS_FILE so the repo Makefile can run ONLY that shard’s tests
+      #
+      # Contract with your Makefile:
+      #   - If TEST_ITEMS_FILE is set + exists, Makefile should use it as the test list
+      #   - UNIT_SHARD + UNIT_SHARD_TOTAL can still be passed for logging/compat
+      #
+      # IMPORTANT:
+      #   - shard_index here is 0-based (matrix.shard)
+      #   - If your Makefile expects 1-based shard numbers, convert via env step (optional)
+      # ---------------------------------------------------------------------------
+
+      - name: Parallel runner (serial/static/dynamic)
+        id: pr
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          mode: ${{ env.PARALLEL_MODE }}
-          shard_count: ${{ env.SHARD_TOTAL }}
-          test_type: "unit"
-          items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          workdir: "${{ env.WORKING_DIRECTORY }}"
-          out_dir: "${{ env.WORKING_DIRECTORY }}/out"
-          audit_root: ".audit"
-          seed: "${{ github.sha }}" # deterministic input
+          parallel_enabled: ${{ env.PARALLEL || 'true' }}
+          parallel_mode: ${{ env.PARALLEL_MODE || 'static' }}
 
-      - name: "Fallback to static if shard planner failed"
-        if: steps.shardplan.outcome != 'success'
-        run: |
-          echo "::warning::Shard planner failed; falling back to static mode."
-          echo "PARALLEL_MODE=static" >> "$GITHUB_ENV"
+          # 0-based shard contract (matches matrix-plan)
+          shard_index: ${{ matrix.shard }}
+          shard_total: ${{ strategy.job-total }}
+
+          # For .NET we want to shard by test project files (csproj), not individual *.cs
+          selection_mode: "file-split"
+          working_directory: ${{ env.WORKING_DIRECTORY }}
+
+          # Prefer sharding by test project(s)
+          # - most repos have tests/**/*.csproj or **/*.Tests.csproj
+          # - tune this glob to your repo layout
+          test_glob: |
+            **/*Tests.csproj
+            **/*.Tests.csproj
+            tests/**/*.csproj
+            **/*.sln
+
+          # where the runner should write the selected items list
+          out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-items.txt"
+
+          # optional knobs (uncomment if your action supports them)
+          # allow_empty_items: true
+          # out_dir: "${{ env.WORKING_DIRECTORY }}/out"
+          # seed: "${{ github.sha }}"
 
 
       - name: Run .NET unit tests (make test)
+        if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -203,13 +244,13 @@ jobs:
           echo "🧪 [TEST] Directory : ${PWD}"
           echo "🧪 [TEST] Command   : make test"
           echo "🧪 [TEST] Shard     : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "📌 TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}""
           echo "🧪 [TEST] Status    : STARTING"
 
           START_TS=$(date +%s)
 
-          # NOTE:
-          # Your Makefile may optionally consume UNIT_SHARD / UNIT_SHARD_TOTAL.
-          # If it doesn't, all shards will run the full suite (wasteful but correct).
+          export UNIT_SHARD UNIT_SHARD_TOTAL
+          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
           make test
 
           END_TS=$(date +%s)
@@ -218,6 +259,15 @@ jobs:
           echo "✅ [TEST] Status    : COMPLETED"
           echo "⏱  [TEST] Duration : ${DURATION} seconds"
           echo "ℹ️  [TEST] See dotnet test summary above."
+
+      - name: Empty shard (nothing to run)
+        if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          echo "ℹ️ Empty shard; skipping tests."
+          mkdir -p out
+          : > out/junit.xml || true
 
       # -----------------------------------------------------------------------
       # Detect whether this shard produced coverage (empty shard => skip coverage)
