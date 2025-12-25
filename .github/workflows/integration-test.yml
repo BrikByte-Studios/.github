@@ -533,12 +533,13 @@ jobs:
           find .audit -maxdepth 6 -type f -print || true
 
 
-      - name: "Upload integration audit artifact"
+      - name: "Upload integration audit artifact (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: "integration-audit-${{ github.run_id }}"
+          name: integration-audit-${{ github.run_id }}-shard-${{ env.INTEG_SHARD }}
           path: .audit
           if-no-files-found: warn
           retention-days: 14
           include-hidden-files: true
+
