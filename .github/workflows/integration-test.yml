@@ -50,24 +50,25 @@ on:
           and, on failure, build it locally using dockerfile + context.
         required: true
         type: string
+
       dockerfile:
-        description: >
-          Path to the Dockerfile for building the service image under test.
+        description: "Path to the Dockerfile for building the service image under test."
         required: false
         type: string
         default: "./Dockerfile"
+
       context:
-        description: >
-          Build context directory for the service image under test.
+        description: "Build context directory for the service image under test."
         required: false
         type: string
         default: "."
+
       db_image:
-        description: >
-          Database image to use for integration tests. Example: postgres:16.
+        description: "Database image to use for integration tests. Example: postgres:16."
         required: false
         type: string
         default: "postgres:16"
+
       cache_image:
         description: >
           Optional cache or message broker image (e.g., redis:7, rabbitmq:3-management).
@@ -75,6 +76,7 @@ on:
         required: false
         type: string
         default: ""
+
       test_command:
         description: >
           Shell command to run inside the test-runner container to execute
@@ -83,6 +85,7 @@ on:
         required: false
         type: string
         default: ""
+
       healthcheck_path:
         description: >
           Path on the app for readiness probing (combined with app_port).
@@ -90,30 +93,33 @@ on:
         required: false
         type: string
         default: "/health"
+
       healthcheck_timeout:
-        description: >
-          Maximum number of seconds to wait for DB + app readiness.
+        description: "Maximum number of seconds to wait for DB + app readiness."
         required: false
         type: string
         default: "60"
+
       app_port:
-        description: >
-          Port exposed by the app container for HTTP health checks.
+        description: "Port exposed by the app container for HTTP health checks."
         required: false
         type: string
         default: "3000"
+
       db_port:
         description: >
-          Database port for readiness checks.
+          Host port to expose Postgres on (diagnostics/seeding from runner host).
+          Container port remains 5432 inside the docker network.
         required: false
         type: string
         default: "5432"
+
       enable_cache_service:
-        description: >
-          If true, start a cache/message broker container using cache_image.
+        description: "If true, start a cache/message broker container using cache_image."
         required: false
         type: boolean
         default: false
+
       test_language:
         description: >
           Language hint for the test runner. Supported: node | python | java | go | dotnet.
@@ -121,6 +127,7 @@ on:
         required: false
         type: string
         default: ""
+
       services_csv:
         description: "CSV of service IDs (integration only)."
         required: false
@@ -145,13 +152,34 @@ on:
         type: string
         default: ""
 
+    secrets:
+      INTEG_DB_USER:
+        required: false
+      INTEG_DB_PASS:
+        required: false
+      INTEG_DB_NAME:
+        required: false
+      INTEG_DB_HOST:
+        required: false
+      INTEG_DB_PORT:
+        required: false
+      JWT_SECRET_TEST:
+        required: false
+
+permissions:
+  contents: read
+  packages: read
+
 jobs:
+  # ---------------------------------------------------------------------------
   # 0) PLAN: compute governed matrix for integration service×scenario
+  # ---------------------------------------------------------------------------
   plan:
     name: "Matrix Plan (integration)"
     runs-on: ubuntu-latest
     outputs:
       matrix_json: ${{ steps.matrix.outputs.matrix_json }}
+
     steps:
       - name: "Compute matrix plan (integration)"
         id: matrix
@@ -166,37 +194,47 @@ jobs:
       - name: Debug
         run: echo "matrix_json=${{ steps.matrix.outputs.matrix_json }}"
 
+  # ---------------------------------------------------------------------------
+  # 1) RUN: containerized integration tests per shard
+  # ---------------------------------------------------------------------------
   integration-tests:
     name: "Integration • shard ${{ matrix.shard }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # DoD: sample repos under 5 minutes
+    timeout-minutes: 10
     needs: plan
 
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix_json) }}
 
-    # Use GitHub Environment "integration"
     environment: integration
 
     env:
       SERVICE_IMAGE: ${{ inputs.image }}
       DOCKERFILE_PATH: ${{ inputs.dockerfile }}
       BUILD_CONTEXT: ${{ inputs.context }}
+
       DB_IMAGE: ${{ inputs.db_image }}
       CACHE_IMAGE: ${{ inputs.cache_image }}
+
       TEST_COMMAND: ${{ inputs.test_command }}
+      TEST_LANGUAGE: ${{ inputs.test_language }}
+
       HEALTHCHECK_PATH: ${{ inputs.healthcheck_path }}
       HEALTHCHECK_TIMEOUT: ${{ inputs.healthcheck_timeout }}
+
+      # Ports
       APP_PORT: ${{ inputs.app_port }}
-      DB_PORT: ${{ inputs.db_port }}
+      DB_HOST_PORT: ${{ inputs.db_port }}          # host mapping (optional)
+      DB_CONTAINER_PORT: "5432"                    # always 5432 inside docker network
+
       ENABLE_CACHE_SERVICE: ${{ inputs.enable_cache_service }}
-      TEST_LANGUAGE: ${{ inputs.test_language }}
+
       SERVICE_WORKDIR: ${{ inputs.context }}
 
-      # shard meta
+      # shard meta (from matrix-plan)
       INTEG_SHARD: ${{ matrix.shard }}
-      INTEG_ITEMS_CSV: ${{ matrix.items_csv }}  # <-- service::scenario pairs for this shard
+      INTEG_ITEMS_CSV: ${{ matrix.items_csv }}
 
       # Standardized integration secrets (INTEG_* naming)
       INTEG_DB_USER: ${{ secrets.INTEG_DB_USER }}
@@ -206,21 +244,13 @@ jobs:
       INTEG_DB_PORT: ${{ secrets.INTEG_DB_PORT }}
       JWT_SECRET_TEST: ${{ secrets.JWT_SECRET_TEST }}
 
+      FORCE_COLOR: "0"
+
     steps:
       - name: "Checkout caller repository (service under test)"
-        #
-        # This is the repo that invoked the reusable workflow
-        # (e.g., brik-pipe-examples). All docker build and
-        # integration test operations run in this workspace.
-        #
         uses: actions/checkout@v4
 
       - name: "Checkout governance repo (.github) for shared integration templates"
-        #
-        # This repo contains the canonical integration-test runner Dockerfile
-        # and orchestration script. We sync them into the caller repo so
-        # docker build can reference local paths.
-        #
         uses: actions/checkout@v4
         with:
           repository: BrikByte-Studios/.github
@@ -229,60 +259,64 @@ jobs:
       - name: "Sync shared integration-test templates into caller repo"
         run: |
           set -euo pipefail
-
           mkdir -p .github/scripts .github/templates
 
-          # Core runner script
           cp org-dotgithub/.github/scripts/run-integration-tests.sh \
              .github/scripts/run-integration-tests.sh
-
-          # DB fixtures loader (single source of truth in org .github repo)
           cp org-dotgithub/.github/scripts/db-load-fixtures.sh \
              .github/scripts/db-load-fixtures.sh
-
-          # JSON seed helper (the one you said lives in the home .github repo)
           cp org-dotgithub/.github/scripts/db-seed-json.mjs \
              .github/scripts/db-seed-json.mjs
-
-          # shared HTTP health helper
           cp org-dotgithub/.github/scripts/wait-for-health.sh \
              .github/scripts/wait-for-health.sh
-
-          # Integration audit exporter
           cp org-dotgithub/.github/scripts/export-integration-audit.mjs \
              .github/scripts/export-integration-audit.mjs
-
-          # integration env generator
           cp org-dotgithub/.github/scripts/env-generate-integration.sh \
-            .github/scripts/env-generate-integration.sh
+             .github/scripts/env-generate-integration.sh
 
-          # Integration test runner Dockerfile
           cp org-dotgithub/.github/templates/integration-test-runner.Dockerfile \
              .github/templates/integration-test-runner.Dockerfile
 
-          # Ensure shell scripts are executable
           chmod +x .github/scripts/run-integration-tests.sh
           chmod +x .github/scripts/db-load-fixtures.sh
           chmod +x .github/scripts/wait-for-health.sh
           chmod +x .github/scripts/env-generate-integration.sh
 
-          echo "Shared integration-test templates synced into caller workspace:"
+          echo "Shared integration-test templates synced."
           ls -R .github
+
+      # -----------------------------------------------------------------------
+      # Standard contract header (BrikByteOS)
+      # -----------------------------------------------------------------------
+      - name: "Parallel runner (contract only)"
+        id: pr
+        uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
+        with:
+          parallel_enabled: "true"
+          parallel_mode: "static"
+          shard_index: ${{ matrix.shard }}          # matrix-plan should be 0-based
+          shard_total: ${{ strategy.job-total }}
+          selection_mode: "none"
+          working_directory: ${{ env.SERVICE_WORKDIR }}
 
       - name: "Log integration-test configuration"
         run: |
-          echo "Service image         : ${SERVICE_IMAGE}"
-          echo "Dockerfile path       : ${DOCKERFILE_PATH}"
-          echo "Build context         : ${BUILD_CONTEXT}"
-          echo "DB image              : ${DB_IMAGE}"
-          echo "Cache image           : ${CACHE_IMAGE}"
-          echo "Test command          : ${TEST_COMMAND}"
-          echo "Healthcheck path      : ${HEALTHCHECK_PATH}"
-          echo "Healthcheck timeout   : ${HEALTHCHECK_TIMEOUT}s"
-          echo "App port              : ${APP_PORT}"
-          echo "DB port               : ${DB_PORT}"
-          echo "Enable cache service  : ${ENABLE_CACHE_SERVICE}"
-          echo "Test language         : ${TEST_LANGUAGE}"
+          set -euo pipefail
+          echo "Service image        : ${SERVICE_IMAGE}"
+          echo "Dockerfile path      : ${DOCKERFILE_PATH}"
+          echo "Build context        : ${BUILD_CONTEXT}"
+          echo "DB image             : ${DB_IMAGE}"
+          echo "Cache image          : ${CACHE_IMAGE}"
+          echo "Test command         : ${TEST_COMMAND}"
+          echo "Test language        : ${TEST_LANGUAGE}"
+          echo "Health path          : ${HEALTHCHECK_PATH}"
+          echo "Health timeout       : ${HEALTHCHECK_TIMEOUT}s"
+          echo "App port             : ${APP_PORT}"
+          echo "DB container port    : ${DB_CONTAINER_PORT}"
+          echo "DB host port         : ${DB_HOST_PORT}"
+          echo "Enable cache service : ${ENABLE_CACHE_SERVICE}"
+          echo "Shard                : ${INTEG_SHARD}/${{ strategy.job-total }}"
+          echo "Items                : ${INTEG_ITEMS_CSV}"
 
       - name: "Login to GHCR (if using GitHub Container Registry)"
         if: startsWith(env.SERVICE_IMAGE, 'ghcr.io/')
@@ -293,34 +327,19 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "Ensure service image exists (pull or build)"
-        #
-        # Preferred path:
-        #   - Use Kaniko-built image (already pushed to registry).
-        # Fallback:
-        #   - If pull fails (e.g., first run), build locally using Dockerfile/context.
-        #
         run: |
           set -euo pipefail
-
           echo "Attempting to pull service image: ${SERVICE_IMAGE}"
           if docker pull "${SERVICE_IMAGE}"; then
-            echo "Successfully pulled existing service image."
+            echo "Pulled existing service image."
           else
-            echo "WARNING: Failed to pull service image; building locally..."
-            docker build \
-              -f "${DOCKERFILE_PATH}" \
-              -t "${SERVICE_IMAGE}" \
-              "${BUILD_CONTEXT}"
-            echo "Local service image build complete."
+            echo "WARNING: pull failed; building locally..."
+            docker build -f "${DOCKERFILE_PATH}" -t "${SERVICE_IMAGE}" "${BUILD_CONTEXT}"
           fi
 
       - name: "Build integration test runner image"
-        #
-        # Build the generic integration test runner from the synced template.
-        #
         run: |
           set -euo pipefail
-
           docker build \
             -f .github/templates/integration-test-runner.Dockerfile \
             --build-arg SERVICE_WORKDIR="${SERVICE_WORKDIR}" \
@@ -328,121 +347,76 @@ jobs:
             .
 
       - name: "Create dedicated Docker network"
-        #
-        # Network so that app, db, cache, and runner can talk via hostnames.
-        #
         run: |
           set -euo pipefail
-
           NETWORK_NAME="brikpipe-integ-net"
-
-          if ! docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
-            docker network create "${NETWORK_NAME}"
-          fi
-
+          docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || docker network create "${NETWORK_NAME}"
           echo "NETWORK_NAME=${NETWORK_NAME}" >> "$GITHUB_ENV"
-          echo "Created/using Docker network: ${NETWORK_NAME}"
+          echo "Using network: ${NETWORK_NAME}"
 
       - name: "Start DB container"
-        #
-        # Starts the database container on the dedicated network:
-        #   - Name/hostname: db
-        #   - Port exposed on host for diagnostics: DB_PORT
-        #
         run: |
           set -euo pipefail
-
-          echo "Starting DB container using image: ${DB_IMAGE}"
+          echo "Starting DB container: ${DB_IMAGE}"
           docker run -d \
             --name db \
             --network "${NETWORK_NAME}" \
             -e POSTGRES_USER=testuser \
             -e POSTGRES_PASSWORD=testpass \
             -e POSTGRES_DB=testdb \
-            -p "${DB_PORT}:5432" \
+            -p "${DB_HOST_PORT}:${DB_CONTAINER_PORT}" \
             --cpus="1.0" \
             --memory="512m" \
             "${DB_IMAGE}"
 
-          echo "Currently running containers:"
           docker ps
 
       - name: "Install JSON seeding dependencies (pg)"
         run: |
           set -euo pipefail
-          echo "📦 Installing JSON seeding dependencies under .github/scripts..."
           cd .github/scripts
-
-          if [ ! -f package.json ]; then
-            echo "Initializing package.json in .github/scripts..."
-            npm init -y >/dev/null 2>&1
-          fi
-
+          if [ ! -f package.json ]; then npm init -y >/dev/null 2>&1; fi
           npm install pg
 
       - name: "Load DB fixtures for integration tests"
-        run: |
-          set -euo pipefail
-          echo "🔧 Loading DB fixtures for integration tests..."
-          echo "Working directory: $(pwd)"
-          echo "Listing .github/scripts:"
-          ls -la .github/scripts || echo "No .github/scripts directory!"
-          ./.github/scripts/db-load-fixtures.sh
         env:
           ENABLE_DB_FIXTURES: "true"
           DB_ENGINE: "postgres"
-          DB_HOST: "localhost"            # host port is mapped via -p "${DB_PORT}:5432"
-          DB_PORT: "${{ env.DB_PORT }}"
+          DB_HOST: "localhost"
+          DB_PORT: "${{ env.DB_HOST_PORT }}"
           DB_USER: "testuser"
           DB_PASSWORD: "testpass"
           DB_NAME: "testdb"
           FIXTURE_DIR: "${{ env.BUILD_CONTEXT }}/tests/integration/fixtures/db"
-      - name: "Generate integration runtime env file"
-        #
-        # Builds .env.integ.runtime from INTEG_* env vars (in this job).
-        # Fails fast if any required secret is missing.
-        #
         run: |
           set -euo pipefail
-          echo "🔒 Generating integration runtime env file for service..."
-          SERVICE_WORKDIR="${BUILD_CONTEXT}" \
-          .github/scripts/env-generate-integration.sh
+          ./.github/scripts/db-load-fixtures.sh
 
-          echo "Generated files in ${BUILD_CONTEXT}:"
+      - name: "Generate integration runtime env file"
+        run: |
+          set -euo pipefail
+          SERVICE_WORKDIR="${BUILD_CONTEXT}" .github/scripts/env-generate-integration.sh
           ls -la "${BUILD_CONTEXT}"
-
 
       - name: "Start cache/message broker container (optional)"
         if: env.ENABLE_CACHE_SERVICE == 'true'
         run: |
           set -euo pipefail
-
           if [ -z "${CACHE_IMAGE}" ]; then
             echo "::error::ENABLE_CACHE_SERVICE is true but CACHE_IMAGE is empty."
             exit 1
           fi
-
-          echo "Starting cache container using image: ${CACHE_IMAGE}"
           docker run -d \
             --name cache \
             --network "${NETWORK_NAME}" \
             --cpus="0.5" \
             --memory="256m" \
             "${CACHE_IMAGE}"
-
-          echo "Currently running containers (after cache start):"
           docker ps
 
       - name: "Start app container"
-        #
-        # Starts the service image under test:
-        #   - Name/hostname: app
-        #   - Exposes APP_PORT for HTTP health checks.
-        #
         run: |
           set -euo pipefail
-
-          echo "Starting app container using image: ${SERVICE_IMAGE}"
 
           RUNTIME_ENV_FILE="${BUILD_CONTEXT}/.env.integ.runtime"
           if [ ! -f "${RUNTIME_ENV_FILE}" ]; then
@@ -450,13 +424,12 @@ jobs:
             exit 1
           fi
 
-          echo "Starting app container using image: ${SERVICE_IMAGE}"
           docker run -d \
             --name app \
             --network "${NETWORK_NAME}" \
             --env-file "${RUNTIME_ENV_FILE}" \
             -e DB_HOST=db \
-            -e DB_PORT="${DB_PORT}" \
+            -e DB_PORT="${DB_CONTAINER_PORT}" \
             -e CACHE_HOST=cache \
             -e CACHE_PORT=6379 \
             -e EXTERNAL_API_STUB_MODE=true \
@@ -465,33 +438,15 @@ jobs:
             --memory="512m" \
             "${SERVICE_IMAGE}"
 
-          echo "Currently running containers (after app start):"
           docker ps
 
       - name: "Run integration tests in runner container"
-        #
-        # Runs the tests in the dedicated runner container. Health checks
-        # (DB + app) and actual test execution happen inside run-integration-tests.sh.
-        #
         run: |
           set -euo pipefail
 
           APP_BASE_URL="http://app:${APP_PORT}"
           APP_HEALTH_URL="${APP_BASE_URL}${HEALTHCHECK_PATH}"
 
-          echo "Running integration tests with:"
-          echo "  APP_BASE_URL        : ${APP_BASE_URL}"
-          echo "  APP_HEALTH_URL      : ${APP_HEALTH_URL}"
-          echo "  DB_HOST             : db"
-          echo "  DB_PORT             : ${DB_PORT}"
-          echo "  HEALTHCHECK_TIMEOUT : ${HEALTHCHECK_TIMEOUT}"
-          echo "  TEST_LANGUAGE       : ${TEST_LANGUAGE}"
-          echo "  TEST_COMMAND        : ${TEST_COMMAND}"
-          echo "  SERVICE_WORKDIR     : ${SERVICE_WORKDIR}"
-          echo "Shard: ${INTEG_SHARD}"
-          echo "Items: ${INTEG_ITEMS_CSV}"
-
-          # Mark job start time for audit metadata
           INTEG_JOB_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "INTEG_JOB_STARTED_AT=${INTEG_JOB_STARTED_AT}" >> "$GITHUB_ENV"
 
@@ -502,7 +457,7 @@ jobs:
             -e APP_BASE_URL="${APP_BASE_URL}" \
             -e APP_HEALTH_URL="${APP_HEALTH_URL}" \
             -e DB_HOST="db" \
-            -e DB_PORT="${DB_PORT}" \
+            -e DB_PORT="${DB_CONTAINER_PORT}" \
             -e HEALTHCHECK_TIMEOUT="${HEALTHCHECK_TIMEOUT}" \
             -e TEST_LANGUAGE="${TEST_LANGUAGE}" \
             -e TEST_COMMAND="${TEST_COMMAND}" \
@@ -515,13 +470,10 @@ jobs:
         if: failure()
         run: |
           set -euo pipefail
-
           echo "==== Docker logs: db ===="
           docker logs db || true
-
           echo "==== Docker logs: cache ===="
           docker logs cache || true
-
           echo "==== Docker logs: app ===="
           docker logs app || true
 
@@ -529,57 +481,28 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-
           LOG_DIR="${SERVICE_WORKDIR}/out/integration-logs"
           mkdir -p "${LOG_DIR}"
-
-          echo "Capturing container logs into ${LOG_DIR}..."
-
-          # App container logs
-          docker logs app > "${LOG_DIR}/app.log" 2>&1 || echo "No app logs."
-
-          # DB container logs
-          docker logs db > "${LOG_DIR}/db.log" 2>&1 || echo "No db logs."
-
-          # Cache / mocks container logs (optional)
+          docker logs app > "${LOG_DIR}/app.log" 2>&1 || true
+          docker logs db > "${LOG_DIR}/db.log" 2>&1 || true
           if docker ps -a --format '{{.Names}}' | grep -q '^cache$'; then
-            docker logs cache > "${LOG_DIR}/cache.log" 2>&1 || echo "No cache logs."
+            docker logs cache > "${LOG_DIR}/cache.log" 2>&1 || true
           fi
-
-          # Test runner container logs (if still present)
-          if docker ps -a --format '{{.Names}}' | grep -q '^tests$'; then
-            docker logs tests > "${LOG_DIR}/tests.log" 2>&1 || echo "No tests logs."
-          fi
-
-          echo "Log capture complete. Files:"
+          echo "Captured logs:"
           ls -la "${LOG_DIR}"
 
       - name: "Tear down containers and network"
         if: always()
         run: |
           set -euo pipefail
-
-          echo "Stopping containers (tests, app, db, cache)..."
-          docker stop tests app db cache 2>/dev/null || true
-
-          echo "Removing containers..."
           docker rm -f tests app db cache 2>/dev/null || true
-
-          echo "Removing network..."
           docker network rm "${NETWORK_NAME}" 2>/dev/null || true
-
-          echo "Cleanup completed."
 
       - name: "Export integration audit bundle"
         if: always()
         run: |
           set -euo pipefail
 
-          echo "Exporting integration audit bundle..."
-          echo "Repo root: $(pwd)"
-          echo "SERVICE_WORKDIR: ${SERVICE_WORKDIR}"
-
-          # Paths are relative to repo root.
           JUNIT_PATH="${SERVICE_WORKDIR}/out/junit-integration.xml"
           RESULTS_PATH="${SERVICE_WORKDIR}/out/integration-results.json"
           LOGS_DIR="${SERVICE_WORKDIR}/out/integration-logs"
