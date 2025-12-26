@@ -1,30 +1,30 @@
 # =============================================================================
-# BrikByteOS — Reusable .NET Unit Test Workflow (sharded)
+# BrikByteOS — Reusable .NET Unit Test Workflow (with governed sharding)
 # -----------------------------------------------------------------------------
 # WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
-# Repos  :
-#   - Implemented in:
-#       • BrikByte-Studios/.github (.github/workflows/test-dotnet.yml)
-#   - Consumed by:
-#       • BrikByte-Studios/brik-pipe-examples/dotnet-api-example
-#       • Product repos (via workflow_call)
+#
+# Matrix plan integration:
+#   - Uses BrikPipe matrix-plan composite action to compute shards deterministically
+#   - Shard defaults + caps governed by parallel-matrix.yml (org/repo override)
 #
 # Contract:
 #   - Expects:
-#       • Makefile with `make test` calling `dotnet test`
-#       • One or more test projects (e.g. /tests/SomeApp.Tests)
+#       • Makefile exposing: make test   (wrapping dotnet test)
+#       • A .sln OR at least one *.csproj under working-directory
+#   - Optional (recommended):
+#       • Makefile honors:
+#           - UNIT_SHARD / UNIT_SHARD_TOTAL (1-based)
+#           - TEST_ITEMS_FILE (selection list from parallel-runner)
 #
-# Matrix plan integration:
-#   - Uses BrikPipe Matrix Plan composite action to compute shards deterministically
-#   - Parallel rules live in:
-#       BrikByte-Studios/.github/.github/actions/matrix-plan/parallel-matrix.yml
+# Coverage contract (recommended):
+#   - dotnet test emits Coverlet JSON somewhere under working-directory
+#     e.g. TestResults/**/coverage.net8.0.json or coverage.json
+#   - Workflow normalizes to: out/coverage.json (summary.line)
 #
-# Shard-safe coverage:
-#   - Some shards may run no tests (e.g., more shards than test projects)
-#   - We detect Coverlet output presence and ONLY normalize/upload coverage when present
-#   - Empty shards skip coverage steps (avoids stub coverage + failing normalizer)
+# Flaky detection (PIPE-FLAKY-RERUN-INTEG-001):
+#   - Opt-in via inputs.flaky_detect=true
+#   - Uses shared script: .github/scripts/flaky-rerun.sh from BrikByte-Studios/.github
 # =============================================================================
-
 name: "BrikByteOS — .NET Unit Tests"
 
 on:
@@ -37,7 +37,7 @@ on:
         default: "8.0.x"
 
       working-directory:
-        description: "Path to .NET solution root (Makefile + *.sln or tests/)"
+        description: "Path to .NET solution root (Makefile + *.sln or *.csproj)"
         required: false
         type: string
         default: "."
@@ -71,6 +71,27 @@ on:
         type: string
         default: "true"
 
+      # -----------------------------------------------------------------------
+      # Flaky detection (PIPE-FLAKY-RERUN-INTEG-001)
+      # -----------------------------------------------------------------------
+      flaky_detect:
+        description: "Enable suite-level flaky detection reruns (true|false)"
+        required: false
+        type: string
+        default: "false"
+
+      flaky_reruns:
+        description: "Total attempts when flaky_detect=true (e.g., 3)"
+        required: false
+        type: string
+        default: "3"
+
+      flaky_export_path:
+        description: "Relative path (from working-directory) to store flaky evidence"
+        required: false
+        type: string
+        default: "out/flaky"
+
 permissions:
   contents: read
 
@@ -83,8 +104,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix_json: ${{ steps.matrix.outputs.matrix_json }}
-
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: "Compute matrix plan (unit)"
         id: matrix
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
@@ -114,16 +137,17 @@ jobs:
       DOTNET_VERSION: ${{ inputs.dotnet-version != '' && inputs.dotnet-version || '8.0.x' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
-      # shard metadata (deterministic)
+      # shard metadata (deterministic) — 0-based
       SHARD_INDEX: ${{ matrix.shard }}
       SHARD_TOTAL: ${{ strategy.job-total }}
 
-      # Optional sharding contract for Makefile/test runners
-      UNIT_SHARD: ${{ matrix.shard }}
-      UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
-
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
+
+      # Flaky detection contract
+      FLAKY_DETECT: ${{ inputs.flaky_detect }}
+      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
+      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
 
       FORCE_COLOR: "0"
 
@@ -143,16 +167,18 @@ jobs:
 
           cd "${WORKING_DIRECTORY}"
 
-          # NOTE: Bash globstar isn't enabled by default; keep checks simple & reliable.
-          if ! ls *.sln >/dev/null 2>&1 && ! find . -maxdepth 4 -name "*.csproj" | head -n 1 | grep -q .; then
-            echo "❌ No .sln or .csproj files found under ${PWD}."
-            exit 1
-          fi
-
           if [ ! -f "Makefile" ]; then
             echo "❌ Makefile not found in ${PWD}."
             echo "   Expected 'make test' mapping to 'dotnet test'."
             exit 1
+          fi
+
+          # Require either a solution or at least one csproj somewhere nearby
+          if ! ls *.sln >/dev/null 2>&1; then
+            if ! find . -maxdepth 6 -name "*.csproj" | head -n 1 | grep -q .; then
+              echo "❌ No .sln in ${PWD} and no *.csproj found within maxdepth 6."
+              exit 1
+            fi
           fi
 
       - name: Setup .NET
@@ -173,8 +199,6 @@ jobs:
 
           SHARD0="${SHARD_INDEX}"
           TOTAL="${SHARD_TOTAL}"
-
-          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
           SHARD1=$((SHARD0 + 1))
 
           {
@@ -184,81 +208,93 @@ jobs:
 
           echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
-      # ---------------------------------------------------------------------------
-      # Parallel runner (serial/static/dynamic) — wire BrikByteOS parallel-runner here
-      # ---------------------------------------------------------------------------
-      # Goal:
-      #   - Produce a deterministic per-shard selection file
-      #   - Export TEST_ITEMS_FILE so the repo Makefile can run ONLY that shard’s tests
-      #
-      # Contract with your Makefile:
-      #   - If TEST_ITEMS_FILE is set + exists, Makefile should use it as the test list
-      #   - UNIT_SHARD + UNIT_SHARD_TOTAL can still be passed for logging/compat
-      #
-      # IMPORTANT:
-      #   - shard_index here is 0-based (matrix.shard)
-      #   - If your Makefile expects 1-based shard numbers, convert via env step (optional)
-      # ---------------------------------------------------------------------------
-
+      # -----------------------------------------------------------------------
+      # Parallel runner — produce deterministic per-shard selection file
+      # -----------------------------------------------------------------------
       - name: Parallel runner (serial/static/dynamic)
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          parallel_enabled: ${{ env.PARALLEL || 'true' }}
-          parallel_mode: ${{ env.PARALLEL_MODE || 'static' }}
+          parallel_enabled: ${{ env.PARALLEL }}
+          parallel_mode: ${{ env.PARALLEL_MODE }}
 
           # 0-based shard contract (matches matrix-plan)
           shard_index: ${{ matrix.shard }}
           shard_total: ${{ strategy.job-total }}
 
-          # For .NET we want to shard by test project files (csproj), not individual *.cs
           selection_mode: "file-split"
           working_directory: ${{ env.WORKING_DIRECTORY }}
 
-          # Prefer sharding by test project(s)
-          # - most repos have tests/**/*.csproj or **/*.Tests.csproj
-          # - tune this glob to your repo layout
+          # Prefer sharding by test projects; include sln as fallback
           test_glob: |
             **/*Tests.csproj
             **/*.Tests.csproj
             tests/**/*.csproj
             **/*.sln
 
-          # where the runner should write the selected items list
-          out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-items.txt"
+          out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
+          allow_missing_items_file: true
 
-          # optional knobs (uncomment if your action supports them)
-          # allow_empty_items: true
-          # out_dir: "${{ env.WORKING_DIRECTORY }}/out"
-          # seed: "${{ github.sha }}"
+      # -----------------------------------------------------------------------
+      # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
+      # -----------------------------------------------------------------------
+      - name: Checkout BrikByte shared scripts
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          ref: main
+          path: .brikbyte-github
 
-
-      - name: Run .NET unit tests (make test)
+      # -----------------------------------------------------------------------
+      # Run unit tests via `make test` (wired through flaky-rerun.sh)
+      # -----------------------------------------------------------------------
+      - name: Run .NET unit tests (make test) with flaky reruns (opt-in)
         if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          echo "🧪 [TEST] Language  : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime   : .NET SDK ${DOTNET_VERSION}"
-          echo "🧪 [TEST] Directory : ${PWD}"
-          echo "🧪 [TEST] Command   : make test"
-          echo "🧪 [TEST] Shard     : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
-          echo "📌 TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}""
-          echo "🧪 [TEST] Status    : STARTING"
+          echo "🧪 [TEST] Language     : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime      : .NET SDK ${DOTNET_VERSION}"
+          echo "🧪 [TEST] Directory    : ${PWD}"
+          echo "🧪 [TEST] Command      : make test"
+          echo "🧪 [TEST] Shard        : ${SHARD_INDEX}/${SHARD_TOTAL}"
+          echo "🧪 [TEST] Selection    : ${{ steps.pr.outputs.selection_path }}"
+          echo "🧪 [TEST] FlakyDetect  : ${FLAKY_DETECT:-false}"
+          echo "🧪 [TEST] FlakyReruns  : ${FLAKY_RERUNS:-3}"
+          echo "🧪 [TEST] FlakyExport  : ${FLAKY_EXPORT_PATH:-out/flaky}"
+          echo "🧪 [TEST] Status       : STARTING"
 
           START_TS=$(date +%s)
 
-          export UNIT_SHARD UNIT_SHARD_TOTAL
+          # Provide selection/shard env to your Makefile if it supports them
           export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
-          make test
+          export UNIT_SHARD="${UNIT_SHARD:-$((SHARD_INDEX + 1))}"
+          export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL:-$SHARD_TOTAL}"
+
+          # Flaky wrapper config (used by flaky-rerun.sh)
+          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="dotnet-unit"
+
+          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
+          FLAKY_SH="${BRIK_SCRIPTS}/flaky-rerun.sh"
+
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
+            echo "📁 Available scripts:"
+            ls -la "${BRIK_SCRIPTS}" || true
+            exit 1
+          fi
+          chmod +x "${FLAKY_SH}"
+
+          # Run through wrapper (opt-in via FLAKY_DETECT)
+          "${FLAKY_SH}" -- make test
 
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
 
-          echo "✅ [TEST] Status    : COMPLETED"
-          echo "⏱  [TEST] Duration : ${DURATION} seconds"
-          echo "ℹ️  [TEST] See dotnet test summary above."
+          echo "✅ [TEST] Status       : COMPLETED"
+          echo "⏱  [TEST] Duration     : ${DURATION} seconds"
 
       - name: Empty shard (nothing to run)
         if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
@@ -270,27 +306,31 @@ jobs:
           : > out/junit.xml || true
 
       # -----------------------------------------------------------------------
-      # Detect whether this shard produced coverage (empty shard => skip coverage)
+      # Detect whether this shard produced Coverlet JSON
       # -----------------------------------------------------------------------
-      - name: Detect coverage artifacts (per shard)
+      - name: Detect Coverlet JSON presence
         id: covdetect
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          FOUND="$(find . -type f -name "coverage.net*.json" | head -n 1 || true)"
-          if [ -n "$FOUND" ]; then
-            echo "has_coverage=true" >> "$GITHUB_OUTPUT"
-            echo "coverlet_json=$FOUND" >> "$GITHUB_OUTPUT"
-            echo "✅ Found Coverlet JSON: $FOUND"
+          # Common Coverlet outputs:
+          # - TestResults/**/coverage.net8.0.json
+          # - coverage.json
+          # - coverage.*.json
+          FOUND="$(find . -type f \( -name "coverage.net*.json" -o -name "coverage.json" -o -name "coverage.*.json" \) | head -n 1 || true)"
+
+          if [ -n "${FOUND}" ]; then
+            echo "has_coverage=true"  >> "$GITHUB_OUTPUT"
+            echo "coverlet_json=${FOUND}" >> "$GITHUB_OUTPUT"
+            echo "✅ Found Coverlet JSON: ${FOUND}"
           else
             echo "has_coverage=false" >> "$GITHUB_OUTPUT"
-            echo "⚠️ No Coverlet JSON found for this shard (likely no tests ran)."
+            echo "⚠️ No Coverlet JSON found for this shard (likely empty shard or coverage not enabled)."
           fi
 
       # -----------------------------------------------------------------------
-      # Coverage normalization (ONLY when coverage exists)
-      # NOTE: removed coverage-merge@main here because it emits a stub for dotnet.
+      # Normalize coverage to out/coverage.json (summary.line)
       # -----------------------------------------------------------------------
       - name: Ensure summary.line is set in out/coverage.json (.NET / Coverlet)
         if: steps.covdetect.outputs.has_coverage == 'true'
@@ -311,12 +351,13 @@ jobs:
 
           def iter_lines_maps(obj):
             """
-            Yield any dict that looks like a Coverlet 'Lines' map:
+            Yield dicts that look like Coverlet line hit maps:
               { "12": 1, "13": 0, ... }
+            This is robust across several Coverlet JSON shapes.
             """
             if isinstance(obj, dict):
               for k, v in obj.items():
-                if k in ("Lines", "lines") and isinstance(v, dict):
+                if k.lower() == "lines" and isinstance(v, dict):
                   yield v
                 else:
                   yield from iter_lines_maps(v)
@@ -340,47 +381,61 @@ jobs:
           if total <= 0:
             raise SystemExit("Cannot determine coverage: no line hit data found in Coverlet JSON (no Lines maps).")
 
-          percent = (covered / total) * 100.0
+          pct = (covered / total) * 100.0
 
-          cov_dir = Path("out")
-          cov_dir.mkdir(parents=True, exist_ok=True)
-          cov_path = cov_dir / "coverage.json"
+          out_dir = Path("out")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          cov_path = out_dir / "coverage.json"
 
           cov = json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.exists() else {}
           cov.setdefault("summary", {})
-          cov["summary"]["line"] = float(percent)
+          cov["summary"]["line"] = float(pct)
           cov.setdefault("files", [])
 
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
-          print(f"✅ Updated out/coverage.json with summary.line = {percent:.2f} (covered={covered}, total={total})")
+          print(f"✅ Updated out/coverage.json with summary.line = {pct:.2f} (covered={covered}, total={total})")
           PY
 
           echo "✅ out/coverage.json:"
           cat out/coverage.json
 
+      - name: Detect out/coverage.json presence
+        id: covjson
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f "out/coverage.json" ]; then
+            echo "has_covjson=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_covjson=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # -----------------------------------------------------------------------
       # Upload artifacts
-      # - JUnit is useful even if shard was empty (but may not exist)
-      # - Coverage should only upload when it exists (avoid stub artifacts)
       # -----------------------------------------------------------------------
-      - name: Upload shard JUnit artifacts
-        if: always()
+      - name: Upload .NET coverage artifacts (per shard)
+        if: steps.covjson.outputs.has_covjson == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: junit-dotnet-shard${{ env.UNIT_SHARD }}
-          path: |
-            ${{ env.WORKING_DIRECTORY }}/out/junit-shard${{ env.UNIT_SHARD }}.xml
-            ${{ env.WORKING_DIRECTORY }}/TestResults/
-          if-no-files-found: ignore
-
-      - name: Upload shard coverage artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-dotnet-shard${{ env.UNIT_SHARD }}
+          name: coverage-dotnet-shard${{ env.SHARD_INDEX }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
+            ${{ env.WORKING_DIRECTORY }}/${{ steps.covdetect.outputs.coverlet_json }}
+            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/TestResults/
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload flaky evidence (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-dotnet-shard${{ env.SHARD_INDEX }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14

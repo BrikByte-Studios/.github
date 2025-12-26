@@ -7,6 +7,24 @@
 #   - Uses BrikPipe Matrix Plan composite action to compute shards deterministically
 #   - Parallel rules live in:
 #       BrikByte-Studios/.github/.github/actions/matrix-plan/parallel-matrix.yml
+#
+# Contract:
+#   - Expects:
+#       • Makefile exposing: make test
+#       • Go module: go.mod
+#   - Optional:
+#       • Makefile honors:
+#           - UNIT_SHARD / UNIT_SHARD_TOTAL (1-based)
+#           - TEST_ITEMS_FILE (file list from parallel-runner)
+#
+# Coverage contract (Go):
+#   - make test should produce: coverage.out (coverprofile)
+#   - Workflow normalizes to: out/coverage.json
+#
+# Safety:
+#   - Empty shards do NOT fabricate coverage.out (prevents 0% poison merges)
+#   - Coverage artifacts upload ONLY when out/coverage.json exists
+#   - Flaky evidence can upload always (separate artifact)
 # =============================================================================
 name: "BrikByteOS — Go Unit Tests"
 
@@ -18,6 +36,7 @@ on:
         required: false
         type: string
         default: "1.22.x"
+
       working-directory:
         description: "Path to Go module root (Makefile + go.mod)"
         required: false
@@ -32,6 +51,7 @@ on:
         required: false
         type: string
         default: ""
+
       matrix_config_path:
         description: >
           Optional path to parallel-matrix.yml.
@@ -86,6 +106,9 @@ jobs:
     outputs:
       matrix_json: ${{ steps.plan.outputs.matrix_json }}
     steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
       - name: "Compute matrix plan (unit)"
         id: plan
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
@@ -94,11 +117,15 @@ jobs:
           config_path: ${{ inputs.matrix_config_path }}
           override_shards: ${{ inputs.override_shards }}
 
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.plan.outputs.matrix_json }}"
+
   # ---------------------------------------------------------------------------
   # 1) Execute tests (sharded)
   # ---------------------------------------------------------------------------
   test:
-    name: "Go: Unit Tests (sharded)"
+    name: "Go: Unit Tests • shard ${{ matrix.shard }}"
     runs-on: ubuntu-latest
     needs: plan
 
@@ -113,17 +140,13 @@ jobs:
       GOFLAGS: "-mod=readonly"
 
       # shard metadata (defined by matrix-plan output)
-      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_INDEX: ${{ matrix.shard }}          # 0-based
       SHARD_TOTAL: ${{ strategy.job-total }}
-
-      # standardized contract for Makefile runners
-      UNIT_SHARD: ${{ matrix.shard }}
-      UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
 
-      # Flaky detection contract (NEW)
+      # Flaky detection contract
       FLAKY_DETECT: ${{ inputs.flaky_detect }}
       FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
       FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
@@ -134,6 +157,7 @@ jobs:
 
       - name: Verify Go test layout
         run: |
+          set -euo pipefail
           echo "📁 Working directory: ${WORKING_DIRECTORY}"
 
           if [ ! -d "${WORKING_DIRECTORY}" ]; then
@@ -148,7 +172,7 @@ jobs:
 
           if [ ! -f "${WORKING_DIRECTORY}/Makefile" ]; then
             echo "❌ Makefile not found in ${WORKING_DIRECTORY}."
-            echo "   Expected 'make test' mapping to 'go test ./...'."
+            echo "   Expected 'make test' mapping to 'go test ./... -coverprofile=coverage.out' (or equivalent)."
             exit 1
           fi
 
@@ -184,8 +208,6 @@ jobs:
 
           SHARD0="${SHARD_INDEX}"
           TOTAL="${SHARD_TOTAL}"
-
-          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
           SHARD1=$((SHARD0 + 1))
 
           {
@@ -207,10 +229,6 @@ jobs:
           working_directory: ${{ env.WORKING_DIRECTORY }}
           test_glob: "**/*.go"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
-          # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          # optional knobs:
-          # allow_empty_items: true
-          # selection_mode: file-split|shard-map|framework-native
 
       # -----------------------------------------------------------------------
       # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
@@ -222,26 +240,31 @@ jobs:
           ref: main
           path: .brikbyte-github
 
-      - name: Run Go unit tests (make test)
+      - name: Run Go unit tests (make test) with flaky reruns (opt-in)
         if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          echo "🧪 [TEST] Language   : ${LANGUAGE}"
-          echo "🧪 [TEST] Runtime    : Go ${GO_VERSION}"
-          echo "🧪 [TEST] Directory  : ${PWD}"
-          echo "🧪 [TEST] Shard      : ${SHARD_INDEX}/${SHARD_TOTAL}"
-          echo "🧪 [TEST] Command    : make test"
-          echo "📌 TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}""
+          echo "🧪 [TEST] Language     : ${LANGUAGE}"
+          echo "🧪 [TEST] Runtime      : Go ${GO_VERSION}"
+          echo "🧪 [TEST] Directory    : ${PWD}"
+          echo "🧪 [TEST] Command      : make test"
+          echo "🧪 [TEST] Shard        : ${SHARD_INDEX}/${SHARD_TOTAL}"
+          echo "🧪 [TEST] Selection    : ${{ steps.pr.outputs.selection_path }}"
           echo "🧪 [TEST] FlakyDetect  : ${FLAKY_DETECT:-false}"
           echo "🧪 [TEST] FlakyReruns  : ${FLAKY_RERUNS:-3}"
           echo "🧪 [TEST] FlakyExport  : ${FLAKY_EXPORT_PATH:-out/flaky}"
           echo "🧪 [TEST] Status       : STARTING"
 
           START_TS=$(date +%s)
-          export UNIT_SHARD UNIT_SHARD_TOTAL
+
+          # Provide selection/shard env to your Makefile if it supports them
           export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
+          export UNIT_SHARD="${UNIT_SHARD:-$((SHARD_INDEX + 1))}"
+          export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL:-$SHARD_TOTAL}"
+
+          # Flaky wrapper config (used by flaky-rerun.sh)
           export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
           export FLAKY_LABEL="go-unit"
 
@@ -262,10 +285,9 @@ jobs:
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
 
-          echo "✅ [TEST] Status     : COMPLETED"
-          echo "⏱  [TEST] Duration   : ${DURATION} seconds"
+          echo "✅ [TEST] Status       : COMPLETED"
+          echo "⏱  [TEST] Duration     : ${DURATION} seconds"
 
-      # If this shard is empty, succeed quickly.
       - name: Empty shard (nothing to run)
         if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
@@ -274,12 +296,25 @@ jobs:
           echo "ℹ️ Empty shard; skipping tests."
           mkdir -p out
           : > out/junit.xml
-          : > coverage.out || true
+          # IMPORTANT: do NOT create coverage.out for empty shards
 
       # -----------------------------------------------------------------------
-      # X) Collect coverage (Go: go test -coverprofile=coverage.out)
+      # Coverage gating: only if coverage.out exists
       # -----------------------------------------------------------------------
+      - name: Detect coverage.out presence
+        id: cov
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f "coverage.out" ]; then
+            echo "has_covout=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_covout=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "🔎 has_covout=$(grep -E '^has_covout=' -n "$GITHUB_OUTPUT" | tail -n1 || true)"
+
       - name: Normalize coverage → coverage.json
+        if: steps.cov.outputs.has_covout == 'true'
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
           language: ${{ env.LANGUAGE }}
@@ -287,6 +322,7 @@ jobs:
           out: out/coverage.json
 
       - name: Ensure summary.line is set in coverage.json (Go)
+        if: steps.cov.outputs.has_covout == 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -322,13 +358,24 @@ jobs:
           print(f"✅ summary.line set to {pct:.1f}")
           PY
 
+          echo "✅ coverage.json:"
           cat out/coverage.json
 
+      - name: Detect out/coverage.json presence
+        id: covjson
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f "out/coverage.json" ]; then
+            echo "has_covjson=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_covjson=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload Go coverage artifacts
-        if: always()
+        if: steps.covjson.outputs.has_covjson == 'true'
         uses: actions/upload-artifact@v4
         with:
-          # per-shard artifact name (so merge job can pattern match)
           name: coverage-go-shard${{ env.SHARD_INDEX }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
@@ -337,6 +384,17 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload flaky evidence (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-go-shard${{ env.SHARD_INDEX }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
