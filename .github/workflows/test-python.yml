@@ -252,6 +252,8 @@ jobs:
           chmod +x "${FLAKY_SH}"
 
           # If your script reads these (most likely), set them as env vars:
+          export FLAKY_DETECT="${FLAKY_DETECT:-false}"
+          export FLAKY_RERUNS="${FLAKY_RERUNS:-3}"
           export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
           export FLAKY_LABEL="python-unit"
           "${FLAKY_SH}" -- make test

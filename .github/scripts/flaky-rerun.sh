@@ -27,26 +27,30 @@ ENV CONTRACT:
   FLAKY_DETECT=true|false  (default false)
   FLAKY_RERUNS=<int>=1     (default 1, total attempts)
   FLAKY_EXPORT_PATH=<dir>  (default out/flaky)
+  FLAKY_LABEL=<string>     (default suite) used for log + summary filenames
   FLAKY_MAX_RERUNS=<int>   (default 5, clamps total attempts)
 
 USAGE:
   flaky-rerun.sh -- <command...>
 
 EXAMPLE:
-  FLAKY_DETECT=true FLAKY_RERUNS=3 \
-    .github/scripts/flaky-rerun.sh -- pytest -m integration
+  FLAKY_DETECT=true FLAKY_RERUNS=3 FLAKY_LABEL=python-unit \
+    .github/scripts/flaky-rerun.sh -- make test
 
 OUTPUTS:
-  out/flaky/
-    attempt-1/attempt.log
-    attempt-2/attempt.log
+  $FLAKY_EXPORT_PATH/
+    attempt-1/<label>.attempt.log
+    attempt-2/<label>.attempt.log
     ...
-    summary.json
+    <label>.summary.json
 
 EXIT CODE POLICY (REQ-FLAKY-002):
   - If attempt #1 fails, exit NON-ZERO even if later attempts pass.
   - If attempt #1 passes, exit 0 and skip reruns.
 
+NOTES:
+  - This script intentionally avoids jq dependency (v1).
+  - Command is executed as argv (not eval) to avoid quoting issues.
 DOCSTRING
 
 # -------------------------
@@ -92,6 +96,7 @@ CMD=( "$@" )
 FLAKY_DETECT="${FLAKY_DETECT:-false}"
 FLAKY_RERUNS="${FLAKY_RERUNS:-1}"
 FLAKY_EXPORT_PATH="${FLAKY_EXPORT_PATH:-out/flaky}"
+FLAKY_LABEL="${FLAKY_LABEL:-suite}"
 FLAKY_MAX_RERUNS="${FLAKY_MAX_RERUNS:-5}"
 
 # Normalize booleans
@@ -133,6 +138,7 @@ echo "============================================================"
 echo "🧪 [FLAKY-RERUN] Enabled"
 echo "  total_attempts=${FLAKY_RERUNS}"
 echo "  export_path=${FLAKY_EXPORT_PATH}"
+echo "  label=${FLAKY_LABEL}"
 echo "  command=${CMD[*]}"
 echo "============================================================"
 
@@ -140,11 +146,12 @@ attempts_json="[]"
 pass_count=0
 fail_count=0
 first_exit=0
+LAST_EXIT=0
 
 run_attempt() {
   local attempt="$1"
   local dir="${FLAKY_EXPORT_PATH}/attempt-${attempt}"
-  local log="${dir}/attempt.log"
+  local log="${dir}/${FLAKY_LABEL}.attempt.log"
 
   mkdir -p "${dir}"
 
@@ -166,8 +173,11 @@ run_attempt() {
     echo "[FLAKY-RERUN] attempt=${attempt} start_ms=${start}"
     "${CMD[@]}"
   ) 2>&1 | tee "${log}"
-  exit_code="${PIPESTATUS[1]}"
+  # IMPORTANT: PIPESTATUS[0] is the subshell (your command), [1] is tee
+  exit_code="${PIPESTATUS[0]}"
   set -e
+
+  LAST_EXIT="${exit_code}"
 
   end="$(now_ms)"
   dur="$(( end - start ))"
@@ -187,15 +197,13 @@ run_attempt() {
   if [[ "${attempts_json}" == "[]" ]]; then
     attempts_json="[${entry}]"
   else
-    attempts_json="${attempts_json%]},""${entry}]"
+    attempts_json="${attempts_json%]},"${entry}"]"
   fi
-
-  echo "${exit_code}"
 }
 
 # Attempt 1 is always executed
-first_exit="$(run_attempt 1)"
-first_exit="${first_exit##*$'\n'}" || true # defensive (should be single line)
+run_attempt 1
+first_exit="${LAST_EXIT}"
 
 # If attempt #1 passes → exit 0, no reruns needed
 if (( first_exit == 0 )); then
@@ -207,7 +215,7 @@ if (( first_exit == 0 )); then
 else
   # Attempt #1 failed → rerun up to N total attempts
   for ((i=2; i<=FLAKY_RERUNS; i++)); do
-    run_attempt "${i}" >/dev/null || true
+    run_attempt "${i}" || true
   done
 
   # Flaky if mixed outcomes across attempts
@@ -221,12 +229,15 @@ else
 fi
 
 # Write summary.json
-summary_path="${FLAKY_EXPORT_PATH}/summary.json"
+summary_path="${FLAKY_EXPORT_PATH}/${FLAKY_LABEL}.summary.json"
 cmd_str="$(json_escape "${CMD[*]}")"
+label_str="$(json_escape "${FLAKY_LABEL}")"
 
 cat > "${summary_path}" <<EOF
 {
   "flaky_detect": true,
+  "status": "$(json_escape "${status}")",
+  "label": "${label_str}",
   "total_attempts": ${FLAKY_RERUNS},
   "command": "${cmd_str}",
   "pass_count": ${pass_count},
