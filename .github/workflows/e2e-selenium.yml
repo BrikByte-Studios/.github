@@ -172,6 +172,18 @@ on:
         required: false
         default: true
 
+      parallel_enabled:
+        description: "Enable parallel-runner contract (true|false)."
+        type: string
+        required: false
+        default: "true"
+
+      parallel_mode:
+        description: "serial|static|dynamic"
+        type: string
+        required: false
+        default: "static"
+
     outputs:
       selenium_remote_url:
         description: "Remote WebDriver URL for test runners"
@@ -267,6 +279,17 @@ jobs:
       E2E_VIDEO: ${{ inputs.e2e_video }}
       E2E_TRACE: ${{ inputs.e2e_trace }}
       E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
+
+      # shard metadata (deterministic)
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_TOTAL: ${{ strategy.job-total }}
+
+      # Optional sharding contract for Makefile/test runners
+      UNIT_SHARD: ${{ matrix.shard }}
+      UNIT_SHARD_TOTAL: ${{ strategy.job-total }}
+
+      PARALLEL_MODE: ${{ inputs.parallel_mode }}
+      PARALLEL: ${{ inputs.parallel_enabled }}
 
       FORCE_COLOR: "0"
 
@@ -377,9 +400,12 @@ jobs:
       - name: "Parallel runner contract (normalize shards)"
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          shard: ${{ matrix.shard }}
+          parallel_enabled: ${{ env.PARALLEL || 'true' }}
+          parallel_mode: ${{ env.PARALLEL_MODE || 'static' }}
+          shard_index: ${{ matrix.shard }}
           shard_total: ${{ strategy.job-total }}
-          mode: "static"
+          # selection_mode is optional; for Selenium you usually don't want file splitting
+          selection_mode: "none"
 
       - name: "Run E2E tests"
         working-directory: ${{ inputs.service_workdir }}
