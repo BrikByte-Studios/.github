@@ -5,6 +5,11 @@
 # - e2e job runs Playwright shards via --shard
 # - parallel-runner is used ONLY to standardize shard contract + env vars
 #   (selection_mode=framework-native; Playwright does the real sharding)
+#
+# Optional flaky control:
+# - Uses flaky-rerun.sh from BrikByte-Studios/.github (checked out + synced)
+# - Opt-in via inputs.flaky_detect=true
+# - Evidence stored under: <service_workdir>/<flaky_export_path>
 # =============================================================================
 
 name: "BrikByteOS — Playwright E2E (Reusable)"
@@ -21,19 +26,22 @@ on:
         required: true
 
       health_url:
-        description: "Optional health endpoint to wait for (e.g., http://localhost:3000/health)"
+        description: >
+          Optional health endpoint to wait for
+          (e.g., http://localhost:3000/health)
         type: string
         required: false
         default: ""
 
       start_app:
-        description: "If true, start the app under test via docker-compose (localhost CI)"
+        description: >
+          If true, start the app under test via docker-compose (localhost CI)
         type: boolean
         required: false
         default: false
 
       app_compose_file:
-        description: "Path to app docker-compose file (required if start_app=true)"
+        description: "Path to app docker-compose file (if start_app=true)"
         type: string
         required: false
         default: ""
@@ -45,7 +53,8 @@ on:
         default: "."
 
       app_wait_seconds:
-        description: "Max seconds to wait for app health endpoint (if health_url provided)"
+        description: >
+          Max seconds to wait for app health endpoint (if health_url provided)
         type: number
         required: false
         default: 120
@@ -135,7 +144,9 @@ on:
         default: ""
 
       browsers:
-        description: "Override browser list CSV (optional). If empty, derives from enable_* flags."
+        description: >
+          Override browser list CSV (optional). If empty, derives from enable_*
+          flags.
         type: string
         required: false
         default: ""
@@ -154,6 +165,28 @@ on:
         type: string
         required: false
         default: "static"
+
+      # -----------------------------------------------------------------------
+      # Flaky detection (PIPE-FLAKY-RERUN-INTEG-001)
+      # -----------------------------------------------------------------------
+      flaky_detect:
+        description: "Enable suite-level flaky reruns (true|false)"
+        type: string
+        required: false
+        default: "false"
+
+      flaky_reruns:
+        description: "Total attempts when flaky_detect=true (e.g., 3)"
+        type: string
+        required: false
+        default: "3"
+
+      flaky_export_path:
+        description: >
+          Relative path (from service_workdir) to store flaky evidence
+        type: string
+        required: false
+        default: "out/flaky"
 
 permissions:
   contents: read
@@ -174,8 +207,12 @@ jobs:
         run: |
           set -euo pipefail
           csv="chromium"
-          if [[ "${{ inputs.enable_firefox }}" == "true" ]]; then csv="${csv},firefox"; fi
-          if [[ "${{ inputs.enable_webkit }}" == "true" ]]; then csv="${csv},webkit"; fi
+          if [[ "${{ inputs.enable_firefox }}" == "true" ]]; then
+            csv="${csv},firefox"
+          fi
+          if [[ "${{ inputs.enable_webkit }}" == "true" ]]; then
+            csv="${csv},webkit"
+          fi
 
           if [[ -n "${{ inputs.browsers }}" ]]; then
             csv="${{ inputs.browsers }}"
@@ -225,6 +262,11 @@ jobs:
       E2E_TRACE: ${{ inputs.e2e_trace && 'true' || 'false' }}
       E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always && 'true' || 'false' }}
 
+      # Flaky contract (opt-in)
+      FLAKY_DETECT: ${{ inputs.flaky_detect }}
+      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
+      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
+
       FORCE_COLOR: "0"
 
       PW_ENABLE_FIREFOX: ${{ matrix.browser == 'firefox' && '1' || '0' }}
@@ -240,10 +282,26 @@ jobs:
         with:
           parallel_enabled: ${{ inputs.parallel_enabled }}
           parallel_mode: ${{ inputs.parallel_mode }}
-          shard_index: ${{ matrix.shard }}       # 0-based
-          shard_total: ${{ strategy.job-total }} # total shards for this browser
+          shard_index: ${{ matrix.shard }}
+          shard_total: ${{ strategy.job-total }}
           selection_mode: "framework-native"
           working_directory: ${{ inputs.service_workdir }}
+
+      - name: "Checkout BrikByte shared scripts"
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          ref: main
+          path: .brikbyte-github
+
+      - name: "Sync flaky-rerun.sh into caller repo"
+        run: |
+          set -euo pipefail
+          mkdir -p .github/scripts
+          cp .brikbyte-github/.github/scripts/flaky-rerun.sh \
+            .github/scripts/flaky-rerun.sh
+          chmod +x .github/scripts/flaky-rerun.sh
+          echo "✅ flaky-rerun.sh synced."
 
       - name: "Setup Node.js"
         uses: actions/setup-node@v4
@@ -321,27 +379,37 @@ jobs:
             *) echo "Unknown browser: ${PW_BROWSER}" && exit 1 ;;
           esac
 
-      - name: "Run Playwright tests"
+      - name: "Run Playwright tests (flaky opt-in)"
         working-directory: ${{ inputs.service_workdir }}
         env:
-          SHARD_INDEX: ${{ steps.pr.outputs.shard_index }}   # 0-based
+          SHARD_INDEX: ${{ steps.pr.outputs.shard_index }}
           SHARD_TOTAL: ${{ steps.pr.outputs.shard_total }}
         run: |
           set -euo pipefail
 
-          # Playwright requires 1-based shard numbering
           SHARD_1=$((SHARD_INDEX + 1))
 
           echo "[E2E] Browser=${PW_BROWSER}"
           echo "[E2E] Target=${E2E_TARGET_URL}"
-          echo "[E2E] Shard=${SHARD_1}/${SHARD_TOTAL} (playwright 1-based; contract index=${SHARD_INDEX})"
+          echo "[E2E] Shard=${SHARD_1}/${SHARD_TOTAL}"
+          echo "[E2E] Contract shard_index=${SHARD_INDEX}"
 
-          npx playwright test \
+          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="playwright-${PW_BROWSER}"
+          FLAKY_SH="${GITHUB_WORKSPACE}/.github/scripts/flaky-rerun.sh"
+
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
+            ls -la "${GITHUB_WORKSPACE}/.github/scripts" || true
+            exit 1
+          fi
+
+          "${FLAKY_SH}" -- npx playwright test \
             --project="${PW_BROWSER}" \
             --shard="${SHARD_1}/${SHARD_TOTAL}"
 
       # -----------------------------------------------------------------------
-      # ALWAYS: capture deep E2E diagnostics (console, network, trace, DOM)
+      # ALWAYS: capture deep E2E diagnostics
       # -----------------------------------------------------------------------
       - name: "Capture E2E diagnostics (always)"
         if: always()
@@ -398,10 +466,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-shard-${{ matrix.shard }}-${{ github.run_id }}
+          name: >-
+            ${{ inputs.artifact_name }}-
+            ${{ matrix.browser }}-
+            shard-${{ matrix.shard }}-
+            ${{ github.run_id }}
           path: |
             .audit/**/e2e/artifacts/**
             .audit/**/e2e/diagnostics/**
+            ${{ inputs.service_workdir }}/out/flaky/**
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
