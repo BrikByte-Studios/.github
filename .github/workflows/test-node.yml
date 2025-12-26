@@ -49,28 +49,7 @@ on:
         required: false
         type: string
         default: "true"
-
-      # -----------------------------------------------------------------------
-      # Flaky detection (PIPE-FLAKY-RERUN-INTEG-001) — NEW
-      # -----------------------------------------------------------------------
-      flaky_detect:
-        description: "Enable suite-level flaky detection reruns (true|false)"
-        required: false
-        type: string
-        default: "false"
-
-      flaky_reruns:
-        description: "Total attempts when flaky_detect=true (e.g., 3)"
-        required: false
-        type: string
-        default: "3"
-
-      flaky_export_path:
-        description: "Relative path (from working-directory) to store flaky evidence"
-        required: false
-        type: string
-        default: "out/flaky"
-      
+        
 permissions:
   contents: read
 
@@ -119,11 +98,6 @@ jobs:
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
-
-      # Flaky detection contract (NEW)
-      FLAKY_DETECT: ${{ inputs.flaky_detect }}
-      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
-      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -210,23 +184,14 @@ jobs:
           # selection_mode: file-split|shard-map|framework-native
 
       # -----------------------------------------------------------------------
-      # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
-      # -----------------------------------------------------------------------
-      - name: Checkout BrikByte shared scripts
-        uses: actions/checkout@v4
-        with:
-          repository: BrikByte-Studios/.github
-          ref: main
-          path: .brikbyte-github
-
-      # -----------------------------------------------------------------------
-      # 5) Run unit tests via `make test` (wired through flaky-rerun.sh)
+      # 5) Run unit tests via `make test`
       #
-      # IMPORTANT:
-      #  - flaky-rerun.sh usage is: flaky-rerun.sh -- <command...>
-      #  - Configure via env vars (FLAKY_DETECT/FLAKY_RERUNS/FLAKY_EXPORT_PATH/FLAKY_LABEL)
+      # NOTE:
+      #   Your repo's Makefile should read UNIT_SHARD/UNIT_SHARD_TOTAL and only
+      #   execute its shard (deterministically). If it doesn't yet, each shard
+      #   will run the full suite (wasteful but still correct).
       # -----------------------------------------------------------------------
-      - name: Run Node.js unit tests (make test) with flaky reruns (opt-in)
+      - name: Run Node.js unit tests (make test)
         if: steps.pr.outputs.is_empty_shard != 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -239,40 +204,19 @@ jobs:
           echo "🧪 [TEST] Shard (Makefile 1-based): ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
           echo "🧪 [TEST] Shard (Runner 0-based)  : ${SHARD_INDEX}/${SHARD_TOTAL}"
           echo "🧪 [TEST] Selection               : ${{ steps.pr.outputs.selection_path }}"
-          echo "🧪 [TEST] FlakyDetect   : ${FLAKY_DETECT:-false}"
-          echo "🧪 [TEST] FlakyReruns   : ${FLAKY_RERUNS:-3}"
-          echo "🧪 [TEST] FlakyExport   : ${FLAKY_EXPORT_PATH:-out/flaky}"
+          echo "🧪 [TEST] Mode          : ${PARALLEL_MODE}"
           echo "🧪 [TEST] Status        : STARTING"
 
           START_TS=$(date +%s)
-
           export UNIT_SHARD UNIT_SHARD_TOTAL
           export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
-
-          # Flaky wrapper config (used by flaky-rerun.sh)
-          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
-          export FLAKY_LABEL="node-unit"
-
-          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
-          FLAKY_SH="${BRIK_SCRIPTS}/flaky-rerun.sh"
-
-          if [[ ! -f "${FLAKY_SH}" ]]; then
-            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
-            echo "📁 Available scripts:"
-            ls -la "${BRIK_SCRIPTS}" || true
-            exit 1
-          fi
-          chmod +x "${FLAKY_SH}"
-
-          # Run through wrapper (opt-in via FLAKY_DETECT)
-          "${FLAKY_SH}" -- make test
+          make test
 
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
 
           echo "✅ [TEST] Status        : COMPLETED"
           echo "⏱  [TEST] Duration      : ${DURATION} seconds"
-
 
       - name: Empty shard (skip)
         if: steps.pr.outputs.is_empty_shard == 'true'
