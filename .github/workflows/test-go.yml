@@ -52,6 +52,27 @@ on:
         type: string
         default: "true"
 
+      # -----------------------------------------------------------------------
+      # Flaky detection (PIPE-FLAKY-RERUN-INTEG-001)
+      # -----------------------------------------------------------------------
+      flaky_detect:
+        description: "Enable suite-level flaky detection reruns (true|false)"
+        required: false
+        type: string
+        default: "false"
+
+      flaky_reruns:
+        description: "Total attempts when flaky_detect=true (e.g., 3)"
+        required: false
+        type: string
+        default: "3"
+
+      flaky_export_path:
+        description: "Relative path (from working-directory) to store flaky evidence"
+        required: false
+        type: string
+        default: "out/flaky"
+
 permissions:
   contents: read
 
@@ -101,6 +122,11 @@ jobs:
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
+
+      # Flaky detection contract (NEW)
+      FLAKY_DETECT: ${{ inputs.flaky_detect }}
+      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
+      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
 
     steps:
       - name: Checkout repository
@@ -186,6 +212,16 @@ jobs:
           # allow_empty_items: true
           # selection_mode: file-split|shard-map|framework-native
 
+      # -----------------------------------------------------------------------
+      # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
+      # -----------------------------------------------------------------------
+      - name: Checkout BrikByte shared scripts
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          ref: main
+          path: .brikbyte-github
+
       - name: Run Go unit tests (make test)
         if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
@@ -198,12 +234,30 @@ jobs:
           echo "🧪 [TEST] Shard      : ${SHARD_INDEX}/${SHARD_TOTAL}"
           echo "🧪 [TEST] Command    : make test"
           echo "📌 TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}""
-          echo "🧪 [TEST] Status     : STARTING"
+          echo "🧪 [TEST] FlakyDetect  : ${FLAKY_DETECT:-false}"
+          echo "🧪 [TEST] FlakyReruns  : ${FLAKY_RERUNS:-3}"
+          echo "🧪 [TEST] FlakyExport  : ${FLAKY_EXPORT_PATH:-out/flaky}"
+          echo "🧪 [TEST] Status       : STARTING"
 
           START_TS=$(date +%s)
           export UNIT_SHARD UNIT_SHARD_TOTAL
           export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
-          make test
+          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="go-unit"
+
+          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
+          FLAKY_SH="${BRIK_SCRIPTS}/flaky-rerun.sh"
+
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
+            echo "📁 Available scripts:"
+            ls -la "${BRIK_SCRIPTS}" || true
+            exit 1
+          fi
+          chmod +x "${FLAKY_SH}"
+
+          # Run through wrapper (opt-in via FLAKY_DETECT)
+          "${FLAKY_SH}" -- make test
 
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
