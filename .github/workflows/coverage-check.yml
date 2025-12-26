@@ -80,7 +80,13 @@ jobs:
       # -----------------------------------------------------------------------
       # Materialize coverage into canonical path:
       #   <working-directory>/<coverage-file>
-      # This avoids "node-api-example/node-api-example/out/coverage.json" issues.
+      #
+      # Selection strategy:
+      #  1) If artifact already contains the exact target path, use it.
+      #  2) Else gather candidates (*/out/coverage.json preferred over coverage.json).
+      #  3) If multiple candidates remain, pick the one with highest summary.line.
+      #
+      # NOTE: Avoid heredoc indentation issues by using python -c.
       # -----------------------------------------------------------------------
       - name: Materialize coverage.json into working directory
         shell: bash
@@ -106,8 +112,11 @@ jobs:
             echo "[COVERAGE] using exact target from artifact: ${found}"
           else
             # 2) Collect all possible candidates
-            mapfile -t CANDS < <(find .artifacts/coverage -type f \
-              \( -path "*/out/coverage.json" -o -name "coverage.json" \) -print)
+            mapfile -t CANDS < <(
+              find .artifacts/coverage -type f \
+                \( -path "*/out/coverage.json" -o -name "coverage.json" \) \
+                -print
+            )
 
             if [[ "${#CANDS[@]}" -eq 0 ]]; then
               echo "[COVERAGE] ERROR: Could not find coverage.json in downloaded artifact."
@@ -117,7 +126,7 @@ jobs:
             echo "[COVERAGE] candidates:"
             printf "  - %s\n" "${CANDS[@]}"
 
-            # 3) Prefer */out/coverage.json if present, else keep all
+            # 3) Prefer */out/coverage.json if present
             mapfile -t OUT_CANDS < <(printf "%s\n" "${CANDS[@]}" | grep -E '/out/coverage\.json$' || true)
             if [[ "${#OUT_CANDS[@]}" -gt 0 ]]; then
               CANDS=("${OUT_CANDS[@]}")
@@ -127,26 +136,19 @@ jobs:
 
             # 4) If multiple remain, pick the one with highest summary.line
             if [[ "${#CANDS[@]}" -gt 1 ]]; then
-              found="$(python - <<'PY' "${CANDS[@]}"
-      import json, sys
-      from pathlib import Path
-
-      best = None
-      best_pct = -1.0
-
-      for p in map(Path, sys.argv[1:]):
-        try:
-          d = json.loads(p.read_text(encoding="utf-8"))
-          pct = float(d.get("summary", {}).get("line", 0.0))
-        except Exception:
-          pct = 0.0
-        if pct > best_pct:
-          best_pct = pct
-          best = p
-
-      print(str(best))
-      PY
-      )"
+              found="$(
+                python -c 'import json,sys
+best=None; best_pct=-1.0
+for p in sys.argv[1:]:
+  try:
+    d=json.load(open(p,"r",encoding="utf-8"))
+    pct=float(d.get("summary",{}).get("line",0.0))
+  except Exception:
+    pct=0.0
+  if pct>best_pct:
+    best_pct=pct; best=p
+print(best or sys.argv[1])' "${CANDS[@]}"
+              )"
               echo "[COVERAGE] selected best-by-summary.line: ${found}"
             else
               found="${CANDS[0]}"
@@ -158,7 +160,7 @@ jobs:
           cp "${found}" "${TARGET}"
 
           echo "[COVERAGE] ✅ materialized: ${TARGET}"
-          ls -la "$(dirname "${TARGET}")"
+          ls -la "$(dirname "${TARGET}")" || true
           head -n 60 "${TARGET}" || true
 
       # -----------------------------------------------------------------------
@@ -172,3 +174,4 @@ jobs:
           policy-file: ${{ inputs.policy-file }}
           baseline-file: ${{ inputs.baseline-file }}
           node-version: ${{ inputs.node-version }}
+
