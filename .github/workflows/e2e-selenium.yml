@@ -572,7 +572,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # include run_attempt to avoid 409 conflicts on re-runs
-          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-shard${{ matrix.shard }}-run${{ github.run_id }}-attempt${{ github.run_attempt }}
+          name: >-
+            ${{ inputs.artifact_name }}-
+            ${{ matrix.browser }}-shard${{ matrix.shard }}-
+            run${{ github.run_id }}-attempt${{ github.run_attempt }}
           path: |
             .audit/**
           if-no-files-found: warn
