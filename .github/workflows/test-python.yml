@@ -238,15 +238,24 @@ jobs:
           mkdir -p out
 
           # Always ensure script is executable (reusable workflow callers may not preserve mode)
-          chmod +x "${GITHUB_WORKSPACE}/.github/scripts/flaky-rerun.sh"
+          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
+          FLAKY_SH="${BRIK_SCRIPTS}/flaky-rerun.sh"
 
-          # If enabled, rerun wrapper will capture attempt logs + summary under out/flaky/
-          # If disabled, it will run the command once (no overhead).
-          "${GITHUB_WORKSPACE}/.github/scripts/flaky-rerun.sh" \
+          # Fail fast with a clear error if the shared script isn't present
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
+            echo "📁 Available scripts:"
+            ls -la "${BRIK_SCRIPTS}" || true
+            exit 1
+          fi
+
+          chmod +x "${FLAKY_SH}"
+
+          # Run through wrapper (opt-in via FLAKY_DETECT)
+          "${FLAKY_SH}" \
             --cmd "make test" \
             --export-dir "${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}" \
             --label "python-unit"
-
           echo "✅ [TEST] Status       : COMPLETED"
 
       - name: "Empty shard (skip)"
