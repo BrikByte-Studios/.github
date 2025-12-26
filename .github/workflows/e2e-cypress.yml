@@ -4,6 +4,7 @@
 # - Uses BrikPipe matrix-plan for deterministic browser matrix
 # - Wires BrikByteOS parallel-runner for standard shard contract (framework-native)
 #   (Cypress spec sharding NOT enabled yet; shard_total will be 1)
+# - Optional flaky reruns via flaky-rerun.sh (opt-in)
 # - Exports diagnostics + artifacts using BrikByteOS actions
 # =============================================================================
 
@@ -31,7 +32,8 @@ on:
         default: "."
 
       docker_port:
-        description: "Container port used by the app when start_with_docker=true."
+        description: >
+          Container port used by the app when start_with_docker=true.
         type: number
         required: false
         default: 3000
@@ -73,19 +75,22 @@ on:
         default: false
 
       docker_image_name:
-        description: "Docker image name used to build/run the app in Docker mode."
+        description: >
+          Docker image name used to build/run the app in Docker mode.
         type: string
         required: false
         default: "brikbyte-e2e-app"
 
       allow_disable:
-        description: "If true, repo can disable Cypress via disable_cypress_e2e input."
+        description: >
+          If true, repo can disable Cypress via disable_cypress_e2e input.
         type: boolean
         required: false
         default: true
 
       non_blocking:
-        description: "If true, Cypress failures won't fail the workflow (stabilization)."
+        description: >
+          If true, Cypress failures won't fail the workflow (stabilization).
         type: boolean
         required: false
         default: false
@@ -116,7 +121,8 @@ on:
         default: "chrome"
 
       parallel_mode:
-        description: "Parallel runner mode: serial|static|dynamic (dynamic reserved)."
+        description: >
+          Parallel runner mode: serial|static|dynamic (dynamic reserved).
         type: string
         required: false
         default: "static"
@@ -131,19 +137,22 @@ on:
       # Cross-runner artifact export toggles (BrikByteOS standard)
       # -----------------------------------------------------------------------
       e2e_video:
-        description: "If true, exporter treats videos as always-on where supported."
+        description: >
+          If true, exporter treats videos as always-on where supported.
         type: boolean
         required: false
         default: false
 
       e2e_trace:
-        description: "If true, exporter treats traces as always-on where supported."
+        description: >
+          If true, exporter treats traces as always-on where supported.
         type: boolean
         required: false
         default: false
 
       e2e_artifacts_always:
-        description: "If true, exporter exports artifacts even on success."
+        description: >
+          If true, exporter exports artifacts even on success.
         type: boolean
         required: false
         default: false
@@ -153,6 +162,28 @@ on:
         type: number
         required: false
         default: 30
+
+      # -----------------------------------------------------------------------
+      # Flaky detection (PIPE-FLAKY-RERUN-INTEG-001)
+      # -----------------------------------------------------------------------
+      flaky_detect:
+        description: "Enable suite-level flaky reruns (true|false)"
+        type: string
+        required: false
+        default: "false"
+
+      flaky_reruns:
+        description: "Total attempts when flaky_detect=true (e.g., 3)"
+        type: string
+        required: false
+        default: "3"
+
+      flaky_export_path:
+        description: >
+          Relative path (from service_workdir) to store flaky evidence.
+        type: string
+        required: false
+        default: "out/flaky"
 
     secrets: {}
 
@@ -178,7 +209,7 @@ jobs:
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
         with:
           test_type: e2e
-          # Cypress spec sharding not implemented yet -> force shard_total=1 to avoid job explosion.
+          # Cypress spec sharding not implemented -> force 1.
           override_shards: "1"
           browsers: ${{ inputs.browsers }}
 
@@ -219,26 +250,43 @@ jobs:
       E2E_TRACE: ${{ inputs.e2e_trace && 'true' || 'false' }}
       E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always && 'true' || 'false' }}
 
+      # Flaky contract (opt-in)
+      FLAKY_DETECT: ${{ inputs.flaky_detect }}
+      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
+      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
+
       FORCE_COLOR: "0"
 
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
-      # -----------------------------------------------------------------------
-      # Standard shard contract (even if shard_total=1 today)
-      # NOTE: framework-native -> no glob selection; avoids 0-match surprises.
-      # -----------------------------------------------------------------------
       - name: "Parallel runner (framework-native contract)"
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
           parallel_enabled: ${{ inputs.parallel_enabled }}
           parallel_mode: ${{ inputs.parallel_mode }}
-          shard_index: ${{ matrix.shard }}          # 0-based
-          shard_total: ${{ strategy.job-total }}    # 1 today
+          shard_index: ${{ matrix.shard }}
+          shard_total: ${{ strategy.job-total }}
           selection_mode: "framework-native"
           working_directory: ${{ inputs.service_workdir }}
+
+      - name: "Checkout BrikByte shared scripts"
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          ref: main
+          path: .brikbyte-github
+
+      - name: "Sync flaky-rerun.sh into caller repo"
+        run: |
+          set -euo pipefail
+          mkdir -p .github/scripts
+          cp .brikbyte-github/.github/scripts/flaky-rerun.sh \
+            .github/scripts/flaky-rerun.sh
+          chmod +x .github/scripts/flaky-rerun.sh
+          echo "✅ flaky-rerun.sh synced."
 
       - name: "Honor disable flag"
         env:
@@ -292,9 +340,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${START_WITH_DOCKER}" = "true" ]; then
-            echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
+            echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" \
+              >> "$GITHUB_OUTPUT"
           else
-            echo "health_url=${TARGET_URL}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
+            echo "health_url=${TARGET_URL}${HEALTH_PATH}" \
+              >> "$GITHUB_OUTPUT"
           fi
 
       - name: "Wait for service readiness"
@@ -310,22 +360,24 @@ jobs:
           interval=5
 
           if [ "${START_WITH_DOCKER}" = "true" ]; then
-            docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
-              echo "[CYPRESS] ERROR: app container not running"
-              docker logs app || true
-              exit 1
-            }
+            docker ps --filter "name=app" --format "{{.Names}}" \
+              | grep -q "^app$" || {
+                echo "[CYPRESS] ERROR: app container not running"
+                docker logs app || true
+                exit 1
+              }
 
             while ! docker run --rm --network e2e-net \
               curlimages/curl:8.5.0 -fsS "${HEALTH_URL}" >/dev/null; do
               sleep "${interval}"
               elapsed=$((elapsed + interval))
 
-              docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
-                echo "[CYPRESS] ERROR: app container stopped"
-                docker logs app || true
-                exit 1
-              }
+              docker ps --filter "name=app" --format "{{.Names}}" \
+                | grep -q "^app$" || {
+                  echo "[CYPRESS] ERROR: app container stopped"
+                  docker logs app || true
+                  exit 1
+                }
 
               if [ "${elapsed}" -ge "${timeout}" ]; then
                 echo "[CYPRESS] ERROR: readiness timed out (${timeout}s)"
@@ -346,7 +398,7 @@ jobs:
 
           echo "[CYPRESS] Ready ✅"
 
-      - name: "Run Cypress E2E"
+      - name: "Run Cypress E2E (flaky opt-in)"
         id: run_cypress
         env:
           CYPRESS_IMAGE: ${{ inputs.cypress_image }}
@@ -357,13 +409,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
-          CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
-
           if [ ! -f "${GITHUB_WORKSPACE}/${SERVICE_WORKDIR}/cypress.config.cjs" ]; then
             echo "[CYPRESS] ERROR: Missing ${SERVICE_WORKDIR}/cypress.config.cjs"
             exit 1
           fi
+
+          PROJECT_DIR="/e2e/${SERVICE_WORKDIR}"
+          CONFIG_FILE="${PROJECT_DIR}/cypress.config.cjs"
 
           SPEC_ARG=""
           if [ -n "${SPEC_PATTERN}" ]; then
@@ -381,8 +433,18 @@ jobs:
           echo "[CYPRESS] Workdir=${SERVICE_WORKDIR}"
           echo "[CYPRESS] Image=${CYPRESS_IMAGE}"
 
+          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="cypress-${E2E_BROWSER}"
+          FLAKY_SH="${GITHUB_WORKSPACE}/.github/scripts/flaky-rerun.sh"
+
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
+            ls -la "${GITHUB_WORKSPACE}/.github/scripts" || true
+            exit 1
+          fi
+
           set +e
-          docker run --rm ${NET_ARGS} \
+          "${FLAKY_SH}" -- docker run --rm ${NET_ARGS} \
             -e CYPRESS_BASE_URL="${CYPRESS_BASE_URL}" \
             -e E2E_TARGET_URL="${E2E_TARGET_URL}" \
             -e CYPRESS_RUN_MODE_RETRIES="${CYPRESS_RUN_MODE_RETRIES}" \
@@ -390,7 +452,10 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/e2e" \
             -w "${PROJECT_DIR}" \
             "${CYPRESS_IMAGE}" \
-            npx cypress run --browser "${E2E_BROWSER}" --config-file "${CONFIG_FILE}" ${SPEC_ARG}
+            npx cypress run \
+            --browser "${E2E_BROWSER}" \
+            --config-file "${CONFIG_FILE}" \
+            ${SPEC_ARG}
 
           exit_code=$?
           set -e
@@ -410,7 +475,8 @@ jobs:
           browser: ${{ matrix.browser }}
           status: ${{ job.status }}
         env:
-          CYPRESS_DIAG_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/diagnostics"
+          CYPRESS_DIAG_DIR: >
+            ${{ inputs.service_workdir }}/tests/e2e/cypress/diagnostics
           PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
           SELENIUM_DIAG_DIR: "target/selenium-artifacts/diagnostics"
           E2E_DIAG_HEAVY_ON_FAILURE_ONLY: "true"
@@ -441,8 +507,10 @@ jobs:
         env:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
-          CYPRESS_SCREENSHOTS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots"
-          CYPRESS_VIDEOS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/videos"
+          CYPRESS_SCREENSHOTS_DIR: >
+            ${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots
+          CYPRESS_VIDEOS_DIR: >
+            ${{ inputs.service_workdir }}/tests/e2e/cypress/videos
           CYPRESS_REPORT_DIR: "${{ inputs.service_workdir }}/cypress/reports"
 
       - name: "Upload E2E artifacts (always)"
@@ -453,6 +521,7 @@ jobs:
           path: |
             .audit/**/e2e/artifacts/**
             .audit/**/e2e/diagnostics/**
+            ${{ inputs.service_workdir }}/out/flaky/**
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
