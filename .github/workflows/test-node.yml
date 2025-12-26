@@ -180,7 +180,7 @@ jobs:
           # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
           # optional knobs:
           # allow_empty_items: true
-          # selection_mode: file-split|shard-map|framework-native  
+          # selection_mode: file-split|shard-map|framework-native
 
       # -----------------------------------------------------------------------
       # 5) Run unit tests via `make test`
