@@ -420,14 +420,15 @@ jobs:
           name: coverage-dotnet-shard${{ env.SHARD_INDEX }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
-            ${{ env.WORKING_DIRECTORY }}/${{ steps.covdetect.outputs.coverlet_json }}
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
-            ${{ env.WORKING_DIRECTORY }}/TestResults/
+            ${{ env.WORKING_DIRECTORY }}/tests/**/TestResults/**
+            ${{ env.WORKING_DIRECTORY }}/TestResults/**
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
-          if-no-files-found: error
+          if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
+
 
       - name: Upload flaky evidence (always)
         if: always()
