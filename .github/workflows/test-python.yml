@@ -251,11 +251,10 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
 
-          # Run through wrapper (opt-in via FLAKY_DETECT)
-          "${FLAKY_SH}" \
-            --cmd "make test" \
-            --export-dir "${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}" \
-            --label "python-unit"
+          # If your script reads these (most likely), set them as env vars:
+          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="python-unit"
+          "${FLAKY_SH}" -- make test
           echo "✅ [TEST] Status       : COMPLETED"
 
       - name: "Empty shard (skip)"
