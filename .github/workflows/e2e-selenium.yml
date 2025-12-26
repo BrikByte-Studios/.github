@@ -18,36 +18,48 @@ on:
       # App under test
       # -----------------------------------------------------------------------
       target_url:
-        description: "Base URL of the app under test (e.g., http://host.docker.internal:3000)"
+        description: >
+          Base URL of the app under test
+          (e.g., http://host.docker.internal:3000)
         type: string
         required: true
 
       health_url:
-        description: "Optional health endpoint to wait for (e.g., http://localhost:3000/health)"
+        description: >
+          Optional health endpoint to wait for
+          (e.g., http://localhost:3000/health)
         type: string
         required: false
         default: ""
 
       start_app:
-        description: "If true, start the app under test via docker-compose (localhost CI)"
+        description: >
+          If true, start the app under test via docker-compose
+          (localhost CI)
         type: boolean
         required: false
         default: false
 
       app_compose_file:
-        description: "Path to docker-compose file for the app under test (required if start_app=true)"
+        description: >
+          Path to docker-compose file for the app under test
+          (required if start_app=true)
         type: string
         required: false
         default: ""
 
       app_service_workdir:
-        description: "Working directory where app_compose_file lives (e.g., node-ui-example)"
+        description: >
+          Working directory where app_compose_file lives
+          (e.g., node-ui-example)
         type: string
         required: false
         default: "."
 
       app_wait_seconds:
-        description: "Max seconds to wait for app health endpoint (if health_url provided)"
+        description: >
+          Max seconds to wait for app health endpoint
+          (if health_url provided)
         type: number
         required: false
         default: 120
@@ -56,33 +68,41 @@ on:
       # Selenium Grid
       # -----------------------------------------------------------------------
       compose_file:
-        description: "Path to docker-compose Selenium Grid definition in the caller repo"
+        description: >
+          Path to docker-compose Selenium Grid definition
+          in the caller repo
         type: string
         required: false
         default: "docker-compose.selenium.yml"
 
       service_workdir:
-        description: "Working directory in the caller repo where compose + tests live"
+        description: >
+          Working directory in the caller repo where compose
+          + tests live
         type: string
         required: false
         default: "."
 
       enable_edge:
-        description: "If true, also run Edge job (separate job with separate timeout)."
+        description: >
+          If true, also run Edge job
+          (separate job with separate timeout).
         type: boolean
         required: false
         default: false
 
       browsers:
         description: >
-          "Comma-separated browsers for main matrix (chrome,firefox).
-          If empty => chrome,firefox. (Edge handled separately.)"
+          Comma-separated browsers for main matrix (chrome,firefox).
+          If empty => chrome,firefox. (Edge handled separately.)
         type: string
         required: false
         default: ""
 
       override_shards:
-        description: "Requested shard count (default 1). Will be clamped by governance caps."
+        description: >
+          Requested shard count (default 1).
+          Will be clamped by governance caps.
         type: string
         required: false
         default: "1"
@@ -134,19 +154,25 @@ on:
         default: false
 
       selenium_screenshots_dir:
-        description: "Override source screenshots dir (absolute or relative to repo root)"
+        description: >
+          Override source screenshots dir
+          (absolute or relative to repo root)
         type: string
         required: false
         default: ""
 
       selenium_videos_dir:
-        description: "Override source videos dir (absolute or relative to repo root)"
+        description: >
+          Override source videos dir
+          (absolute or relative to repo root)
         type: string
         required: false
         default: ""
 
       selenium_logs_dir:
-        description: "Override source logs dir (absolute or relative to repo root)"
+        description: >
+          Override source logs dir
+          (absolute or relative to repo root)
         type: string
         required: false
         default: ""
@@ -167,7 +193,9 @@ on:
         default: 40
 
       enforce_teardown:
-        description: "If true, always attempt docker compose down -v for grid and app in finalizer."
+        description: >
+          If true, always attempt docker compose down -v
+          for grid and app in finalizer.
         type: boolean
         required: false
         default: true
@@ -189,6 +217,9 @@ on:
         description: "Remote WebDriver URL for test runners"
         value: ${{ jobs.e2e.outputs.selenium_remote_url }}
 
+permissions:
+  contents: read
+
 jobs:
   # ----------------------------------------------------------------------------
   # PLAN: governed deterministic matrix (browser × shard)
@@ -199,6 +230,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix_json }}
+
     steps:
       - name: "Checkout (caller repo)"
         uses: actions/checkout@v4
@@ -209,14 +241,21 @@ jobs:
         run: |
           set -euo pipefail
           csv="chrome,firefox"
+
           if [[ -n "${{ inputs.browsers }}" ]]; then
             csv="${{ inputs.browsers }}"
           fi
-          # never include edge in main list
-          csv="$(echo "${csv}" | tr -d ' ' | sed 's/edge//g' | sed 's/,,/,/g' | sed 's/^,//' | sed 's/,$//')"
-          if [[ -z "$csv" ]]; then
+
+          csv="$(echo "${csv}" | tr -d ' ')"
+          csv="$(echo "${csv}" | sed 's/edge//g')"
+          csv="$(echo "${csv}" | sed 's/,,/,/g')"
+          csv="$(echo "${csv}" | sed 's/^,//')"
+          csv="$(echo "${csv}" | sed 's/,$//')"
+
+          if [[ -z "${csv}" ]]; then
             csv="chrome,firefox"
           fi
+
           echo "browsers_csv=${csv}" >> "${GITHUB_OUTPUT}"
           echo "[PLAN] browsers(main)=${csv}"
 
@@ -228,6 +267,10 @@ jobs:
           override_shards: ${{ inputs.override_shards }}
           browsers: ${{ steps.browsers.outputs.browsers_csv }}
 
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.plan.outputs.matrix_json }}"
+
   # ----------------------------------------------------------------------------
   # OPTIONAL PLAN: governed edge × shard matrix (only if enable_edge)
   # ----------------------------------------------------------------------------
@@ -237,6 +280,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix_json }}
+
     steps:
       - name: "Checkout (caller repo)"
         uses: actions/checkout@v4
@@ -248,6 +292,10 @@ jobs:
           test_type: e2e
           override_shards: ${{ inputs.override_shards }}
           browsers: "edge"
+
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.plan.outputs.matrix_json }}"
 
   # ----------------------------------------------------------------------------
   # MATRIX: chrome + firefox (browser × shard)
@@ -268,17 +316,14 @@ jobs:
     env:
       # App + grid
       E2E_TARGET_URL: ${{ inputs.target_url }}
-      SELENIUM_REMOTE_URL: http://localhost:4444/wd/hub
+      SELENIUM_REMOTE_URL: "http://localhost:4444/wd/hub"
       BROWSER: ${{ matrix.browser }}
 
-      # Raw shard (from matrix-plan). parallel-runner will normalize standard shard env.
-      E2E_SHARD_RAW: ${{ matrix.shard }}
-
       # Artifact exporter contract
-      E2E_RUNNER: selenium
-      E2E_VIDEO: ${{ inputs.e2e_video }}
-      E2E_TRACE: ${{ inputs.e2e_trace }}
-      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
+      E2E_RUNNER: "selenium"
+      E2E_VIDEO: ${{ inputs.e2e_video && 'true' || 'false' }}
+      E2E_TRACE: ${{ inputs.e2e_trace && 'true' || 'false' }}
+      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always && 'true' || 'false' }}
 
       # shard metadata (deterministic)
       SHARD_INDEX: ${{ matrix.shard }}
@@ -370,7 +415,8 @@ jobs:
         working-directory: ${{ inputs.service_workdir }}
         run: |
           set -euo pipefail
-          docker compose -f "${{ inputs.compose_file }}" logs --no-color selenium-hub | tail -n 200 || true
+          docker compose -f "${{ inputs.compose_file }}" \
+            logs --no-color selenium-hub | tail -n 200 || true
 
       - name: "Install jq (for reliable /status parsing)"
         run: |
@@ -398,28 +444,33 @@ jobs:
       # Standardize shard env contract (PARALLEL/SHARD_INDEX/SHARD_TOTAL)
       # -----------------------------------------------------------------------
       - name: "Parallel runner contract (normalize shards)"
+        id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          parallel_enabled: ${{ env.PARALLEL || 'true' }}
-          parallel_mode: ${{ env.PARALLEL_MODE || 'static' }}
+          parallel_enabled: ${{ inputs.parallel_enabled }}
+          parallel_mode: ${{ inputs.parallel_mode }}
           shard_index: ${{ matrix.shard }}
           shard_total: ${{ strategy.job-total }}
-          # selection_mode is optional; for Selenium you usually don't want file splitting
           selection_mode: "none"
+          working_directory: ${{ inputs.service_workdir }}
 
       - name: "Run E2E tests"
         working-directory: ${{ inputs.service_workdir }}
+        env:
+          SHARD_INDEX: ${{ steps.pr.outputs.shard_index }}
+          SHARD_TOTAL: ${{ steps.pr.outputs.shard_total }}
+          PARALLEL: ${{ steps.pr.outputs.parallel_enabled }}
+          PARALLEL_MODE: ${{ steps.pr.outputs.parallel_mode }}
         run: |
           set -euo pipefail
           echo "[E2E] BROWSER=${BROWSER}"
           echo "[E2E] E2E_TARGET_URL=${E2E_TARGET_URL}"
 
-          # Standard contract (from parallel-runner)
           echo "[E2E] PARALLEL=${PARALLEL:-false}"
+          echo "[E2E] PARALLEL_MODE=${PARALLEL_MODE:-static}"
           echo "[E2E] SHARD_INDEX=${SHARD_INDEX:-0}"
           echo "[E2E] SHARD_TOTAL=${SHARD_TOTAL:-1}"
 
-          # Backward-compatible aliases (if any runner expects these)
           export E2E_SHARD="${SHARD_INDEX:-0}"
           export E2E_SHARD_TOTAL="${SHARD_TOTAL:-1}"
           echo "[E2E] E2E_SHARD=${E2E_SHARD}/${E2E_SHARD_TOTAL}"
@@ -483,7 +534,8 @@ jobs:
           browser: ${{ matrix.browser }}
           status: ${{ job.status }}
         env:
-          SELENIUM_DIAG_DIR: "${{ inputs.service_workdir }}/target/selenium-artifacts/diagnostics"
+          SELENIUM_DIAG_DIR: >
+            ${{ inputs.service_workdir }}/target/selenium-artifacts/diagnostics
           PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
           CYPRESS_DIAG_DIR: "cypress/diagnostics"
           E2E_DIAG_HEAVY_ON_FAILURE_ONLY: "true"
@@ -571,7 +623,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # include run_attempt to avoid 409 conflicts on re-runs
           name: >-
             ${{ inputs.artifact_name }}-
             ${{ matrix.browser }}-shard${{ matrix.shard }}-
@@ -603,7 +654,6 @@ jobs:
               cd "$APP_WORKDIR" &&
               docker compose -f "$APP_COMPOSE_FILE" down -v
             ) || true
-          fi
 
   # ----------------------------------------------------------------------------
   # OPTIONAL EDGE JOB: edge × shard (governed by plan-edge)
@@ -621,14 +671,17 @@ jobs:
 
     env:
       E2E_TARGET_URL: ${{ inputs.target_url }}
-      SELENIUM_REMOTE_URL: http://localhost:4444/wd/hub
-      BROWSER: edge
+      SELENIUM_REMOTE_URL: "http://localhost:4444/wd/hub"
+      BROWSER: "edge"
       FORCE_COLOR: "0"
 
-      E2E_RUNNER: selenium
-      E2E_VIDEO: ${{ inputs.e2e_video }}
-      E2E_TRACE: ${{ inputs.e2e_trace }}
-      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always }}
+      E2E_RUNNER: "selenium"
+      E2E_VIDEO: ${{ inputs.e2e_video && 'true' || 'false' }}
+      E2E_TRACE: ${{ inputs.e2e_trace && 'true' || 'false' }}
+      E2E_ARTIFACTS_ALWAYS: ${{ inputs.e2e_artifacts_always && 'true' || 'false' }}
+
+      PARALLEL_MODE: ${{ inputs.parallel_mode }}
+      PARALLEL: ${{ inputs.parallel_enabled }}
 
     steps:
       - name: "Checkout (caller repo)"
@@ -668,6 +721,7 @@ jobs:
         run: |
           set -euo pipefail
           docker compose -f "${{ inputs.app_compose_file }}" up -d --build
+          docker compose -f "${{ inputs.app_compose_file }}" ps || true
 
       - name: "Wait for app readiness (optional)"
         if: ${{ inputs.health_url != '' }}
@@ -683,6 +737,7 @@ jobs:
               exit 1
             fi
           done
+          echo "[APP] Ready ✅"
 
       - name: "Start Selenium Grid (with Edge profile if supported)"
         working-directory: ${{ inputs.service_workdir }}
@@ -707,21 +762,30 @@ jobs:
           require_firefox: "true"
           require_edge: "true"
 
-      # Standardize shard env contract (PARALLEL/SHARD_INDEX/SHARD_TOTAL)
       - name: "Parallel runner contract (normalize shards)"
+        id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
-          shard: ${{ matrix.shard }}
+          parallel_enabled: ${{ inputs.parallel_enabled }}
+          parallel_mode: ${{ inputs.parallel_mode }}
+          shard_index: ${{ matrix.shard }}
           shard_total: ${{ strategy.job-total }}
-          mode: "static"
+          selection_mode: "none"
+          working_directory: ${{ inputs.service_workdir }}
 
       - name: "Run E2E tests (Edge)"
         working-directory: ${{ inputs.service_workdir }}
+        env:
+          SHARD_INDEX: ${{ steps.pr.outputs.shard_index }}
+          SHARD_TOTAL: ${{ steps.pr.outputs.shard_total }}
+          PARALLEL: ${{ steps.pr.outputs.parallel_enabled }}
+          PARALLEL_MODE: ${{ steps.pr.outputs.parallel_mode }}
         run: |
           set -euo pipefail
           echo "[E2E] BROWSER=${BROWSER}"
           echo "[E2E] E2E_TARGET_URL=${E2E_TARGET_URL}"
           echo "[E2E] PARALLEL=${PARALLEL:-false}"
+          echo "[E2E] PARALLEL_MODE=${PARALLEL_MODE:-static}"
           echo "[E2E] SHARD_INDEX=${SHARD_INDEX:-0}"
           echo "[E2E] SHARD_TOTAL=${SHARD_TOTAL:-1}"
 
@@ -748,8 +812,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           lang="${{ inputs.runner_language }}"
           wd="${{ inputs.service_workdir }}"
+
           shots="${{ inputs.selenium_screenshots_dir }}"
           vids="${{ inputs.selenium_videos_dir }}"
           logs="${{ inputs.selenium_logs_dir }}"
@@ -781,7 +847,10 @@ jobs:
           browser: "edge"
           status: ${{ job.status }}
         env:
-          SELENIUM_DIAG_DIR: "${{ inputs.service_workdir }}/target/selenium-artifacts/diagnostics"
+          SELENIUM_DIAG_DIR: >
+            ${{ inputs.service_workdir }}/target/selenium-artifacts/diagnostics
+          PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
+          CYPRESS_DIAG_DIR: "cypress/diagnostics"
           E2E_DIAG_HEAVY_ON_FAILURE_ONLY: "true"
           E2E_DIAG_DISABLE_HAR_BY_DEFAULT: "true"
           E2E_DIAG_MAX_TOTAL_MB: "150"
@@ -844,8 +913,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: >-
-            ${{ inputs.artifact_name }}-edge-shard${{ matrix.shard }}
-            -run${{ github.run_id }}-attempt${{ github.run_attempt }}
+            ${{ inputs.artifact_name }}-edge-shard${{ matrix.shard }}-
+            run${{ github.run_id }}-attempt${{ github.run_attempt }}
           path: |
             .audit/**
           if-no-files-found: warn
