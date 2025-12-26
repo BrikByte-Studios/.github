@@ -31,11 +31,13 @@ on:
         required: false
         type: string
         default: "17"
+
       distribution:
         description: "JDK distribution (e.g. temurin)"
         required: false
         type: string
         default: "temurin"
+
       working-directory:
         description: "Path to Java project (Makefile + pom.xml/build.gradle)"
         required: false
@@ -50,6 +52,7 @@ on:
         required: false
         type: string
         default: ""
+
       matrix_config_path:
         description: >
           Optional path to parallel-matrix.yml.
@@ -57,6 +60,7 @@ on:
         required: false
         type: string
         default: ""
+
       parallel_mode:
         description: "Parallel mode: static|dynamic (default static)"
         required: false
@@ -69,6 +73,26 @@ on:
         type: string
         default: "true"
 
+      # -----------------------------------------------------------------------
+      # Flaky detection (PIPE-FLAKY-RERUN-INTEG-001)
+      # -----------------------------------------------------------------------
+      flaky_detect:
+        description: "Enable suite-level flaky detection reruns (true|false)"
+        required: false
+        type: string
+        default: "false"
+
+      flaky_reruns:
+        description: "Total attempts when flaky_detect=true (e.g., 3)"
+        required: false
+        type: string
+        default: "3"
+
+      flaky_export_path:
+        description: "Relative path (from working-directory) to store flaky evidence"
+        required: false
+        type: string
+        default: "out/flaky"
 
 permissions:
   contents: read
@@ -80,11 +104,12 @@ jobs:
   plan:
     name: "Matrix Plan (java unit)"
     runs-on: ubuntu-latest
-
     outputs:
       matrix_json: ${{ steps.matrix.outputs.matrix_json }}
-
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: "Compute matrix plan (unit)"
         id: matrix
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
@@ -122,12 +147,20 @@ jobs:
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
 
+      # Flaky detection contract (NEW)
+      FLAKY_DETECT: ${{ inputs.flaky_detect }}
+      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
+      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
+
+      FORCE_COLOR: "0"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Verify Java test layout
         run: |
+          set -euo pipefail
           echo "📁 Working directory: ${WORKING_DIRECTORY}"
 
           if [ ! -d "${WORKING_DIRECTORY}" ]; then
@@ -168,7 +201,7 @@ jobs:
           SHARD0="${SHARD_INDEX}"
           TOTAL="${SHARD_TOTAL}"
 
-          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
+          # Convert to 1-based (only if your Makefile expects it)
           SHARD1=$((SHARD0 + 1))
 
           {
@@ -190,26 +223,28 @@ jobs:
           working_directory: ${{ env.WORKING_DIRECTORY }}
           test_glob: "**/*{Test,Tests}.java"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
-          # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          # optional knobs:
-          # allow_empty_items: true
-          # selection_mode: file-split|shard-map|framework-native
+          allow_missing_items_file: true
 
       # -----------------------------------------------------------------------
-      # Run unit tests via `make test`
-      #
-      # NOTE:
-      #   Your Makefile must honor SHARD_INDEX + SHARD_TOTAL (or ignore them).
-      #   Recommended pattern: Makefile routes to a shard runner script:
-      #     make test => scripts/shard-tests.sh "$SHARD_INDEX" "$SHARD_TOTAL"
+      # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
       # -----------------------------------------------------------------------
-      - name: Run Java unit tests (make test)
+      - name: Checkout BrikByte shared scripts
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          ref: main
+          path: .brikbyte-github
+
+      # -----------------------------------------------------------------------
+      # Run unit tests via `make test` (wired through flaky-rerun.sh)
+      #
+      # IMPORTANT:
+      #  - flaky-rerun.sh usage is: flaky-rerun.sh -- <command...>
+      #  - Configure via env vars (FLAKY_DETECT/FLAKY_RERUNS/FLAKY_EXPORT_PATH/FLAKY_LABEL)
+      # -----------------------------------------------------------------------
+      - name: Run Java unit tests (make test) with flaky reruns (opt-in)
         if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
-        env:
-          UNIT_SHARD: ${{ env.SHARD_INDEX }}
-          UNIT_SHARD_TOTAL: ${{ env.SHARD_TOTAL }}
-          TEST_ITEMS_FILE: ${{ steps.pr.outputs.selection_path }}
         run: |
           set -euo pipefail
 
@@ -218,11 +253,36 @@ jobs:
           echo "🧪 [TEST] Directory    : ${PWD}"
           echo "🧪 [TEST] Shard        : ${SHARD_INDEX}/${SHARD_TOTAL}"
           echo "🧪 [TEST] Command      : make test"
+          echo "🧪 [TEST] Selection    : ${{ steps.pr.outputs.selection_path }}"
+          echo "🧪 [TEST] FlakyDetect  : ${FLAKY_DETECT:-false}"
+          echo "🧪 [TEST] FlakyReruns  : ${FLAKY_RERUNS:-3}"
+          echo "🧪 [TEST] FlakyExport  : ${FLAKY_EXPORT_PATH:-out/flaky}"
           echo "🧪 [TEST] Status       : STARTING"
 
           START_TS=$(date +%s)
 
-          make test
+          # Provide selection/shard env to your Makefile if it supports them
+          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
+          export UNIT_SHARD="${UNIT_SHARD:-$((SHARD_INDEX + 1))}"
+          export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL:-$SHARD_TOTAL}"
+
+          # Flaky wrapper config (used by flaky-rerun.sh)
+          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="java-unit"
+
+          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
+          FLAKY_SH="${BRIK_SCRIPTS}/flaky-rerun.sh"
+
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
+            echo "📁 Available scripts:"
+            ls -la "${BRIK_SCRIPTS}" || true
+            exit 1
+          fi
+          chmod +x "${FLAKY_SH}"
+
+          # Run through wrapper (opt-in via FLAKY_DETECT)
+          "${FLAKY_SH}" -- make test
 
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
@@ -234,8 +294,7 @@ jobs:
       - name: Empty shard (nothing to run)
         if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
         run: |
-          echo "ℹ️ Empty shard ${{ env.SHARD_INDEX }}/${{ env.SHARD_TOTAL }} — skipping tests."
-
+          echo "ℹ️ Empty shard ${SHARD_INDEX}/${SHARD_TOTAL} — skipping tests."
 
       # -----------------------------------------------------------------------
       # Detect JaCoCo presence (empty shard => no jacoco.xml)
@@ -250,7 +309,6 @@ jobs:
           else
             echo "has_jacoco=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "has_jacoco=$(cat $GITHUB_OUTPUT | tail -n 1)"
 
       # -----------------------------------------------------------------------
       # X) Collect coverage (Java: JaCoCo XML)
@@ -341,6 +399,8 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
+
