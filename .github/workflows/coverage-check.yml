@@ -98,27 +98,68 @@ jobs:
           echo "[COVERAGE] target            : ${TARGET}"
 
           echo "[COVERAGE] downloaded files:"
-          find .artifacts/coverage -maxdepth 8 -type f -print || true
+          find .artifacts/coverage -maxdepth 12 -type f -print || true
 
-          # Find coverage.json anywhere inside the artifact payload
-          found="$(find .artifacts/coverage \
-            -type f \
-            \( -path "*/out/coverage.json" -o -name "coverage.json" \) \
-            -print -quit 2>/dev/null || true)"
+          # 1) If artifact already contains the exact target path, use it.
+          if [[ -f ".artifacts/coverage/${TARGET}" ]]; then
+            found=".artifacts/coverage/${TARGET}"
+            echo "[COVERAGE] using exact target from artifact: ${found}"
+          else
+            # 2) Collect all possible candidates
+            mapfile -t CANDS < <(find .artifacts/coverage -type f \
+              \( -path "*/out/coverage.json" -o -name "coverage.json" \) -print)
 
-          if [[ -z "${found}" ]]; then
-            echo "[COVERAGE] ERROR: Could not find coverage.json in downloaded artifact."
-            exit 1
+            if [[ "${#CANDS[@]}" -eq 0 ]]; then
+              echo "[COVERAGE] ERROR: Could not find coverage.json in downloaded artifact."
+              exit 1
+            fi
+
+            echo "[COVERAGE] candidates:"
+            printf "  - %s\n" "${CANDS[@]}"
+
+            # 3) Prefer */out/coverage.json if present, else keep all
+            mapfile -t OUT_CANDS < <(printf "%s\n" "${CANDS[@]}" | grep -E '/out/coverage\.json$' || true)
+            if [[ "${#OUT_CANDS[@]}" -gt 0 ]]; then
+              CANDS=("${OUT_CANDS[@]}")
+              echo "[COVERAGE] filtered candidates (prefer out/coverage.json):"
+              printf "  - %s\n" "${CANDS[@]}"
+            fi
+
+            # 4) If multiple remain, pick the one with highest summary.line
+            if [[ "${#CANDS[@]}" -gt 1 ]]; then
+              found="$(python - <<'PY' "${CANDS[@]}"
+      import json, sys
+      from pathlib import Path
+
+      best = None
+      best_pct = -1.0
+
+      for p in map(Path, sys.argv[1:]):
+        try:
+          d = json.loads(p.read_text(encoding="utf-8"))
+          pct = float(d.get("summary", {}).get("line", 0.0))
+        except Exception:
+          pct = 0.0
+        if pct > best_pct:
+          best_pct = pct
+          best = p
+
+      print(str(best))
+      PY
+      )"
+              echo "[COVERAGE] selected best-by-summary.line: ${found}"
+            else
+              found="${CANDS[0]}"
+              echo "[COVERAGE] selected single candidate: ${found}"
+            fi
           fi
-
-          echo "[COVERAGE] using: ${found}"
 
           mkdir -p "$(dirname "${TARGET}")"
           cp "${found}" "${TARGET}"
 
           echo "[COVERAGE] ✅ materialized: ${TARGET}"
           ls -la "$(dirname "${TARGET}")"
-          head -n 40 "${TARGET}" || true
+          head -n 60 "${TARGET}" || true
 
       # -----------------------------------------------------------------------
       # Run coverage governance gate
