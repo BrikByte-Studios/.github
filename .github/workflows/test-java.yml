@@ -321,6 +321,18 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
+      - name: Detect coverage.json presence
+        id: covjson
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f "out/coverage.json" ]; then
+            echo "has_covjson=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_covjson=false" >> "$GITHUB_OUTPUT"
+          fi
+
+
       - name: Ensure summary.line is set in coverage.json (Java / JaCoCo)
         if: steps.jacoco.outputs.has_jacoco == 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
@@ -398,8 +410,19 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload flaky evidence (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-java-shard${{ env.SHARD_INDEX }}
+          path: |
             ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
+
 
