@@ -223,7 +223,6 @@ jobs:
           working_directory: ${{ env.WORKING_DIRECTORY }}
           test_glob: "**/*{Test,Tests}.java"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
-          allow_missing_items_file: true
 
       # -----------------------------------------------------------------------
       # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
