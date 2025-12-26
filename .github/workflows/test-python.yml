@@ -53,16 +53,40 @@ on:
         required: false
         type: string
         default: ""
+
       parallel_mode:
         description: "Parallel mode: static|dynamic (default static)"
         required: false
         type: string
         default: "static"
+
       parallel_enabled:
         description: "Enable parallel shard execution (true|false)"
         required: false
         type: string
         default: "true"
+
+      # -----------------------------------------------------------------------
+      # Flaky detection (NEW)
+      # -----------------------------------------------------------------------
+      flaky_detect:
+        description: "Enable suite-level flaky detection reruns (true|false)"
+        required: false
+        type: string
+        default: "false"
+
+      flaky_reruns:
+        description: "Total attempts when flaky_detect=true (e.g., 3)"
+        required: false
+        type: string
+        default: "3"
+
+      flaky_export_path:
+        description: "Relative path (from working-directory) to store flaky evidence"
+        required: false
+        type: string
+        default: "out/flaky"
+
 permissions:
   contents: read
 
@@ -86,7 +110,6 @@ jobs:
           test_type: unit
           config_path: ${{ inputs.matrix_config_path }}
           override_shards: ${{ inputs.override_shards }}
-          # unit doesn't use browsers/items
           browsers: ""
           items: ""
 
@@ -113,6 +136,11 @@ jobs:
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
+
+      # Flaky detection contract (NEW)
+      FLAKY_DETECT: ${{ inputs.flaky_detect }}
+      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
+      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
 
       FORCE_COLOR: "0"
 
@@ -141,23 +169,20 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # Optional: central Python cache composite
       - name: "Cache Python dependencies"
         uses: BrikByte-Studios/.github/.github/actions/cache-python-deps@main
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Compute shard env (1-based for Makefile)
+      - name: "Compute shard env (1-based for Makefile)"
         shell: bash
         run: |
           set -euo pipefail
 
           SHARD0='${{ matrix.shard }}'          # 0-based from matrix
           TOTAL='${{ strategy.job-total }}'     # total jobs in this matrix
-
-          # Convert to 1-based (for your Node Makefile/shard-tests.cjs)
-          SHARD1=$((SHARD0 + 1))
+          SHARD1=$((SHARD0 + 1))                # convert to 1-based
 
           {
             echo "UNIT_SHARD=${SHARD1}"
@@ -166,8 +191,7 @@ jobs:
 
           echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
-
-      - name: Parallel runner (serial/static/dynamic)
+      - name: "Parallel runner (serial/static/dynamic)"
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
@@ -179,15 +203,12 @@ jobs:
           working_directory: ${{ env.WORKING_DIRECTORY }}
           test_glob: "tests/unit/**/*test*.py"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
-          # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
-          # optional knobs:
-          # allow_empty_items: true
-          # selection_mode: file-split|shard-map|framework-native
+          allow_missing_items_file: true
 
       # -----------------------------------------------------------------------
-      # Run unit tests via `make test`
+      # Run unit tests via `make test` (wired through flaky-rerun.sh)
       # -----------------------------------------------------------------------
-      - name: "Run Python unit tests (make test)"
+      - name: "Run Python unit tests (make test) with flaky reruns (opt-in)"
         if: steps.pr.outputs.is_empty_shard != 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -198,23 +219,30 @@ jobs:
           echo "🧪 [TEST] Directory    : ${PWD}"
           echo "🧪 [TEST] Command      : make test"
           echo "🧪 [TEST] Shard        : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "🧪 [TEST] FlakyDetect  : ${FLAKY_DETECT:-false}"
+          echo "🧪 [TEST] FlakyReruns  : ${FLAKY_RERUNS:-3}"
           echo "🧪 [TEST] Status       : STARTING"
-
-          START_TS=$(date +%s)
 
           export UNIT_SHARD="${UNIT_SHARD}"
           export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL}"
           export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
-          make test
 
-          END_TS=$(date +%s)
-          DURATION=$((END_TS - START_TS))
+          # Ensure output dirs exist
+          mkdir -p out
+
+          # Always ensure script is executable (reusable workflow callers may not preserve mode)
+          chmod +x "${GITHUB_WORKSPACE}/.github/scripts/flaky-rerun.sh"
+
+          # If enabled, rerun wrapper will capture attempt logs + summary under out/flaky/
+          # If disabled, it will run the command once (no overhead).
+          "${GITHUB_WORKSPACE}/.github/scripts/flaky-rerun.sh" \
+            --cmd "make test" \
+            --export-dir "${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}" \
+            --label "python-unit"
 
           echo "✅ [TEST] Status       : COMPLETED"
-          echo "⏱  [TEST] Duration    : ${DURATION} seconds"
-          echo "ℹ️  [TEST] See pytest summary above for test counts."
 
-      - name: Empty shard (skip)
+      - name: "Empty shard (skip)"
         if: steps.pr.outputs.is_empty_shard == 'true'
         run: echo "ℹ️ Empty shard — nothing to run."
 
@@ -231,12 +259,8 @@ jobs:
 
           echo "has_xml=${has_xml}"  >> "$GITHUB_OUTPUT"
           echo "has_json=${has_json}" >> "$GITHUB_OUTPUT"
-
           echo "🔎 has_xml=${has_xml} has_json=${has_json}"
 
-      # -----------------------------------------------------------------------
-      # Coverage normalization
-      # -----------------------------------------------------------------------
       - name: "Normalize coverage → coverage.json"
         if: ${{ steps.cov.outputs.has_xml == 'true' || steps.cov.outputs.has_json == 'true' }}
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
@@ -304,6 +328,8 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
+            ${{ env.WORKING_DIRECTORY }}/out/flaky/**
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
+
