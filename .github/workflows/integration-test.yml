@@ -1,42 +1,25 @@
-# File: .github/workflows/integration-test.yml
-#
 # BrikPipe — Containerized Integration Tests (Reusable Workflow)
 # --------------------------------------------------------------
 # Purpose:
-#   Provide a reusable, container-based integration test job that:
-#     - Builds or pulls the *real* service image under test.
-#     - Orchestrates app + DB + optional cache/messaging containers.
-#     - Runs language-specific integration tests from a dedicated runner.
-#     - Uses explicit health checks (DB + app) to avoid flaky race conditions.
-#     - Tears everything down deterministically in under 5 minutes.
-#
-# Usage from a service repo (e.g. brik-pipe-examples):
-#
-#   jobs:
-#     integration:
-#       uses: BrikByte-Studios/.github/.github/workflows/integration-test.yml@main
-#       secrets: inherit
-#       with:
-#         image: ghcr.io/brikbyte-studios/node-api-example:sha-${{ github.sha }}
-#         dockerfile: node-api-example/Dockerfile
-#         context: node-api-example
-#         db_image: postgres:16
-#         cache_image: redis:7
-#         enable_cache_service: true
-#         test_language: "node"
-#         # Optional override:
-#         # test_command: "npm run test:integration"
-#         healthcheck_path: "/health"
-#         healthcheck_timeout: "60"
-#         app_port: "3000"
-#         db_port: "5432"
+#   Reusable, container-based integration tests that:
+#     - Pull or build the real service image under test
+#     - Orchestrate app + DB (+ optional cache)
+#     - Run integration tests in a dedicated runner container
+#     - Use health checks to avoid race-condition flakiness
+#     - Export an audit bundle
+#     - (Optional) Wrap execution with flaky-rerun.sh
 #
 # Notes:
-#   - Shared templates live in the .github governance repo:
+#   - Shared templates live in BrikByte-Studios/.github repo:
 #       .github/templates/integration-test-runner.Dockerfile
 #       .github/scripts/run-integration-tests.sh
-#   - This workflow checks out that repo and syncs those files into the
-#     caller repo before building the runner image.
+#       .github/scripts/flaky-rerun.sh
+#       .github/scripts/wait-for-health.sh
+#       etc.
+#
+# Contract:
+#   - flaky reruns are OPT-IN via inputs.flaky_detect
+#   - evidence exported to: <service_workdir>/<flaky_export_path> (default out/flaky)
 
 name: "BrikPipe — Containerized Integration Tests"
 
@@ -71,8 +54,23 @@ on:
 
       cache_image:
         description: >
-          Optional cache or message broker image (e.g., redis:7, rabbitmq:3-management).
-          Used only when enable_cache_service is true.
+          Optional cache or message broker image (e.g., redis:7,
+          rabbitmq:3-management). Used only when enable_cache_service is true.
+        required: false
+        type: string
+        default: ""
+
+      enable_cache_service:
+        description: >
+          If true, start a cache/message broker container using cache_image.
+        required: false
+        type: boolean
+        default: false
+
+      test_language:
+        description: >
+          Language hint for the test runner. Supported: node | python | java
+          | go | dotnet. Used when test_command is empty.
         required: false
         type: string
         default: ""
@@ -80,8 +78,8 @@ on:
       test_command:
         description: >
           Shell command to run inside the test-runner container to execute
-          integration tests. If empty, the runner falls back to language-specific
-          defaults based on test_language.
+          integration tests. If empty, the runner falls back to language-
+          specific defaults based on test_language.
         required: false
         type: string
         default: ""
@@ -114,20 +112,6 @@ on:
         type: string
         default: "5432"
 
-      enable_cache_service:
-        description: "If true, start a cache/message broker container using cache_image."
-        required: false
-        type: boolean
-        default: false
-
-      test_language:
-        description: >
-          Language hint for the test runner. Supported: node | python | java | go | dotnet.
-          Used when test_command is empty.
-        required: false
-        type: string
-        default: ""
-
       services_csv:
         description: "CSV of service IDs (integration only)."
         required: false
@@ -141,22 +125,49 @@ on:
         default: ""
 
       override_shards:
-        description: "Optional requested shard count for integration (clamped to caps 2–4)."
+        description: >
+          Optional requested shard count for integration (clamped to caps 2–4).
         required: false
         type: string
         default: ""
 
       matrix_config_path:
-        description: "Optional path to parallel-matrix.yml (leave empty to use default in .github action)."
+        description: >
+          Optional path to parallel-matrix.yml (leave empty to use default in
+          .github action).
         required: false
         type: string
         default: ""
 
       service_name:
-        description: "Unique service identifier for artifact naming (e.g., python-api-example)"
+        description: >
+          Unique service identifier for artifact naming
+          (e.g., python-api-example).
         required: false
         type: string
         default: ""
+
+      # -----------------------------------------------------------------------
+      # Flaky detection (PIPE-FLAKY-RERUN-INTEG-001)
+      # -----------------------------------------------------------------------
+      flaky_detect:
+        description: "Enable suite-level flaky reruns (true|false)"
+        required: false
+        type: string
+        default: "false"
+
+      flaky_reruns:
+        description: "Total attempts when flaky_detect=true (e.g., 3)"
+        required: false
+        type: string
+        default: "3"
+
+      flaky_export_path:
+        description: >
+          Relative path (from context/service_workdir) to store flaky evidence.
+        required: false
+        type: string
+        default: "out/flaky"
 
     secrets:
       INTEG_DB_USER:
@@ -197,8 +208,9 @@ jobs:
           services_csv: ${{ inputs.services_csv }}
           scenarios_csv: ${{ inputs.scenarios_csv }}
 
-      - name: Debug
-        run: echo "matrix_json=${{ steps.matrix.outputs.matrix_json }}"
+      - name: "Debug matrix_json"
+        run: |
+          echo "matrix_json=${{ steps.matrix.outputs.matrix_json }}"
 
   # ---------------------------------------------------------------------------
   # 1) RUN: containerized integration tests per shard
@@ -229,20 +241,17 @@ jobs:
       HEALTHCHECK_PATH: ${{ inputs.healthcheck_path }}
       HEALTHCHECK_TIMEOUT: ${{ inputs.healthcheck_timeout }}
 
-      # Ports
       APP_PORT: ${{ inputs.app_port }}
-      DB_HOST_PORT: ${{ inputs.db_port }}          # host mapping (optional)
-      DB_CONTAINER_PORT: "5432"                    # always 5432 inside docker network
+      DB_HOST_PORT: ${{ inputs.db_port }}
+      DB_CONTAINER_PORT: "5432"
 
       ENABLE_CACHE_SERVICE: ${{ inputs.enable_cache_service }}
 
       SERVICE_WORKDIR: ${{ inputs.context }}
 
-      # shard meta (from matrix-plan)
       INTEG_SHARD: ${{ matrix.shard }}
       INTEG_ITEMS_CSV: ${{ matrix.items_csv }}
 
-      # Standardized integration secrets (INTEG_* naming)
       INTEG_DB_USER: ${{ secrets.INTEG_DB_USER }}
       INTEG_DB_PASS: ${{ secrets.INTEG_DB_PASS }}
       INTEG_DB_NAME: ${{ secrets.INTEG_DB_NAME }}
@@ -250,13 +259,18 @@ jobs:
       INTEG_DB_PORT: ${{ secrets.INTEG_DB_PORT }}
       JWT_SECRET_TEST: ${{ secrets.JWT_SECRET_TEST }}
 
+      # Flaky contract (opt-in)
+      FLAKY_DETECT: ${{ inputs.flaky_detect }}
+      FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
+      FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
+
       FORCE_COLOR: "0"
 
     steps:
       - name: "Checkout caller repository (service under test)"
         uses: actions/checkout@v4
 
-      - name: "Checkout governance repo (.github) for shared integration templates"
+      - name: "Checkout governance repo (.github) for shared templates"
         uses: actions/checkout@v4
         with:
           repository: BrikByte-Studios/.github
@@ -268,39 +282,40 @@ jobs:
           mkdir -p .github/scripts .github/templates
 
           cp org-dotgithub/.github/scripts/run-integration-tests.sh \
-             .github/scripts/run-integration-tests.sh
+            .github/scripts/run-integration-tests.sh
           cp org-dotgithub/.github/scripts/db-load-fixtures.sh \
-             .github/scripts/db-load-fixtures.sh
+            .github/scripts/db-load-fixtures.sh
           cp org-dotgithub/.github/scripts/db-seed-json.mjs \
-             .github/scripts/db-seed-json.mjs
+            .github/scripts/db-seed-json.mjs
           cp org-dotgithub/.github/scripts/wait-for-health.sh \
-             .github/scripts/wait-for-health.sh
+            .github/scripts/wait-for-health.sh
           cp org-dotgithub/.github/scripts/export-integration-audit.mjs \
-             .github/scripts/export-integration-audit.mjs
+            .github/scripts/export-integration-audit.mjs
           cp org-dotgithub/.github/scripts/env-generate-integration.sh \
-             .github/scripts/env-generate-integration.sh
+            .github/scripts/env-generate-integration.sh
+
+          cp org-dotgithub/.github/scripts/flaky-rerun.sh \
+            .github/scripts/flaky-rerun.sh
 
           cp org-dotgithub/.github/templates/integration-test-runner.Dockerfile \
-             .github/templates/integration-test-runner.Dockerfile
+            .github/templates/integration-test-runner.Dockerfile
 
           chmod +x .github/scripts/run-integration-tests.sh
           chmod +x .github/scripts/db-load-fixtures.sh
           chmod +x .github/scripts/wait-for-health.sh
           chmod +x .github/scripts/env-generate-integration.sh
+          chmod +x .github/scripts/flaky-rerun.sh
 
           echo "Shared integration-test templates synced."
           ls -R .github
 
-      # -----------------------------------------------------------------------
-      # Standard contract header (BrikByteOS)
-      # -----------------------------------------------------------------------
       - name: "Parallel runner (contract only)"
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
           parallel_enabled: "true"
           parallel_mode: "static"
-          shard_index: ${{ matrix.shard }}          # matrix-plan should be 0-based
+          shard_index: ${{ matrix.shard }}
           shard_total: ${{ strategy.job-total }}
           selection_mode: "none"
           working_directory: ${{ env.SERVICE_WORKDIR }}
@@ -323,6 +338,9 @@ jobs:
           echo "Enable cache service : ${ENABLE_CACHE_SERVICE}"
           echo "Shard                : ${INTEG_SHARD}/${{ strategy.job-total }}"
           echo "Items                : ${INTEG_ITEMS_CSV}"
+          echo "FlakyDetect          : ${FLAKY_DETECT}"
+          echo "FlakyReruns          : ${FLAKY_RERUNS}"
+          echo "FlakyExport          : ${FLAKY_EXPORT_PATH}"
 
       - name: "Login to GHCR (if using GitHub Container Registry)"
         if: startsWith(env.SERVICE_IMAGE, 'ghcr.io/')
@@ -340,7 +358,10 @@ jobs:
             echo "Pulled existing service image."
           else
             echo "WARNING: pull failed; building locally..."
-            docker build -f "${DOCKERFILE_PATH}" -t "${SERVICE_IMAGE}" "${BUILD_CONTEXT}"
+            docker build \
+              -f "${DOCKERFILE_PATH}" \
+              -t "${SERVICE_IMAGE}" \
+              "${BUILD_CONTEXT}"
           fi
 
       - name: "Build integration test runner image"
@@ -356,7 +377,8 @@ jobs:
         run: |
           set -euo pipefail
           NETWORK_NAME="brikpipe-integ-net"
-          docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || docker network create "${NETWORK_NAME}"
+          docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || \
+            docker network create "${NETWORK_NAME}"
           echo "NETWORK_NAME=${NETWORK_NAME}" >> "$GITHUB_ENV"
           echo "Using network: ${NETWORK_NAME}"
 
@@ -374,14 +396,15 @@ jobs:
             --cpus="1.0" \
             --memory="512m" \
             "${DB_IMAGE}"
-
           docker ps
 
       - name: "Install JSON seeding dependencies (pg)"
         run: |
           set -euo pipefail
           cd .github/scripts
-          if [ ! -f package.json ]; then npm init -y >/dev/null 2>&1; fi
+          if [ ! -f package.json ]; then
+            npm init -y >/dev/null 2>&1
+          fi
           npm install pg
 
       - name: "Load DB fixtures for integration tests"
@@ -446,7 +469,7 @@ jobs:
 
           docker ps
 
-      - name: "Run integration tests in runner container"
+      - name: "Run integration tests in runner container (flaky opt-in)"
         run: |
           set -euo pipefail
 
@@ -456,7 +479,18 @@ jobs:
           INTEG_JOB_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "INTEG_JOB_STARTED_AT=${INTEG_JOB_STARTED_AT}" >> "$GITHUB_ENV"
 
-          docker run --rm \
+          export FLAKY_EXPORT_PATH="${PWD}/${SERVICE_WORKDIR}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="integration-${TEST_LANGUAGE:-generic}"
+
+          FLAKY_SH="${GITHUB_WORKSPACE}/.github/scripts/flaky-rerun.sh"
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
+            ls -la "${GITHUB_WORKSPACE}/.github/scripts" || true
+            exit 1
+          fi
+          chmod +x "${FLAKY_SH}"
+
+          "${FLAKY_SH}" -- docker run --rm \
             --name tests \
             --network "${NETWORK_NAME}" \
             -v "${PWD}/${SERVICE_WORKDIR}:/workspace/${SERVICE_WORKDIR}" \
@@ -489,11 +523,14 @@ jobs:
           set -euo pipefail
           LOG_DIR="${SERVICE_WORKDIR}/out/integration-logs"
           mkdir -p "${LOG_DIR}"
+
           docker logs app > "${LOG_DIR}/app.log" 2>&1 || true
           docker logs db > "${LOG_DIR}/db.log" 2>&1 || true
+
           if docker ps -a --format '{{.Names}}' | grep -q '^cache$'; then
             docker logs cache > "${LOG_DIR}/cache.log" 2>&1 || true
           fi
+
           echo "Captured logs:"
           ls -la "${LOG_DIR}"
 
@@ -552,4 +589,3 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           include-hidden-files: true
-
