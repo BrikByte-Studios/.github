@@ -221,7 +221,7 @@ jobs:
           shard_total: ${{ strategy.job-total }}
           selection_mode: "file-split"
           working_directory: ${{ env.WORKING_DIRECTORY }}
-          test_glob: "**/*{Test,Tests}.java"
+          test_glob: "**/*Test.java"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
 
       # -----------------------------------------------------------------------
