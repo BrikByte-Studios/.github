@@ -39,13 +39,11 @@ on:
         required: false
         type: string
         default: ""
-
       parallel_mode:
         description: "Parallel mode: static|dynamic (default static)"
         required: false
         type: string
         default: "static"
-
       parallel_enabled:
         description: "Enable parallel shard execution (true|false)"
         required: false
@@ -72,7 +70,7 @@ on:
         required: false
         type: string
         default: "out/flaky"
-
+      
 permissions:
   contents: read
 
@@ -86,10 +84,7 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix_json }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Generate unit shard matrix (governed)
+      - name: "Generate unit shard matrix (governed)"
         id: plan
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
         with:
@@ -129,8 +124,6 @@ jobs:
       FLAKY_DETECT: ${{ inputs.flaky_detect }}
       FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
       FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
-
-      FORCE_COLOR: "0"
 
     steps:
       # -----------------------------------------------------------------------
@@ -211,7 +204,10 @@ jobs:
           working_directory: ${{ env.WORKING_DIRECTORY }}
           test_glob: "tests/unit/**/*.{test,spec}.*"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
-          allow_missing_items_file: true
+          # items_file: "${{ env.WORKING_DIRECTORY }}/out/test-items.txt"
+          # optional knobs:
+          # allow_empty_items: true
+          # selection_mode: file-split|shard-map|framework-native
 
       # -----------------------------------------------------------------------
       # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
@@ -276,6 +272,7 @@ jobs:
 
           echo "✅ [TEST] Status        : COMPLETED"
           echo "⏱  [TEST] Duration      : ${DURATION} seconds"
+
 
       - name: Empty shard (skip)
         if: steps.pr.outputs.is_empty_shard == 'true'
@@ -354,7 +351,6 @@ jobs:
 
       # -----------------------------------------------------------------------
       # Upload per-shard coverage artifacts (important for later merge)
-      # Also upload flaky evidence if present (opt-in).
       # -----------------------------------------------------------------------
       - name: Upload Node coverage artifacts (per shard)
         if: always()
@@ -367,7 +363,6 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
-            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
