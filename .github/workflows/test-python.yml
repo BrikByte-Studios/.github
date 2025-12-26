@@ -205,6 +205,13 @@ jobs:
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
           allow_missing_items_file: true
 
+      - name: "Checkout BrikByte shared scripts"
+        uses: actions/checkout@v4
+        with:
+          repository: BrikByte-Studios/.github
+          ref: main
+          path: .brikbyte-github
+
       # -----------------------------------------------------------------------
       # Run unit tests via `make test` (wired through flaky-rerun.sh)
       # -----------------------------------------------------------------------
