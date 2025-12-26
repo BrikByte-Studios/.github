@@ -300,6 +300,18 @@ jobs:
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
+      - name: Detect out/coverage.json presence
+        id: covjson
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if [ -f "out/coverage.json" ]; then
+            echo "has_covjson=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_covjson=false" >> "$GITHUB_OUTPUT"
+          fi
+
+
       - name: Ensure summary.line is set in coverage.json (Node + c8 json-summary)
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -351,7 +363,7 @@ jobs:
       # Upload per-shard coverage artifacts (important for later merge)
       # -----------------------------------------------------------------------
       - name: Upload Node coverage artifacts (per shard)
-        if: always()
+        if: steps.covjson.outputs.has_covjson == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
@@ -361,6 +373,19 @@ jobs:
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload flaky evidence (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
+
+
