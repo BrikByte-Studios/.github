@@ -635,6 +635,7 @@ jobs:
 
       - name: "FINALIZER: enforce teardown (grid + app) (always)"
         if: ${{ always() && inputs.enforce_teardown == true }}
+        shell: bash
         run: |
           set +e
           SERVICE_WORKDIR="${{ inputs.service_workdir }}"
@@ -654,6 +655,7 @@ jobs:
               cd "$APP_WORKDIR" &&
               docker compose -f "$APP_COMPOSE_FILE" down -v
             ) || true
+          fi
 
   # ----------------------------------------------------------------------------
   # OPTIONAL EDGE JOB: edge × shard (governed by plan-edge)
@@ -923,16 +925,24 @@ jobs:
 
       - name: "FINALIZER: enforce teardown (grid + app) (always)"
         if: ${{ always() && inputs.enforce_teardown == true }}
+        shell: bash
         run: |
           set +e
+          SERVICE_WORKDIR="${{ inputs.service_workdir }}"
+          COMPOSE_FILE="${{ inputs.compose_file }}"
+
+          APP_WORKDIR="${{ inputs.app_service_workdir }}"
+          APP_COMPOSE_FILE="${{ inputs.app_compose_file }}"
+          START_APP="${{ inputs.start_app }}"
+
           (
-            cd "${{ inputs.service_workdir }}" &&
-            docker compose -f "${{ inputs.compose_file }}" down -v
+            cd "$SERVICE_WORKDIR" &&
+            docker compose -f "$COMPOSE_FILE" down -v
           ) || true
 
-          if [[ "${{ inputs.start_app }}" == "true" ]]; then
+          if [[ "$START_APP" == "true" ]]; then
             (
-              cd "${{ inputs.app_service_workdir }}" &&
-              docker compose -f "${{ inputs.app_compose_file }}" down -v
+              cd "$APP_WORKDIR" &&
+              docker compose -f "$APP_COMPOSE_FILE" down -v
             ) || true
           fi
