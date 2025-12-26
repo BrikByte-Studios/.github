@@ -315,19 +315,25 @@ jobs:
           set -euo pipefail
 
           # Common Coverlet outputs:
-          # - TestResults/**/coverage.net8.0.json
-          # - coverage.json
-          # - coverage.*.json
-          FOUND="$(find . -type f \( -name "coverage.net*.json" -o -name "coverage.json" -o -name "coverage.*.json" \) | head -n 1 || true)"
+          #   - TestResults/**/coverage.net8.0.json
+          #   - coverage.json
+          #   - coverage.*.json
+
+          FOUND="$(
+            find . -type f \
+              \( -name "coverage.net*.json" -o -name "coverage.json" -o -name "coverage.*.json" \) \
+              | head -n 1 || true
+          )"
 
           if [ -n "${FOUND}" ]; then
-            echo "has_coverage=true"  >> "$GITHUB_OUTPUT"
+            echo "has_coverage=true" >> "$GITHUB_OUTPUT"
             echo "coverlet_json=${FOUND}" >> "$GITHUB_OUTPUT"
             echo "✅ Found Coverlet JSON: ${FOUND}"
           else
             echo "has_coverage=false" >> "$GITHUB_OUTPUT"
-            echo "⚠️ No Coverlet JSON found for this shard (likely empty shard or coverage not enabled)."
+            echo "⚠️ No Coverlet JSON found for this shard or coverage not enabled."
           fi
+
 
       # -----------------------------------------------------------------------
       # Normalize coverage to out/coverage.json (summary.line)
