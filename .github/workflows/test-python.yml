@@ -324,45 +324,62 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      - name: "Evaluate flaky policy (skips if evidence missing; blocks only if enabled)"
+      - name: "Evaluate flaky policy (supports legacy *.summary.json)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          node -v
-          npm -v
-
           POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
           OUT_JSON="${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json"
 
-          # The wrapper is expected to write:
-          #   ${PWD}/${FLAKY_EXPORT_PATH}/summary.json
-          EXPECTED_EVIDENCE="${PWD}/${FLAKY_EXPORT_PATH}/summary.json"
+          EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
+          EXPECTED="${EXPORT_DIR}/summary.json"
+          LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-python-unit}.summary.json"
 
-          echo "🧩 [FLAKY] Policy           : ${POLICY}"
-          echo "🧾 [FLAKY] Expected evidence : ${EXPECTED_EVIDENCE}"
-          echo "📤 [FLAKY] Output JSON      : ${OUT_JSON}"
-          echo "🛡️ [FLAKY] EnforceStep      : ${FLAKY_POLICY_ENFORCE}"
+          echo "🧩 [FLAKY] Policy      : ${POLICY}"
+          echo "📁 [FLAKY] Export dir  : ${EXPORT_DIR}"
+          echo "🧾 [FLAKY] Expect      : ${EXPECTED}"
+          echo "🧾 [FLAKY] Labeled     : ${LABELED}"
+          echo "📤 [FLAKY] Output JSON : ${OUT_JSON}"
+          echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
 
           if [[ ! -f "${POLICY}" ]]; then
-            echo "❌ [FLAKY] Missing selected policy file: ${POLICY}"
+            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
             exit 1
           fi
 
-          # Evidence guard:
-          # - If summary.json doesn't exist, we DO NOT fail the entire job by default
-          #   (unless you decide to make evidence mandatory later).
-          if [[ ! -f "${EXPECTED_EVIDENCE}" ]]; then
-            echo "⚠️ [FLAKY] No rerun evidence found at: ${EXPECTED_EVIDENCE}"
-            echo "    This usually means flaky-rerun.sh did not write summary.json."
+          # Resolve evidence path
+          EVIDENCE=""
+          if [[ -f "${EXPECTED}" ]]; then
+            EVIDENCE="${EXPECTED}"
+          elif [[ -f "${LABELED}" ]]; then
+            EVIDENCE="${LABELED}"
+          else
+            # last resort: any *.summary.json in export dir
+            found="$(ls -1 "${EXPORT_DIR}"/*.summary.json 2>/dev/null | head -n 1 || true)"
+            if [[ -n "${found}" ]]; then
+              EVIDENCE="${found}"
+            fi
+          fi
+
+          if [[ -z "${EVIDENCE}" ]]; then
+            echo "⚠️ [FLAKY] No evidence found (summary.json or *.summary.json)."
             echo "🔎 [FLAKY] Listing export dir:"
-            ls -la "${PWD}/${FLAKY_EXPORT_PATH}" || true
-            echo "🔎 [FLAKY] Searching for summary.json under working dir:"
-            find "${PWD}" -maxdepth 6 -name "summary.json" -print || true
+            ls -la "${EXPORT_DIR}" || true
+
+            if [[ "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
+              echo "⚠️ [FLAKY] enforce=false → not blocking."
+              exit 0
+            fi
+
+            # If you DO want to fail when evidence is missing, keep exit 1.
+            # Right now we keep it non-blocking even when enforce=true.
             echo "ℹ️ [FLAKY] Skipping evaluation (non-blocking)."
             exit 0
           fi
+
+          echo "✅ [FLAKY] Evidence resolved: ${EVIDENCE}"
 
           EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
           if [[ ! -f "${EVAL_TS}" ]]; then
@@ -370,23 +387,22 @@ jobs:
             exit 1
           fi
 
-          # Pinned ephemeral deps (no npm init / npm i)
           npx -y \
             -p js-yaml@4 \
             -p tsx@4 \
             tsx "${EVAL_TS}" \
               --policy "${POLICY}" \
-              --input "${EXPECTED_EVIDENCE}" \
+              --input "${EVIDENCE}" \
               --out "${OUT_JSON}" \
               --md || rc=$?
 
-          # If evaluator failed AND enforce is false => downgrade to warning
           if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
-            echo "⚠️ [FLAKY] Evaluator exit=${rc} but flaky_policy_enforce=false → not blocking."
+            echo "⚠️ [FLAKY] Evaluator exit=${rc} but enforce=false → not blocking."
             exit 0
           fi
 
           exit "${rc:-0}"
+
 
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
