@@ -324,22 +324,30 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      - name: "Install evaluator deps (js-yaml) (local, pinned)"
+      - name: "Install evaluator deps (js-yaml + tsx) (local, pinned)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
+        env:
+          NPM_CONFIG_FUND: "false"
+          NPM_CONFIG_AUDIT: "false"
         run: |
           set -euo pipefail
           mkdir -p .tmp-flaky-eval
           cd .tmp-flaky-eval
-          if [[ ! -f package.json ]]; then npm init -y >/dev/null 2>&1; fi
-          npm i js-yaml@4 >/dev/null 2>&1
-          echo "✅ js-yaml installed into .tmp-flaky-eval/node_modules"
+
+          node -v
+          npm -v
+
+          if [[ ! -f package.json ]]; then
+            npm init -y
+          fi
+
+          npm i --no-save js-yaml@4 tsx@4
+          echo "✅ deps installed into .tmp-flaky-eval/node_modules"
 
       - name: "Evaluate flaky policy (supports legacy *.summary.json)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
-        env:
-          NODE_PATH: ${{ github.workspace }}/.tmp-flaky-eval/node_modules
         run: |
           set -euo pipefail
 
@@ -350,19 +358,7 @@ jobs:
           EXPECTED="${EXPORT_DIR}/summary.json"
           LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-python-unit}.summary.json"
 
-          echo "🧩 [FLAKY] Policy      : ${POLICY}"
-          echo "📁 [FLAKY] Export dir  : ${EXPORT_DIR}"
-          echo "🧾 [FLAKY] Expect      : ${EXPECTED}"
-          echo "🧾 [FLAKY] Labeled     : ${LABELED}"
-          echo "📤 [FLAKY] Output JSON : ${OUT_JSON}"
-          echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
-          echo "🧠 [FLAKY] NODE_PATH   : ${NODE_PATH}"
-
-          if [[ ! -f "${POLICY}" ]]; then
-            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
-            exit 1
-          fi
-
+          # Resolve evidence
           EVIDENCE=""
           if [[ -f "${EXPECTED}" ]]; then
             EVIDENCE="${EXPECTED}"
@@ -374,13 +370,9 @@ jobs:
           fi
 
           if [[ -z "${EVIDENCE}" ]]; then
-            echo "⚠️ [FLAKY] No evidence found (summary.json or *.summary.json)."
-            ls -la "${EXPORT_DIR}" || true
-            echo "ℹ️ [FLAKY] Skipping evaluation (non-blocking)."
+            echo "ℹ️ [FLAKY] No evidence found → skipping evaluation (non-blocking)."
             exit 0
           fi
-
-          echo "✅ [FLAKY] Evidence resolved: ${EVIDENCE}"
 
           EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
           if [[ ! -f "${EVAL_TS}" ]]; then
@@ -388,11 +380,14 @@ jobs:
             exit 1
           fi
 
-          npx -y tsx@4 "${EVAL_TS}" \
+          # Run from the local node project so require('js-yaml') resolves naturally
+          pushd "${GITHUB_WORKSPACE}/.tmp-flaky-eval" >/dev/null
+          npx tsx "${EVAL_TS}" \
             --policy "${POLICY}" \
             --input "${EVIDENCE}" \
             --out "${OUT_JSON}" \
             --md || rc=$?
+          popd >/dev/null
 
           if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
             echo "⚠️ [FLAKY] Evaluator exit=${rc} but enforce=false → not blocking."
