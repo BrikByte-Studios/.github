@@ -67,7 +67,7 @@ on:
         default: "true"
 
       # -----------------------------------------------------------------------
-      # Flaky detection (NEW)
+      # Flaky detection (2.5.1) — NEW
       # -----------------------------------------------------------------------
       flaky_detect:
         description: "Enable suite-level flaky detection reruns (true|false)"
@@ -86,6 +86,23 @@ on:
         required: false
         type: string
         default: "out/flaky"
+
+      # -----------------------------------------------------------------------
+      # Flaky policy evaluation
+      # -----------------------------------------------------------------------
+      flaky_policy_path:
+        description: "Path to policy-as-code YAML (repo root). Default: .governance/flaky-tests.yml"
+        required: false
+        type: string
+        default: ".governance/flaky-tests.yml"
+
+      flaky_policy_enforce:
+        description: >
+          If true, evaluator may block ONLY if policy enables blocking.
+          If false, evaluator still runs (when flaky_detect=true) but never blocks.
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -137,10 +154,14 @@ jobs:
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
 
-      # Flaky detection contract (NEW)
+      # Flaky detection contract (2.5.1)
       FLAKY_DETECT: ${{ inputs.flaky_detect }}
       FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
       FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
+
+      # Flaky policy contract (2.5.2)
+      FLAKY_POLICY_PATH: ${{ inputs.flaky_policy_path }}
+      FLAKY_POLICY_ENFORCE: ${{ inputs.flaky_policy_enforce }}
 
       FORCE_COLOR: "0"
 
@@ -205,6 +226,9 @@ jobs:
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
           allow_missing_items_file: true
 
+      # ----------------------------------------------------------------------------
+      # BrikByte shared scripts (includes flaky-rerun.sh + TS evaluator sources)
+      # ----------------------------------------------------------------------------
       - name: "Checkout BrikByte shared scripts"
         uses: actions/checkout@v4
         with:
@@ -213,7 +237,7 @@ jobs:
           path: .brikbyte-github
 
       # -----------------------------------------------------------------------
-      # Run unit tests via `make test` (wired through flaky-rerun.sh)
+      # Run unit tests via `make test` through flaky-rerun.sh (2.5.1)
       # -----------------------------------------------------------------------
       - name: "Run Python unit tests (make test) with flaky reruns (opt-in)"
         if: steps.pr.outputs.is_empty_shard != 'true'
@@ -234,14 +258,11 @@ jobs:
           export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL}"
           export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
 
-          # Ensure output dirs exist
           mkdir -p out
 
-          # Always ensure script is executable (reusable workflow callers may not preserve mode)
           BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
           FLAKY_SH="${BRIK_SCRIPTS}/flaky-rerun.sh"
 
-          # Fail fast with a clear error if the shared script isn't present
           if [[ ! -f "${FLAKY_SH}" ]]; then
             echo "❌ flaky-rerun.sh not found at: ${FLAKY_SH}"
             echo "📁 Available scripts:"
@@ -251,18 +272,117 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
 
-          # If your script reads these (most likely), set them as env vars:
           export FLAKY_DETECT="${FLAKY_DETECT:-false}"
           export FLAKY_RERUNS="${FLAKY_RERUNS:-3}"
           export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
           export FLAKY_LABEL="python-unit"
           "${FLAKY_SH}" -- make test
+
           echo "✅ [TEST] Status       : COMPLETED"
 
       - name: "Empty shard (skip)"
         if: steps.pr.outputs.is_empty_shard == 'true'
         run: echo "ℹ️ Empty shard — nothing to run."
 
+      # =============================================================================
+      # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate flaky evidence against policy-as-code
+      # -----------------------------------------------------------------------------
+      # Conditions:
+      #   - Only runs when flaky detection was enabled (FLAKY_DETECT=true)
+      #   - Reads evidence:
+      #       ${WORKING_DIRECTORY}/${FLAKY_EXPORT_PATH}/summary.json
+      #   - Writes:
+      #       ${WORKING_DIRECTORY}/${FLAKY_EXPORT_PATH}/evaluation.json (+ evaluation.md)
+      # Enforcement:
+      #   - Will only fail the job if BOTH:
+      #       inputs.flaky_policy_enforce=true AND policy.block_merge=true AND policy.enabled=true
+      # =============================================================================
+      - name: "Setup Node (for flaky policy evaluator)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: "Install evaluator deps (js-yaml) (local, pinned)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp-flaky-eval
+          cd .tmp-flaky-eval
+          npm init -y >/dev/null 2>&1
+          npm i js-yaml@4 >/dev/null 2>&1
+          echo "✅ js-yaml installed for evaluator"
+
+      - name: "Evaluate flaky policy (warn-only unless policy+enforce say block)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          # Allow node to find js-yaml from the temp node_modules
+          NODE_PATH: ${{ github.workspace }}/.tmp-flaky-eval/node_modules
+        run: |
+          set -euo pipefail
+
+          POLICY="${GITHUB_WORKSPACE}/${FLAKY_POLICY_PATH}"
+          EVIDENCE="${PWD}/${FLAKY_EXPORT_PATH}/summary.json"
+          OUT_JSON="${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json"
+
+          echo "🧩 [FLAKY] Policy      : ${POLICY}"
+          echo "🧾 [FLAKY] Evidence    : ${EVIDENCE}"
+          echo "📤 [FLAKY] Output JSON : ${OUT_JSON}"
+          echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
+
+          if [[ ! -f "${POLICY}" ]]; then
+            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
+            echo "   Expected: .governance/flaky-tests.yml (repo root)"
+            exit 1
+          fi
+
+          if [[ ! -f "${EVIDENCE}" ]]; then
+            echo "❌ [FLAKY] Missing rerun evidence: ${EVIDENCE}"
+            echo "   Did you enable FLAKY_DETECT and run flaky-rerun.sh?"
+            exit 1
+          fi
+
+          # Evaluate using shared TS script checked out from BrikByte-Studios/.github
+          EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
+          if [[ ! -f "${EVAL_TS}" ]]; then
+            echo "❌ [FLAKY] evaluate-flaky.ts not found at: ${EVAL_TS}"
+            exit 1
+          fi
+
+          # Run via ts-node-like fallback using npx tsx (no repo deps required)
+          # NOTE: This keeps callers clean. Central repo can later package this into an action.
+          npx -y tsx@4 "${EVAL_TS}" \
+            --policy "${POLICY}" \
+            --input "${EVIDENCE}" \
+            --out "${OUT_JSON}" \
+            --md || rc=$?
+
+          # If evaluator failed AND enforce is false => downgrade to warning
+          if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
+            echo "⚠️ [FLAKY] Evaluator exit=${rc} but flaky_policy_enforce=false → not blocking."
+            exit 0
+          fi
+
+          exit "${rc:-0}"
+
+      - name: "Upload flaky evaluation (always)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-eval-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/evaluation.json
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/evaluation.md
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/summary.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
+      # -----------------------------------------------------------------------
+      # (Existing) coverage handling + uploads...
+      # -----------------------------------------------------------------------
       - name: "Detect coverage outputs (this shard)"
         id: cov
         working-directory: ${{ env.WORKING_DIRECTORY }}
@@ -296,8 +416,6 @@ jobs:
           else
             echo "has_covjson=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "🔎 has_covjson=$(cat $GITHUB_OUTPUT | tail -n 1 | cut -d= -f2)"
-
 
       - name: "Ensure summary.line is set in coverage.json (Python)"
         if: ${{ steps.cov.outputs.has_xml == 'true' }}
@@ -322,10 +440,7 @@ jobs:
           root = tree.getroot()
 
           line_rate_attr = root.get("line-rate", "0")
-          try:
-            line_rate = float(line_rate_attr) * 100.0
-          except ValueError:
-            raise SystemExit(f"Invalid line-rate in coverage.xml: {line_rate_attr!r}")
+          line_rate = float(line_rate_attr) * 100.0
 
           out_dir = Path("out")
           out_dir.mkdir(parents=True, exist_ok=True)
@@ -343,9 +458,6 @@ jobs:
           cov_path.write_text(json.dumps(cov, indent=2), encoding="utf-8")
           print(f"✅ Updated out/coverage.json with summary.line = {line_rate:.1f}")
           EOF
-
-          echo "✅ coverage.json after normalization:"
-          cat out/coverage.json
 
       - name: Upload Python coverage artifacts
         if: steps.covjson.outputs.has_covjson == 'true'

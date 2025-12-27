@@ -1,0 +1,37 @@
+# =============================================================================
+# BrikByteOS Flaky Test Policy (v1)
+# -----------------------------------------------------------------------------
+# Fractions are 0.0–1.0 (e.g., 0.5 = 50%).
+# This policy is designed to be stable, deterministic, and repo-auditable.
+#
+# v1 scope: "suite" only
+# - We evaluate the entire test command run as a suite.
+# - v2 may add per-test classification once evidence includes test IDs.
+# =============================================================================
+
+flaky:
+  policy_version: "v1"
+
+  # If false, evaluation can still run (if CI calls it),
+  # but enforcement must remain warn-only.
+  enabled: false
+
+  # Expected number of rerun attempts (used only for validation guidance).
+  reruns: 3
+
+  # Classification thresholds (fractions 0-1)
+  flaky_threshold: 0.5
+  quarantine_threshold: 0.7
+
+  # If true, evaluator may recommend quarantine-candidate when above quarantine threshold.
+  quarantine_enabled: false
+
+  # If true, evaluator will exit non-zero when classification is flaky/quarantine-candidate.
+  # This must NEVER be true by default.
+  block_merge: false
+
+  # v1 supports suite only
+  scope: "suite" # suite | test
+
+  # Output folder (relative to repo root unless absolute)
+  export_path: "out/flaky"
