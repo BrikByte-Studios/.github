@@ -91,7 +91,9 @@ on:
       # Flaky policy evaluation
       # -----------------------------------------------------------------------
       flaky_policy_path:
-        description: "Path to policy-as-code YAML (repo root). Default: .governance/flaky-tests.yml"
+        description: >
+          Path to policy-as-code YAML (repo root) IF repo overrides exist.
+          NOTE: If missing, central policy from BrikByte-Studios/.github is used.
         required: false
         type: string
         default: ".governance/flaky-tests.yml"
@@ -287,15 +289,11 @@ jobs:
       # =============================================================================
       # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate flaky evidence against policy-as-code
       # -----------------------------------------------------------------------------
-      # Conditions:
-      #   - Only runs when flaky detection was enabled (FLAKY_DETECT=true)
-      #   - Reads evidence:
-      #       ${WORKING_DIRECTORY}/${FLAKY_EXPORT_PATH}/summary.json
-      #   - Writes:
-      #       ${WORKING_DIRECTORY}/${FLAKY_EXPORT_PATH}/evaluation.json (+ evaluation.md)
-      # Enforcement:
-      #   - Will only fail the job if BOTH:
-      #       inputs.flaky_policy_enforce=true AND policy.block_merge=true AND policy.enabled=true
+      # FIX:
+      #   - Prefer repo override policy if it exists at ${FLAKY_POLICY_PATH}
+      #   - Otherwise fall back to central policy:
+      #       .brikbyte-github/.governance/flaky-tests.yml
+      #   - Copy selected policy to .tmp-flaky-eval/policy.yml for stable pathing
       # =============================================================================
       - name: "Setup Node (for flaky policy evaluator)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
@@ -314,16 +312,41 @@ jobs:
           npm i js-yaml@4 >/dev/null 2>&1
           echo "✅ js-yaml installed for evaluator"
 
+      - name: "Select policy source (repo override -> central fallback)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          REPO_POLICY="${GITHUB_WORKSPACE}/${FLAKY_POLICY_PATH}"
+          CENTRAL_POLICY="${GITHUB_WORKSPACE}/.brikbyte-github/.governance/flaky-tests.yml"
+          OUT_POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
+
+          echo "🧩 [FLAKY] Repo policy     : ${REPO_POLICY}"
+          echo "🏛️ [FLAKY] Central policy  : ${CENTRAL_POLICY}"
+          echo "📌 [FLAKY] Selected policy : ${OUT_POLICY}"
+
+          if [[ -f "${REPO_POLICY}" ]]; then
+            echo "✅ [FLAKY] Using repo override policy."
+            cp "${REPO_POLICY}" "${OUT_POLICY}"
+          else
+            if [[ ! -f "${CENTRAL_POLICY}" ]]; then
+              echo "❌ [FLAKY] Central policy missing at: ${CENTRAL_POLICY}"
+              exit 1
+            fi
+            echo "✅ [FLAKY] Repo policy not found; using central policy."
+            cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
+          fi
+
       - name: "Evaluate flaky policy (warn-only unless policy+enforce say block)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         env:
-          # Allow node to find js-yaml from the temp node_modules
           NODE_PATH: ${{ github.workspace }}/.tmp-flaky-eval/node_modules
         run: |
           set -euo pipefail
 
-          POLICY="${GITHUB_WORKSPACE}/${FLAKY_POLICY_PATH}"
+          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
           EVIDENCE="${PWD}/${FLAKY_EXPORT_PATH}/summary.json"
           OUT_JSON="${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json"
 
@@ -333,8 +356,7 @@ jobs:
           echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
 
           if [[ ! -f "${POLICY}" ]]; then
-            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
-            echo "   Expected: .governance/flaky-tests.yml (repo root)"
+            echo "❌ [FLAKY] Missing selected policy file: ${POLICY}"
             exit 1
           fi
 
@@ -344,22 +366,18 @@ jobs:
             exit 1
           fi
 
-          # Evaluate using shared TS script checked out from BrikByte-Studios/.github
           EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
           if [[ ! -f "${EVAL_TS}" ]]; then
             echo "❌ [FLAKY] evaluate-flaky.ts not found at: ${EVAL_TS}"
             exit 1
           fi
 
-          # Run via ts-node-like fallback using npx tsx (no repo deps required)
-          # NOTE: This keeps callers clean. Central repo can later package this into an action.
           npx -y tsx@4 "${EVAL_TS}" \
             --policy "${POLICY}" \
             --input "${EVIDENCE}" \
             --out "${OUT_JSON}" \
             --md || rc=$?
 
-          # If evaluator failed AND enforce is false => downgrade to warning
           if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
             echo "⚠️ [FLAKY] Evaluator exit=${rc} but flaky_policy_enforce=false → not blocking."
             exit 0
