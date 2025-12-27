@@ -347,24 +347,66 @@ jobs:
           set -euo pipefail
 
           POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
-          EVIDENCE="${PWD}/${FLAKY_EXPORT_PATH}/summary.json"
-          OUT_JSON="${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json"
 
-          echo "🧩 [FLAKY] Policy      : ${POLICY}"
-          echo "🧾 [FLAKY] Evidence    : ${EVIDENCE}"
-          echo "📤 [FLAKY] Output JSON : ${OUT_JSON}"
-          echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
+          # Preferred evidence path (what we *expect*)
+          EXPECTED_EVIDENCE="${PWD}/${FLAKY_EXPORT_PATH}/summary.json"
+
+          # Fallback search locations (common patterns)
+          FALLBACKS=(
+            "${GITHUB_WORKSPACE}/${WORKING_DIRECTORY}/${FLAKY_EXPORT_PATH}/summary.json"
+            "${GITHUB_WORKSPACE}/${FLAKY_EXPORT_PATH}/summary.json"
+            "${PWD}/${FLAKY_EXPORT_PATH}/${FLAKY_LABEL:-python-unit}/summary.json"
+            "${PWD}/${FLAKY_EXPORT_PATH}/summary.json"
+          )
+
+          echo "🧩 [FLAKY] Policy              : ${POLICY}"
+          echo "🧾 [FLAKY] Expected evidence    : ${EXPECTED_EVIDENCE}"
+          echo "📁 [FLAKY] Working directory    : ${PWD}"
+          echo "📁 [FLAKY] Export path (raw)    : ${FLAKY_EXPORT_PATH}"
+          echo "🛡️ [FLAKY] EnforceStep          : ${FLAKY_POLICY_ENFORCE}"
 
           if [[ ! -f "${POLICY}" ]]; then
             echo "❌ [FLAKY] Missing selected policy file: ${POLICY}"
             exit 1
           fi
 
-          if [[ ! -f "${EVIDENCE}" ]]; then
-            echo "❌ [FLAKY] Missing rerun evidence: ${EVIDENCE}"
-            echo "   Did you enable FLAKY_DETECT and run flaky-rerun.sh?"
+          # Resolve evidence path
+          EVIDENCE=""
+          if [[ -f "${EXPECTED_EVIDENCE}" ]]; then
+            EVIDENCE="${EXPECTED_EVIDENCE}"
+          else
+            for p in "${FALLBACKS[@]}"; do
+              if [[ -f "${p}" ]]; then
+                EVIDENCE="${p}"
+                break
+              fi
+            done
+          fi
+
+          # If still missing, print helpful diagnostics then fail (or warn if enforce=false)
+          if [[ -z "${EVIDENCE}" ]]; then
+            echo "❌ [FLAKY] Missing rerun evidence summary.json"
+            echo "   Searched expected + fallbacks."
+            echo "🔎 [FLAKY] Directory listing (working dir):"
+            ls -la "${PWD}" || true
+            echo "🔎 [FLAKY] Listing export dir (working dir):"
+            ls -la "${PWD}/${FLAKY_EXPORT_PATH}" || true
+            echo "🔎 [FLAKY] Find summary.json within working dir:"
+            find "${PWD}" -maxdepth 6 -name "summary.json" -print || true
+            echo "🔎 [FLAKY] Find summary.json within repo root:"
+            find "${GITHUB_WORKSPACE}" -maxdepth 8 -name "summary.json" -print || true
+
+            if [[ "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
+              echo "⚠️ [FLAKY] Evidence missing but flaky_policy_enforce=false → not blocking."
+              exit 0
+            fi
+
             exit 1
           fi
+
+          OUT_JSON="${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json"
+          echo "✅ [FLAKY] Evidence resolved     : ${EVIDENCE}"
+          echo "📤 [FLAKY] Output JSON           : ${OUT_JSON}"
 
           EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
           if [[ ! -f "${EVAL_TS}" ]]; then
@@ -385,15 +427,14 @@ jobs:
 
           exit "${rc:-0}"
 
+
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: flaky-eval-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
           path: |
-            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/evaluation.json
-            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/evaluation.md
-            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/summary.json
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
