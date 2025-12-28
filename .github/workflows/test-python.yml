@@ -351,6 +351,8 @@ jobs:
       - name: "Normalize flaky summary (legacy -> strict)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          FLAKY_EXPORT_DIR: ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}
         run: |
           set -euo pipefail
 
@@ -377,16 +379,17 @@ jobs:
           OUT_NORM="${EXPORT_DIR}/summary.normalized.json"
           echo "🔧 [FLAKY] Normalizing: ${EVIDENCE} -> ${OUT_NORM}"
 
-          python - << 'PY'
+          # pass paths via environment to python
+          EVIDENCE_PATH="${EVIDENCE}" OUT_NORM_PATH="${OUT_NORM}" python - << 'PY'
           import json
+          import os
           from pathlib import Path
 
-          evidence = Path(r"""'"${EVIDENCE}"'""")
-          out_norm = Path(r"""'"${OUT_NORM}"'""")
+          evidence = Path(os.environ["EVIDENCE_PATH"])
+          out_norm = Path(os.environ["OUT_NORM_PATH"])
 
           data = json.loads(evidence.read_text(encoding="utf-8"))
 
-          # Helper: count statuses in an attempts array if present
           def normalize_from_attempts(attempts):
             p = 0
             f = 0
@@ -398,7 +401,6 @@ jobs:
                 f += 1
             return p, f, len(attempts)
 
-          # Try a few common legacy shapes:
           # 1) top-level attempts
           if isinstance(data, dict) and isinstance(data.get("attempts"), list) and data["attempts"]:
             p, f, t = normalize_from_attempts(data["attempts"])
@@ -406,7 +408,7 @@ jobs:
             data["fail_count"] = f
             data["total_attempts"] = t
 
-          # 2) suite-level attempts under "suite" or "summary"
+          # 2) nested attempts under suite/summary
           elif isinstance(data, dict):
             for key in ("suite", "summary"):
               node = data.get(key)
@@ -418,18 +420,16 @@ jobs:
                 data[key] = node
                 break
 
-          # 3) only pass_count/fail_count exist (or are trustworthy) -> force total_attempts
-          if isinstance(data, dict):
-            # accept either top-level or nested summary/suite counters
-            def force_total(node: dict):
-              p = int(node.get("pass_count", 0) or 0)
-              f = int(node.get("fail_count", 0) or 0)
-              node["total_attempts"] = p + f
-              return node
+          # 3) force invariant total_attempts = pass_count + fail_count (top-level and nested)
+          def force_total(node: dict):
+            p = int(node.get("pass_count", 0) or 0)
+            f = int(node.get("fail_count", 0) or 0)
+            node["total_attempts"] = p + f
+            return node
 
+          if isinstance(data, dict):
             if "pass_count" in data or "fail_count" in data or "total_attempts" in data:
               data = force_total(data)
-
             for key in ("suite", "summary"):
               if isinstance(data.get(key), dict):
                 data[key] = force_total(data[key])
@@ -438,24 +438,23 @@ jobs:
           print(f"✅ wrote {out_norm}")
           PY
 
-
-      - name: "Evaluate flaky policy (supports legacy *.summary.json)"
+      - name: "Evaluate flaky policy (normalized + policy-as-code)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
           EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
-          OUT_JSON="${EXPORT_DIR}/evaluation.json"
+          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
 
           NORM="${EXPORT_DIR}/summary.normalized.json"
+          OUT_JSON="${EXPORT_DIR}/evaluation.json"
 
-          echo "🧩 [FLAKY] Policy      : ${POLICY}"
-          echo "📁 [FLAKY] Export dir  : ${EXPORT_DIR}"
-          echo "🧾 [FLAKY] Normalized  : ${NORM}"
-          echo "📤 [FLAKY] Output JSON : ${OUT_JSON}"
-          echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
+          echo "🧩 [FLAKY] Policy     : ${POLICY}"
+          echo "📁 [FLAKY] Export dir : ${EXPORT_DIR}"
+          echo "📥 [FLAKY] Normalized : ${NORM}"
+          echo "📤 [FLAKY] Output     : ${OUT_JSON}"
+          echo "🛡️ [FLAKY] Enforce    : ${FLAKY_POLICY_ENFORCE}"
 
           if [[ ! -f "${NORM}" ]]; then
             echo "ℹ️ [FLAKY] Normalized summary missing → skipping evaluation (non-blocking)."
@@ -463,12 +462,26 @@ jobs:
           fi
 
           EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
+          if [[ ! -f "${EVAL_TS}" ]]; then
+            echo "❌ [FLAKY] evaluate-flaky.ts not found at: ${EVAL_TS}"
+            exit 1
+          fi
+
+          # Run from local node project so js-yaml always resolves
+          pushd "${GITHUB_WORKSPACE}/.tmp-flaky-eval" >/dev/null
           npx tsx "${EVAL_TS}" \
             --policy "${POLICY}" \
             --input "${NORM}" \
             --out "${OUT_JSON}" \
-            --md
+            --md || rc=$?
+          popd >/dev/null
 
+          if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
+            echo "⚠️ [FLAKY] Evaluator exit=${rc} but enforce=false → not blocking."
+            exit 0
+          fi
+
+          exit "${rc:-0}"
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
