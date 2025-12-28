@@ -149,6 +149,7 @@ jobs:
       PYTHON_VERSION: ${{ inputs.python-version != '' && inputs.python-version || '3.11' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
+      # Optional alias (if you want one shared env naming style across runners)
       E2E_SHARD: ${{ matrix.shard }}
       E2E_SHARD_TOTAL: ${{ strategy.job-total }}
 
@@ -202,9 +203,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          SHARD0='${{ matrix.shard }}'
-          TOTAL='${{ strategy.job-total }}'
-          SHARD1=$((SHARD0 + 1))
+          SHARD0='${{ matrix.shard }}'          # 0-based from matrix
+          TOTAL='${{ strategy.job-total }}'     # total jobs in this matrix
+          SHARD1=$((SHARD0 + 1))                # convert to 1-based
 
           {
             echo "UNIT_SHARD=${SHARD1}"
@@ -219,7 +220,7 @@ jobs:
         with:
           parallel_enabled: ${{ env.PARALLEL }}
           parallel_mode: ${{ env.PARALLEL_MODE }}
-          shard_index: ${{ matrix.shard }}
+          shard_index: ${{ matrix.shard }}          # 0-based
           shard_total: ${{ strategy.job-total }}
           selection_mode: "file-split"
           working_directory: ${{ env.WORKING_DIRECTORY }}
@@ -273,7 +274,7 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
 
-          # NOTE: we pass an ABSOLUTE export dir so the wrapper always writes where we expect.
+          # NOTE: absolute export dir so wrapper writes where we expect.
           export FLAKY_DETECT="${FLAKY_DETECT:-false}"
           export FLAKY_RERUNS="${FLAKY_RERUNS:-3}"
           export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
@@ -289,6 +290,10 @@ jobs:
 
       # =============================================================================
       # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate evidence against policy-as-code
+      # Fixes:
+      #  - Accepts legacy evidence file: *.summary.json
+      #  - Policy selection: repo override -> central fallback
+      #  - Module resolution: install js-yaml/tsx at repo root so scripts can require()
       # =============================================================================
       - name: "Setup Node (for flaky policy evaluator)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
@@ -324,7 +329,7 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      - name: "Install evaluator deps (js-yaml + tsx) (local, pinned)"
+      - name: "Install evaluator deps (repo-root, pinned)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
         env:
@@ -332,18 +337,16 @@ jobs:
           NPM_CONFIG_AUDIT: "false"
         run: |
           set -euo pipefail
-          mkdir -p .tmp-flaky-eval
-          cd .tmp-flaky-eval
 
           node -v
           npm -v
 
           if [[ ! -f package.json ]]; then
-            npm init -y
+            npm init -y >/dev/null 2>&1
           fi
 
-          npm i --no-save js-yaml@4 tsx@4
-          echo "✅ deps installed into .tmp-flaky-eval/node_modules"
+          npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
+          echo "✅ deps installed into repo-root node_modules"
 
       - name: "Evaluate flaky policy (supports legacy *.summary.json)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
@@ -352,13 +355,25 @@ jobs:
           set -euo pipefail
 
           POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
-          OUT_JSON="${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json"
-
           EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
+          OUT_JSON="${EXPORT_DIR}/evaluation.json"
+
           EXPECTED="${EXPORT_DIR}/summary.json"
           LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-python-unit}.summary.json"
 
-          # Resolve evidence
+          echo "🧩 [FLAKY] Policy      : ${POLICY}"
+          echo "📁 [FLAKY] Export dir  : ${EXPORT_DIR}"
+          echo "🧾 [FLAKY] Expect      : ${EXPECTED}"
+          echo "🧾 [FLAKY] Labeled     : ${LABELED}"
+          echo "📤 [FLAKY] Output JSON : ${OUT_JSON}"
+          echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
+
+          if [[ ! -f "${POLICY}" ]]; then
+            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
+            exit 1
+          fi
+
+          # Resolve evidence path
           EVIDENCE=""
           if [[ -f "${EXPECTED}" ]]; then
             EVIDENCE="${EXPECTED}"
@@ -366,13 +381,19 @@ jobs:
             EVIDENCE="${LABELED}"
           else
             found="$(ls -1 "${EXPORT_DIR}"/*.summary.json 2>/dev/null | head -n 1 || true)"
-            if [[ -n "${found}" ]]; then EVIDENCE="${found}"; fi
+            if [[ -n "${found}" ]]; then
+              EVIDENCE="${found}"
+            fi
           fi
 
           if [[ -z "${EVIDENCE}" ]]; then
-            echo "ℹ️ [FLAKY] No evidence found → skipping evaluation (non-blocking)."
+            echo "ℹ️ [FLAKY] No evidence found (summary.json or *.summary.json) → skipping evaluation (non-blocking)."
+            echo "🔎 [FLAKY] Listing export dir:"
+            ls -la "${EXPORT_DIR}" || true
             exit 0
           fi
+
+          echo "✅ [FLAKY] Evidence resolved: ${EVIDENCE}"
 
           EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
           if [[ ! -f "${EVAL_TS}" ]]; then
@@ -380,14 +401,15 @@ jobs:
             exit 1
           fi
 
-          # Run from the local node project so require('js-yaml') resolves naturally
-          pushd "${GITHUB_WORKSPACE}/.tmp-flaky-eval" >/dev/null
+          # Ensure export dir exists (in case wrapper created labeled file but not folder structure)
+          mkdir -p "${EXPORT_DIR}"
+
+          # Run evaluator (module resolution works because deps are at repo-root node_modules)
           npx tsx "${EVAL_TS}" \
             --policy "${POLICY}" \
             --input "${EVIDENCE}" \
             --out "${OUT_JSON}" \
             --md || rc=$?
-          popd >/dev/null
 
           if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
             echo "⚠️ [FLAKY] Evaluator exit=${rc} but enforce=false → not blocking."
