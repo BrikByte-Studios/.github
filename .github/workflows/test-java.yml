@@ -279,7 +279,6 @@ jobs:
           echo "🧪 [TEST] Status       : STARTING"
 
           # Provide selection/shard env to your Makefile if it supports them
-          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
           export UNIT_SHARD="${UNIT_SHARD:-$((SHARD_INDEX + 1))}"
           export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL:-$SHARD_TOTAL}"
 
