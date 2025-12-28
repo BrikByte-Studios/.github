@@ -312,8 +312,9 @@ jobs:
             .github/scripts/flaky-rerun.sh
 
           # Evaluator (PIPE-FLAKY-POLICY-CONFIG-002)
-          cp org-dotgithub/.github/scripts/evaluate-flaky.ts \
-            .github/scripts/evaluate-flaky.ts
+          cp org-dotgithub/.github/scripts/evaluate-flaky.ts .github/scripts/evaluate-flaky.ts
+          cp org-dotgithub/.github/scripts/flaky-io.ts       .github/scripts/flaky-io.ts
+          cp org-dotgithub/.github/scripts/flaky-types.ts    .github/scripts/flaky-types.ts || true
 
           cp org-dotgithub/.github/templates/integration-test-runner.Dockerfile \
             .github/templates/integration-test-runner.Dockerfile
