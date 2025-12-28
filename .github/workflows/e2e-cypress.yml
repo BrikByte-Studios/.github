@@ -315,6 +315,8 @@ jobs:
             .github/scripts/flaky-rerun.sh
           cp .brikbyte-github/.github/scripts/evaluate-flaky.ts \
             .github/scripts/evaluate-flaky.ts
+          cp org-dotgithub/.github/scripts/flaky-io.ts       .github/scripts/flaky-io.ts
+          cp org-dotgithub/.github/scripts/flaky-types.ts    .github/scripts/flaky-types.ts || true
 
           chmod +x .github/scripts/flaky-rerun.sh
           echo "✅ flaky-rerun.sh + evaluate-flaky.ts synced."
