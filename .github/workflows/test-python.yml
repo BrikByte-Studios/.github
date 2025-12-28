@@ -348,6 +348,97 @@ jobs:
           npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
           echo "✅ deps installed into repo-root node_modules"
 
+      - name: "Normalize flaky summary (legacy -> strict)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+
+          EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
+          EXPECTED="${EXPORT_DIR}/summary.json"
+          LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-python-unit}.summary.json"
+
+          # Resolve evidence
+          EVIDENCE=""
+          if [[ -f "${EXPECTED}" ]]; then
+            EVIDENCE="${EXPECTED}"
+          elif [[ -f "${LABELED}" ]]; then
+            EVIDENCE="${LABELED}"
+          else
+            found="$(ls -1 "${EXPORT_DIR}"/*.summary.json 2>/dev/null | head -n 1 || true)"
+            if [[ -n "${found}" ]]; then EVIDENCE="${found}"; fi
+          fi
+
+          if [[ -z "${EVIDENCE}" ]]; then
+            echo "ℹ️ [FLAKY] No evidence found → skipping normalization."
+            exit 0
+          fi
+
+          OUT_NORM="${EXPORT_DIR}/summary.normalized.json"
+          echo "🔧 [FLAKY] Normalizing: ${EVIDENCE} -> ${OUT_NORM}"
+
+          python - << 'PY'
+          import json
+          from pathlib import Path
+
+          evidence = Path(r"""'"${EVIDENCE}"'""")
+          out_norm = Path(r"""'"${OUT_NORM}"'""")
+
+          data = json.loads(evidence.read_text(encoding="utf-8"))
+
+          # Helper: count statuses in an attempts array if present
+          def normalize_from_attempts(attempts):
+            p = 0
+            f = 0
+            for a in attempts:
+              s = (a.get("status") or a.get("result") or "").lower()
+              if s in ("pass", "passed", "ok", "success"):
+                p += 1
+              elif s in ("fail", "failed", "error"):
+                f += 1
+            return p, f, len(attempts)
+
+          # Try a few common legacy shapes:
+          # 1) top-level attempts
+          if isinstance(data, dict) and isinstance(data.get("attempts"), list) and data["attempts"]:
+            p, f, t = normalize_from_attempts(data["attempts"])
+            data["pass_count"] = p
+            data["fail_count"] = f
+            data["total_attempts"] = t
+
+          # 2) suite-level attempts under "suite" or "summary"
+          elif isinstance(data, dict):
+            for key in ("suite", "summary"):
+              node = data.get(key)
+              if isinstance(node, dict) and isinstance(node.get("attempts"), list) and node["attempts"]:
+                p, f, t = normalize_from_attempts(node["attempts"])
+                node["pass_count"] = p
+                node["fail_count"] = f
+                node["total_attempts"] = t
+                data[key] = node
+                break
+
+          # 3) only pass_count/fail_count exist (or are trustworthy) -> force total_attempts
+          if isinstance(data, dict):
+            # accept either top-level or nested summary/suite counters
+            def force_total(node: dict):
+              p = int(node.get("pass_count", 0) or 0)
+              f = int(node.get("fail_count", 0) or 0)
+              node["total_attempts"] = p + f
+              return node
+
+            if "pass_count" in data or "fail_count" in data or "total_attempts" in data:
+              data = force_total(data)
+
+            for key in ("suite", "summary"):
+              if isinstance(data.get(key), dict):
+                data[key] = force_total(data[key])
+
+          out_norm.write_text(json.dumps(data, indent=2), encoding="utf-8")
+          print(f"✅ wrote {out_norm}")
+          PY
+
+
       - name: "Evaluate flaky policy (supports legacy *.summary.json)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
@@ -358,65 +449,25 @@ jobs:
           EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
           OUT_JSON="${EXPORT_DIR}/evaluation.json"
 
-          EXPECTED="${EXPORT_DIR}/summary.json"
-          LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-python-unit}.summary.json"
+          NORM="${EXPORT_DIR}/summary.normalized.json"
 
           echo "🧩 [FLAKY] Policy      : ${POLICY}"
           echo "📁 [FLAKY] Export dir  : ${EXPORT_DIR}"
-          echo "🧾 [FLAKY] Expect      : ${EXPECTED}"
-          echo "🧾 [FLAKY] Labeled     : ${LABELED}"
+          echo "🧾 [FLAKY] Normalized  : ${NORM}"
           echo "📤 [FLAKY] Output JSON : ${OUT_JSON}"
           echo "🛡️ [FLAKY] EnforceStep : ${FLAKY_POLICY_ENFORCE}"
 
-          if [[ ! -f "${POLICY}" ]]; then
-            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
-            exit 1
-          fi
-
-          # Resolve evidence path
-          EVIDENCE=""
-          if [[ -f "${EXPECTED}" ]]; then
-            EVIDENCE="${EXPECTED}"
-          elif [[ -f "${LABELED}" ]]; then
-            EVIDENCE="${LABELED}"
-          else
-            found="$(ls -1 "${EXPORT_DIR}"/*.summary.json 2>/dev/null | head -n 1 || true)"
-            if [[ -n "${found}" ]]; then
-              EVIDENCE="${found}"
-            fi
-          fi
-
-          if [[ -z "${EVIDENCE}" ]]; then
-            echo "ℹ️ [FLAKY] No evidence found (summary.json or *.summary.json) → skipping evaluation (non-blocking)."
-            echo "🔎 [FLAKY] Listing export dir:"
-            ls -la "${EXPORT_DIR}" || true
+          if [[ ! -f "${NORM}" ]]; then
+            echo "ℹ️ [FLAKY] Normalized summary missing → skipping evaluation (non-blocking)."
             exit 0
           fi
-
-          echo "✅ [FLAKY] Evidence resolved: ${EVIDENCE}"
 
           EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
-          if [[ ! -f "${EVAL_TS}" ]]; then
-            echo "❌ [FLAKY] evaluate-flaky.ts not found at: ${EVAL_TS}"
-            exit 1
-          fi
-
-          # Ensure export dir exists (in case wrapper created labeled file but not folder structure)
-          mkdir -p "${EXPORT_DIR}"
-
-          # Run evaluator (module resolution works because deps are at repo-root node_modules)
           npx tsx "${EVAL_TS}" \
             --policy "${POLICY}" \
-            --input "${EVIDENCE}" \
+            --input "${NORM}" \
             --out "${OUT_JSON}" \
-            --md || rc=$?
-
-          if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
-            echo "⚠️ [FLAKY] Evaluator exit=${rc} but enforce=false → not blocking."
-            exit 0
-          fi
-
-          exit "${rc:-0}"
+            --md
 
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
