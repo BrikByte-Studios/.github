@@ -276,6 +276,7 @@ jobs:
       FLAKY_DETECT: ${{ inputs.flaky_detect }}
       FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
       FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
+      SERVICE_WORKDIR: ${{ inputs.service_workdir }}
 
       # Flaky policy (PIPE-FLAKY-POLICY-CONFIG-002)
       FLAKY_POLICY_PATH: ${{ inputs.flaky_policy_path }}
@@ -432,7 +433,6 @@ jobs:
         id: run_cypress
         env:
           CYPRESS_IMAGE: ${{ inputs.cypress_image }}
-          SERVICE_WORKDIR: ${{ inputs.service_workdir }}
           SPEC_PATTERN: ${{ inputs.spec_pattern }}
           START_WITH_DOCKER: ${{ inputs.start_with_docker }}
           NON_BLOCKING: ${{ inputs.non_blocking }}
