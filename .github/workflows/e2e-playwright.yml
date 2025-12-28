@@ -491,7 +491,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          EXPORT_DIR="${GITHUB_WORKSPACE}/${SERVICE_WORKDIR}/${FLAKY_EXPORT_PATH}"
+          EXPORT_DIR="${GITHUB_WORKSPACE}/${{ inputs.service_workdir }}/${FLAKY_EXPORT_PATH}"
           EXPECTED="${EXPORT_DIR}/summary.json"
           LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-playwright-chromium}.summary.json"
 
@@ -613,7 +613,12 @@ jobs:
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: flaky-eval-playwright-${{ matrix.browser }}-${{ github.run_id }}
+          name: >-
+            flaky-eval-playwright-
+            ${{ matrix.browser }}-
+            shard-${{ matrix.shard }}-
+            ${{ github.run_id }}-
+            attempt-${{ github.run_attempt }}
           path: |
             ${{ inputs.service_workdir }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
