@@ -272,7 +272,6 @@ jobs:
           echo "🧪 [TEST] Directory    : ${PWD}"
           echo "🧪 [TEST] Shard        : ${SHARD_INDEX}/${SHARD_TOTAL}"
           echo "🧪 [TEST] Command      : make test"
-          echo "🧪 [TEST] Selection    : ${{ steps.pr.outputs.selection_path }}"
           echo "🧪 [TEST] FlakyDetect  : ${FLAKY_DETECT:-false}"
           echo "🧪 [TEST] FlakyReruns  : ${FLAKY_RERUNS:-3}"
           echo "🧪 [TEST] FlakyExport  : ${FLAKY_EXPORT_PATH:-out/flaky}"
