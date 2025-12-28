@@ -431,14 +431,6 @@ jobs:
           print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
           PY
 
-      - name: "Debug normalized summary shape"
-        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: |
-          set -euo pipefail
-          echo "=== normalized summary ==="
-          cat "${PWD}/${FLAKY_EXPORT_PATH}/summary.normalized.json"
-
       - name: "Evaluate flaky policy (normalized + policy-as-code)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
