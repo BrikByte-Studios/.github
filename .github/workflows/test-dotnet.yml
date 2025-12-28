@@ -1,29 +1,15 @@
 # =============================================================================
 # BrikByteOS — Reusable .NET Unit Test Workflow (with governed sharding)
 # -----------------------------------------------------------------------------
-# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# PIPE-FLAKY-POLICY-CONFIG-002 wiring added:
+#   - Select policy (repo override -> central fallback)
+#   - Normalize flaky summary to satisfy evaluator contract
+#   - Evaluate using normalized summary (prevents total_attempts=0 hurdle)
+#   - Upload flaky-eval artifact per shard
 #
-# Matrix plan integration:
-#   - Uses BrikPipe matrix-plan composite action to compute shards deterministically
-#   - Shard defaults + caps governed by parallel-matrix.yml (org/repo override)
-#
-# Contract:
-#   - Expects:
-#       • Makefile exposing: make test   (wrapping dotnet test)
-#       • A .sln OR at least one *.csproj under working-directory
-#   - Optional (recommended):
-#       • Makefile honors:
-#           - UNIT_SHARD / UNIT_SHARD_TOTAL (1-based)
-#           - TEST_ITEMS_FILE (selection list from parallel-runner)
-#
-# Coverage contract (recommended):
-#   - dotnet test emits Coverlet JSON somewhere under working-directory
-#     e.g. TestResults/**/coverage.net8.0.json or coverage.json
-#   - Workflow normalizes to: out/coverage.json (summary.line)
-#
-# Flaky detection (PIPE-FLAKY-RERUN-INTEG-001):
-#   - Opt-in via inputs.flaky_detect=true
-#   - Uses shared script: .github/scripts/flaky-rerun.sh from BrikByte-Studios/.github
+# Extra hardening (avoid Python hurdles):
+#   - Run evaluator from repo-root so Node deps resolve
+#   - Install js-yaml + tsx locally (no reliance on repo’s node_modules)
 # =============================================================================
 name: "BrikByteOS — .NET Unit Tests"
 
@@ -92,6 +78,25 @@ on:
         type: string
         default: "out/flaky"
 
+      # -----------------------------------------------------------------------
+      # Flaky policy evaluation (PIPE-FLAKY-POLICY-CONFIG-002)
+      # -----------------------------------------------------------------------
+      flaky_policy_path:
+        description: >
+          Path to policy-as-code YAML (repo root) IF repo overrides exist.
+          NOTE: If missing, central policy from BrikByte-Studios/.github is used.
+        required: false
+        type: string
+        default: ".governance/flaky-tests.yml"
+
+      flaky_policy_enforce:
+        description: >
+          If true, evaluator may block ONLY if policy enables blocking.
+          If false, evaluator still runs (when flaky_detect=true) but never blocks.
+        required: false
+        type: boolean
+        default: true
+
 permissions:
   contents: read
 
@@ -148,6 +153,10 @@ jobs:
       FLAKY_DETECT: ${{ inputs.flaky_detect }}
       FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
       FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
+
+      # Flaky policy (PIPE-FLAKY-POLICY-CONFIG-002)
+      FLAKY_POLICY_PATH: ${{ inputs.flaky_policy_path }}
+      FLAKY_POLICY_ENFORCE: ${{ inputs.flaky_policy_enforce }}
 
       FORCE_COLOR: "0"
 
@@ -236,7 +245,7 @@ jobs:
           allow_missing_items_file: true
 
       # -----------------------------------------------------------------------
-      # Shared scripts (flaky-rerun.sh lives in BrikByte-Studios/.github repo)
+      # Shared scripts (flaky-rerun.sh + evaluator + central policy)
       # -----------------------------------------------------------------------
       - name: Checkout BrikByte shared scripts
         uses: actions/checkout@v4
@@ -273,6 +282,8 @@ jobs:
           export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL:-$SHARD_TOTAL}"
 
           # Flaky wrapper config (used by flaky-rerun.sh)
+          export FLAKY_DETECT="${FLAKY_DETECT:-false}"
+          export FLAKY_RERUNS="${FLAKY_RERUNS:-3}"
           export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
           export FLAKY_LABEL="dotnet-unit"
 
@@ -305,6 +316,191 @@ jobs:
           mkdir -p out
           : > out/junit.xml || true
 
+      # =============================================================================
+      # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate evidence against policy-as-code
+      # =============================================================================
+
+      - name: "Select policy source (repo override -> central fallback)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p .tmp-flaky-eval
+
+          REPO_POLICY="${GITHUB_WORKSPACE}/${FLAKY_POLICY_PATH}"
+          CENTRAL_POLICY="${GITHUB_WORKSPACE}/.brikbyte-github/.governance/flaky-tests.yml"
+          OUT_POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
+
+          echo "🧩 [FLAKY] Repo policy     : ${REPO_POLICY}"
+          echo "🏛️ [FLAKY] Central policy  : ${CENTRAL_POLICY}"
+          echo "📌 [FLAKY] Selected policy : ${OUT_POLICY}"
+
+          if [[ -f "${REPO_POLICY}" ]]; then
+            echo "✅ [FLAKY] Using repo override policy."
+            cp "${REPO_POLICY}" "${OUT_POLICY}"
+          else
+            if [[ ! -f "${CENTRAL_POLICY}" ]]; then
+              echo "❌ [FLAKY] Central policy missing at: ${CENTRAL_POLICY}"
+              exit 1
+            fi
+            echo "✅ [FLAKY] Repo policy not found; using central policy."
+            cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
+          fi
+
+      - name: "Install evaluator deps (repo-root) [js-yaml + tsx]"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ github.workspace }}
+        env:
+          NPM_CONFIG_FUND: "false"
+          NPM_CONFIG_AUDIT: "false"
+        run: |
+          set -euo pipefail
+          node -v
+          npm -v
+
+          if [[ ! -f package.json ]]; then
+            npm init -y >/dev/null 2>&1
+          fi
+
+          npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
+          echo "✅ deps installed into repo-root node_modules"
+
+      - name: "Normalize flaky evidence → summary.normalized.json"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+
+          EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
+          EXPECTED="${EXPORT_DIR}/summary.json"
+          LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-dotnet-unit}.summary.json"
+
+          EVIDENCE=""
+          if [[ -f "${EXPECTED}" ]]; then
+            EVIDENCE="${EXPECTED}"
+          elif [[ -f "${LABELED}" ]]; then
+            EVIDENCE="${LABELED}"
+          else
+            found="$(ls -1 "${EXPORT_DIR}"/*.summary.json 2>/dev/null | head -n 1 || true)"
+            if [[ -n "${found}" ]]; then EVIDENCE="${found}"; fi
+          fi
+
+          if [[ -z "${EVIDENCE}" ]]; then
+            echo "ℹ️ [FLAKY] No evidence found → skipping normalization."
+            ls -la "${EXPORT_DIR}" || true
+            exit 0
+          fi
+
+          OUT_NORM="${EXPORT_DIR}/summary.normalized.json"
+          echo "🔧 [FLAKY] Normalizing: ${EVIDENCE} -> ${OUT_NORM}"
+
+          EVIDENCE="${EVIDENCE}" OUT_NORM="${OUT_NORM}" python - <<'PY'
+          import json
+          from pathlib import Path
+          import os
+
+          evidence = Path(os.environ["EVIDENCE"])
+          out_norm = Path(os.environ["OUT_NORM"])
+
+          data = json.loads(evidence.read_text(encoding="utf-8"))
+
+          attempts = data.get("attempts") if isinstance(data, dict) else None
+          pass_count = 0
+          fail_count = 0
+          total_attempts = 0
+
+          if isinstance(attempts, list) and attempts:
+            total_attempts = len(attempts)
+            for a in attempts:
+              s = (a.get("status") or "").strip().lower()
+              if not s:
+                rc = int(a.get("exit_code", 0) or 0)
+                s = "pass" if rc == 0 else "fail"
+                a["status"] = s
+              if s in ("pass", "passed", "ok", "success"):
+                pass_count += 1
+              elif s in ("fail", "failed", "error"):
+                fail_count += 1
+          else:
+            pass_count = int(data.get("pass_count", 0) or 0) if isinstance(data, dict) else 0
+            fail_count = int(data.get("fail_count", 0) or 0) if isinstance(data, dict) else 0
+            total_attempts = pass_count + fail_count
+
+          if isinstance(data, dict):
+            data["pass_count"] = pass_count
+            data["fail_count"] = fail_count
+            data["total_attempts"] = total_attempts
+            data["attempts"] = attempts if isinstance(attempts, list) else data.get("attempts", [])
+
+          out_norm.parent.mkdir(parents=True, exist_ok=True)
+          out_norm.write_text(json.dumps(data, indent=2), encoding="utf-8")
+          print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
+          PY
+
+          echo "=== normalized summary ==="
+          cat "${OUT_NORM}"
+
+      - name: "Evaluate flaky policy (use normalized summary)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+
+          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
+          EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
+          IN_NORM="${EXPORT_DIR}/summary.normalized.json"
+          OUT_JSON="${EXPORT_DIR}/evaluation.json"
+
+          echo "🧩 [FLAKY] Policy     : ${POLICY}"
+          echo "📁 [FLAKY] Export dir : ${EXPORT_DIR}"
+          echo "📥 [FLAKY] Normalized : ${IN_NORM}"
+          echo "📤 [FLAKY] Output     : ${OUT_JSON}"
+          echo "🛡️ [FLAKY] Enforce    : ${FLAKY_POLICY_ENFORCE}"
+
+          if [[ ! -f "${POLICY}" ]]; then
+            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
+            exit 1
+          fi
+
+          if [[ ! -f "${IN_NORM}" ]]; then
+            echo "ℹ️ [FLAKY] Normalized summary missing → skipping evaluation (non-blocking)."
+            ls -la "${EXPORT_DIR}" || true
+            exit 0
+          fi
+
+          EVAL_TS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts/evaluate-flaky.ts"
+          if [[ ! -f "${EVAL_TS}" ]]; then
+            echo "❌ [FLAKY] evaluate-flaky.ts not found at: ${EVAL_TS}"
+            exit 1
+          fi
+
+          pushd "${GITHUB_WORKSPACE}" >/dev/null
+          npx tsx "${EVAL_TS}" \
+            --policy "${POLICY}" \
+            --input "${IN_NORM}" \
+            --out "${OUT_JSON}" \
+            --md || rc=$?
+          popd >/dev/null
+
+          if [[ "${rc:-0}" != "0" && "${FLAKY_POLICY_ENFORCE}" != "true" ]]; then
+            echo "⚠️ [FLAKY] Evaluator exit=${rc} but enforce=false → not blocking."
+            exit 0
+          fi
+
+          exit "${rc:-0}"
+
+      - name: "Upload flaky evaluation (always)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-eval-dotnet-shard${{ env.SHARD_INDEX }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
       # -----------------------------------------------------------------------
       # Detect whether this shard produced Coverlet JSON
       # -----------------------------------------------------------------------
@@ -313,11 +509,6 @@ jobs:
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
-
-          # Common Coverlet outputs:
-          #   - TestResults/**/coverage.net8.0.json
-          #   - coverage.json
-          #   - coverage.*.json
 
           FOUND="$(
             find . -type f \
@@ -334,7 +525,6 @@ jobs:
             echo "⚠️ No Coverlet JSON found for this shard or coverage not enabled."
           fi
 
-
       # -----------------------------------------------------------------------
       # Normalize coverage to out/coverage.json (summary.line)
       # -----------------------------------------------------------------------
@@ -348,7 +538,7 @@ jobs:
           echo "🔧 Normalizing .NET coverage: syncing summary.line from Coverlet JSON"
           echo "ℹ️ Using Coverlet JSON: ${COVERLET_JSON}"
 
-          python - << 'PY'
+          python - <<'PY'
           import json, os
           from pathlib import Path
 
@@ -356,11 +546,6 @@ jobs:
           data = json.loads(coverlet_path.read_text(encoding="utf-8"))
 
           def iter_lines_maps(obj):
-            """
-            Yield dicts that look like Coverlet line hit maps:
-              { "12": 1, "13": 0, ... }
-            This is robust across several Coverlet JSON shapes.
-            """
             if isinstance(obj, dict):
               for k, v in obj.items():
                 if k.lower() == "lines" and isinstance(v, dict):
@@ -373,7 +558,6 @@ jobs:
 
           total = 0
           covered = 0
-
           for lines_map in iter_lines_maps(data):
             for _, hits in lines_map.items():
               try:
@@ -385,7 +569,7 @@ jobs:
                 covered += 1
 
           if total <= 0:
-            raise SystemExit("Cannot determine coverage: no line hit data found in Coverlet JSON (no Lines maps).")
+            raise SystemExit("Cannot determine coverage: no line hit data found in Coverlet JSON.")
 
           pct = (covered / total) * 100.0
 
@@ -434,7 +618,6 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
-
 
       - name: Upload flaky evidence (always)
         if: always()
