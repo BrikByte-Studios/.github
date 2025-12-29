@@ -323,6 +323,11 @@ jobs:
           chmod +x .github/scripts/flaky-rerun.sh
           echo "✅ flaky-rerun.sh + evaluate-flaky.ts synced."
 
+      - name: "Setup Node.js (for evaluator + optional scripts)"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: "Honor disable flag"
         env:
           ALLOW_DISABLE: ${{ inputs.allow_disable }}
@@ -341,7 +346,7 @@ jobs:
         if: ${{ inputs.start_with_docker }}
         run: |
           set -euo pipefail
-          docker network create e2e-net
+          docker network inspect e2e-net >/dev/null 2>&1 || docker network create e2e-net
 
       - name: "Build UI Docker image (docker mode)"
         if: ${{ inputs.start_with_docker }}
@@ -375,11 +380,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${START_WITH_DOCKER}" = "true" ]; then
-            echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" \
-              >> "$GITHUB_OUTPUT"
+            echo "health_url=http://app:${DOCKER_PORT}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
           else
-            echo "health_url=${TARGET_URL}${HEALTH_PATH}" \
-              >> "$GITHUB_OUTPUT"
+            echo "health_url=${TARGET_URL}${HEALTH_PATH}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: "Wait for service readiness"
@@ -395,24 +398,21 @@ jobs:
           interval=5
 
           if [ "${START_WITH_DOCKER}" = "true" ]; then
-            docker ps --filter "name=app" --format "{{.Names}}" \
-              | grep -q "^app$" || {
-                echo "[CYPRESS] ERROR: app container not running"
-                docker logs app || true
-                exit 1
-              }
+            docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
+              echo "[CYPRESS] ERROR: app container not running"
+              docker logs app || true
+              exit 1
+            }
 
-            while ! docker run --rm --network e2e-net \
-              curlimages/curl:8.5.0 -fsS "${HEALTH_URL}" >/dev/null; do
+            while ! docker run --rm --network e2e-net curlimages/curl:8.5.0 -fsS "${HEALTH_URL}" >/dev/null; do
               sleep "${interval}"
               elapsed=$((elapsed + interval))
 
-              docker ps --filter "name=app" --format "{{.Names}}" \
-                | grep -q "^app$" || {
-                  echo "[CYPRESS] ERROR: app container stopped"
-                  docker logs app || true
-                  exit 1
-                }
+              docker ps --filter "name=app" --format "{{.Names}}" | grep -q "^app$" || {
+                echo "[CYPRESS] ERROR: app container stopped"
+                docker logs app || true
+                exit 1
+              }
 
               if [ "${elapsed}" -ge "${timeout}" ]; then
                 echo "[CYPRESS] ERROR: readiness timed out (${timeout}s)"
@@ -476,6 +476,7 @@ jobs:
             ls -la "${GITHUB_WORKSPACE}/.github/scripts" || true
             exit 1
           fi
+          chmod +x "${FLAKY_SH}"
 
           set +e
           "${FLAKY_SH}" -- docker run --rm ${NET_ARGS} \
@@ -487,9 +488,9 @@ jobs:
             -w "${PROJECT_DIR}" \
             "${CYPRESS_IMAGE}" \
             npx cypress run \
-            --browser "${E2E_BROWSER}" \
-            --config-file "${CONFIG_FILE}" \
-            ${SPEC_ARG}
+              --browser "${E2E_BROWSER}" \
+              --config-file "${CONFIG_FILE}" \
+              ${SPEC_ARG}
 
           exit_code=$?
           set -e
@@ -557,7 +558,7 @@ jobs:
 
           EXPORT_DIR="${GITHUB_WORKSPACE}/${SERVICE_WORKDIR}/${FLAKY_EXPORT_PATH}"
           EXPECTED="${EXPORT_DIR}/summary.json"
-          LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-cypress-chrome}.summary.json"
+          LABELED="${EXPORT_DIR}/cypress-${E2E_BROWSER}.summary.json"
 
           EVIDENCE=""
           if [[ -f "${EXPECTED}" ]]; then
@@ -621,9 +622,6 @@ jobs:
           print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
           PY
 
-          echo "=== normalized summary ==="
-          cat "${OUT_NORM}"
-
       - name: "Evaluate flaky policy (use normalized summary)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         run: |
@@ -673,7 +671,7 @@ jobs:
 
           exit "${rc:-0}"
 
-      - name: Export flaky analytics (when enabled)
+      - name: "Export flaky analytics (when enabled)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ inputs.service_workdir }}
         run: |
@@ -690,7 +688,7 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
           node "${FLAKY_SH}" \
-            --suite unit \
+            --suite e2e \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
             --top-n 10 \
@@ -701,13 +699,21 @@ jobs:
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: flaky-eval-cypress-${{ matrix.browser }}-${{ github.run_id }}
+          name: >-
+            flaky-eval-cypress-
+            ${{ matrix.browser }}-
+            shard-${{ matrix.shard }}-
+            ${{ github.run_id }}-
+            attempt-${{ github.run_attempt }}
           path: |
             ${{ inputs.service_workdir }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
 
+      # -----------------------------------------------------------------------
+      # ALWAYS: capture deep E2E diagnostics
+      # -----------------------------------------------------------------------
       - name: "Capture E2E diagnostics (always)"
         if: always()
         uses: BrikByte-Studios/.github/.github/actions/capture-e2e-diagnostics@main
@@ -716,8 +722,7 @@ jobs:
           browser: ${{ matrix.browser }}
           status: ${{ job.status }}
         env:
-          CYPRESS_DIAG_DIR: >
-            ${{ inputs.service_workdir }}/tests/e2e/cypress/diagnostics
+          CYPRESS_DIAG_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/diagnostics"
           PLAYWRIGHT_DIAG_DIR: "test-results/diagnostics"
           SELENIUM_DIAG_DIR: "target/selenium-artifacts/diagnostics"
           E2E_DIAG_HEAVY_ON_FAILURE_ONLY: "true"
@@ -748,21 +753,23 @@ jobs:
         env:
           E2E_MAX_TOTAL_MB: "300"
           E2E_MAX_VIDEOS: "10"
-          CYPRESS_SCREENSHOTS_DIR: >
-            ${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots
-          CYPRESS_VIDEOS_DIR: >
-            ${{ inputs.service_workdir }}/tests/e2e/cypress/videos
+          CYPRESS_SCREENSHOTS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/screenshots"
+          CYPRESS_VIDEOS_DIR: "${{ inputs.service_workdir }}/tests/e2e/cypress/videos"
           CYPRESS_REPORT_DIR: "${{ inputs.service_workdir }}/cypress/reports"
 
       - name: "Upload E2E artifacts (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_name }}-${{ matrix.browser }}-${{ github.run_id }}
+          name: >-
+            ${{ inputs.artifact_name }}-
+            ${{ matrix.browser }}-
+            shard-${{ matrix.shard }}-
+            ${{ github.run_id }}
           path: |
             .audit/**/e2e/artifacts/**
             .audit/**/e2e/diagnostics/**
-            ${{ inputs.service_workdir }}/out/flaky/**
+            ${{ inputs.service_workdir }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14

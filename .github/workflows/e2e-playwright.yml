@@ -338,6 +338,24 @@ jobs:
         with:
           node-version: "20"
 
+      - name: "Install evaluator deps (repo-root) [js-yaml + tsx]"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ github.workspace }}
+        env:
+          NPM_CONFIG_FUND: "false"
+          NPM_CONFIG_AUDIT: "false"
+        run: |
+          set -euo pipefail
+          node -v
+          npm -v
+
+          if [[ ! -f package.json ]]; then
+            npm init -y >/dev/null 2>&1
+          fi
+
+          npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
+          echo "✅ deps installed into repo-root node_modules"
+
       - name: "Docker info (diagnostics)"
         if: ${{ inputs.start_app }}
         run: |
@@ -434,9 +452,14 @@ jobs:
             ls -la "${GITHUB_WORKSPACE}/.github/scripts" || true
             exit 1
           fi
+          chmod +x "${FLAKY_SH}"
 
           "${FLAKY_SH}" -- npx playwright test \
             --project="${PW_BROWSER}" \
+            --workers="${PW_WORKERS}" \
+            --retries="${PW_RETRIES}" \
+            --trace="${PW_TRACE_MODE}" \
+            --video="${PW_VIDEO_MODE}" \
             --shard="${SHARD_1}/${SHARD_TOTAL}"
 
       # =============================================================================
@@ -470,24 +493,6 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      - name: "Install evaluator deps (repo-root) [js-yaml + tsx]"
-        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
-        working-directory: ${{ github.workspace }}
-        env:
-          NPM_CONFIG_FUND: "false"
-          NPM_CONFIG_AUDIT: "false"
-        run: |
-          set -euo pipefail
-          node -v
-          npm -v
-
-          if [[ ! -f package.json ]]; then
-            npm init -y >/dev/null 2>&1
-          fi
-
-          npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
-          echo "✅ deps installed into repo-root node_modules"
-
       - name: "Normalize flaky evidence → summary.normalized.json"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         run: |
@@ -495,7 +500,7 @@ jobs:
 
           EXPORT_DIR="${GITHUB_WORKSPACE}/${{ inputs.service_workdir }}/${FLAKY_EXPORT_PATH}"
           EXPECTED="${EXPORT_DIR}/summary.json"
-          LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-playwright-chromium}.summary.json"
+          LABELED="${EXPORT_DIR}/playwright-${PW_BROWSER}.summary.json"
 
           EVIDENCE=""
           if [[ -f "${EXPECTED}" ]]; then
@@ -559,9 +564,6 @@ jobs:
           print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
           PY
 
-          echo "=== normalized summary ==="
-          cat "${OUT_NORM}"
-
       - name: "Evaluate flaky policy (use normalized summary)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         run: |
@@ -611,7 +613,7 @@ jobs:
 
           exit "${rc:-0}"
 
-      - name: Export flaky analytics (when enabled)
+      - name: "Export flaky analytics (when enabled)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ inputs.service_workdir }}
         run: |
@@ -628,7 +630,7 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
           node "${FLAKY_SH}" \
-            --suite unit \
+            --suite e2e \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
             --top-n 10 \
@@ -717,7 +719,7 @@ jobs:
           path: |
             .audit/**/e2e/artifacts/**
             .audit/**/e2e/diagnostics/**
-            ${{ inputs.service_workdir }}/out/flaky/**
+            ${{ inputs.service_workdir }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
