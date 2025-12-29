@@ -317,6 +317,8 @@ jobs:
             .github/scripts/evaluate-flaky.ts
           cp .brikbyte-github/.github/scripts/flaky-io.ts       .github/scripts/flaky-io.ts
           cp .brikbyte-github/.github/scripts/flaky-types.ts    .github/scripts/flaky-types.ts || true
+          cp .brikbyte-github/.github/scripts/export-flaky-analytics.mjs \
+            .github/scripts/export-flaky-analytics.mjs
 
           chmod +x .github/scripts/flaky-rerun.sh
           echo "✅ flaky-rerun.sh + evaluate-flaky.ts synced."
@@ -670,6 +672,30 @@ jobs:
           fi
 
           exit "${rc:-0}"
+
+      - name: Export flaky analytics (when enabled)
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ inputs.service_workdir }}
+        run: |
+          set -euo pipefail
+          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
+          FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
+
+          if [[ ! -f "${FLAKY_SH}" ]]; then
+            echo "❌ export-flaky-analytics.ts not found at: ${FLAKY_SH}"
+            echo "📁 Available scripts:"
+            ls -la "${BRIK_SCRIPTS}" || true
+            exit 1
+          fi
+
+          chmod +x "${FLAKY_SH}"
+          node "${FLAKY_SH}" \
+            --suite unit \
+            --audit-root "${GITHUB_WORKSPACE}/.audit" \
+            --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
+            --top-n 10 \
+            --write-md true \
+            --allow-missing-evaluation true
 
       - name: "Upload flaky evaluation artifact (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
