@@ -477,7 +477,7 @@ jobs:
           exit "${rc:-0}"
 
       - name: Export flaky analytics (when enabled)
-        if: ${{ env.FLAKY_DETECT == 'true' }}
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -493,9 +493,9 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
           node "${FLAKY_SH}" \
-            --suite integ \
-            --audit-root .audit \
-            --out-dir out/flaky \
+            --suite unit \
+            --audit-root "${GITHUB_WORKSPACE}/.audit" \
+            --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
             --top-n 10 \
             --write-md true \
             --allow-missing-evaluation true
