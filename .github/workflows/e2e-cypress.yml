@@ -505,7 +505,6 @@ jobs:
       # =============================================================================
       # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate evidence against policy-as-code
       # =============================================================================
-
       - name: "Select policy source (repo override -> central fallback)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         run: |
