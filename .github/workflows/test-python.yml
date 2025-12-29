@@ -478,6 +478,7 @@ jobs:
 
       - name: Export flaky analytics (when enabled)
         if: ${{ env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
           BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
@@ -497,6 +498,7 @@ jobs:
             --out-dir out/flaky \
             --top-n 10 \
             --write-md true
+
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
