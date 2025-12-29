@@ -18,11 +18,6 @@
  *   - .audit/YYYY-MM-DD/flaky/metadata.json        (run metadata)
  *   - out/flaky/flaky-summary.md                   (optional)
  *
- * Determinism principles:
- *   - Sorted directory traversal for history discovery
- *   - Stable sorting for grouped computations
- *   - Stable JSON formatting (2-space)
- *
  * CLI:
  *   node export-flaky-analytics.mjs \
  *     --suite integ \
@@ -188,7 +183,7 @@ function utcDateStamp(d = new Date()) {
 /**
  * Best-effort PR number extraction:
  * - Works if user passes --pr 42
- * - Or if branch looks like "refs/pull/42/merge" (rare in reusable workflows)
+ * - Or if branch looks like "refs/pull/42/merge"
  */
 function inferPrNumber(explicit) {
   if (explicit && /^\d+$/.test(explicit)) return parseInt(explicit, 10);
@@ -215,11 +210,7 @@ function normalizeClassification(raw, failRate) {
 
 /**
  * Find historical flaky-summary.json files under .audit/**flaky/flaky-summary.json
- * without requiring glob deps.
- *
- * Notes:
- *   - Deterministic traversal order: lexical sort.
- *   - Limits depth to avoid huge trees (default 8 levels).
+ * without glob deps.
  */
 function findHistoricalSummaries(auditRoot, maxDepth = 8) {
   /** @type {string[]} */
@@ -231,14 +222,13 @@ function findHistoricalSummaries(auditRoot, maxDepth = 8) {
     const entries = fs
       .readdirSync(dir, { withFileTypes: true })
       .sort((a, b) => a.name.localeCompare(b.name));
+
     for (const ent of entries) {
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
-        // quick skip for node_modules or huge folders
         if (ent.name === "node_modules" || ent.name === ".git") continue;
         walk(full, depth + 1);
       } else if (ent.isFile()) {
-        // match .../.audit/<date>/flaky/flaky-summary.json
         if (
           ent.name === "flaky-summary.json" &&
           full.includes(`${path.sep}flaky${path.sep}`)
@@ -257,19 +247,11 @@ function findHistoricalSummaries(auditRoot, maxDepth = 8) {
 function parseHistoricalFile(filePath) {
   const j = readJsonFile(filePath);
 
-  // Allow either:
-  //  1) array of rows
-  //  2) { summaries: [...] }
-  //  3) { summary: [...] }
   const arr = Array.isArray(j)
     ? j
-    : typeof j === "object" &&
-      j !== null &&
-      Array.isArray(j.summaries)
+    : typeof j === "object" && j !== null && Array.isArray(j.summaries)
     ? j.summaries
-    : typeof j === "object" &&
-      j !== null &&
-      Array.isArray(j.summary)
+    : typeof j === "object" && j !== null && Array.isArray(j.summary)
     ? j.summary
     : null;
 
@@ -279,8 +261,6 @@ function parseHistoricalFile(filePath) {
   const rows = [];
   for (const item of arr) {
     if (!item || typeof item !== "object") continue;
-
-    // Minimal required fields
     if (!item.test_name || !item.suite || !item.generated_at) continue;
 
     rows.push({
@@ -313,12 +293,11 @@ function parseHistoricalFile(filePath) {
 
 /**
  * Build current run summary rows from:
- *   out/flaky/summary.json      (attempts evidence)
- *   out/flaky/evaluation.json   (classification + key names)
+ *   out/flaky/summary.json      (optional)
+ *   out/flaky/evaluation.json   (required)
  *
- * Supports:
- *   - evaluation.json as a single object OR array of test objects.
- *   - summary.json attempt counts.
+ * Key fix:
+ *   - No mixing of `??` and `||` in a single expression.
  */
 function buildCurrentRunRows(params) {
   const summaryPath = path.join(params.outDir, "summary.json");
@@ -328,7 +307,6 @@ function buildCurrentRunRows(params) {
 
   const rerun = fs.existsSync(summaryPath) ? readJsonFile(summaryPath) : null;
   const evalRaw = readJsonFile(evalPath);
-
   const evalItems = Array.isArray(evalRaw) ? evalRaw : [evalRaw];
 
   /** @type {FlakySummaryRow[]} */
@@ -338,12 +316,12 @@ function buildCurrentRunRows(params) {
     const testName = String(item?.test_name ?? "unknown-test");
     const suite = String(item?.suite ?? params.suite);
 
-    // prefer evaluation counts, else rerun summary counts, else fallback
     const pass = Number(item?.pass_count ?? rerun?.pass_count ?? 0);
     const fail = Number(item?.fail_count ?? rerun?.fail_count ?? 0);
-    const total = Number(
-      item?.total ?? rerun?.total_attempts ?? (pass + fail) || 1
-    );
+
+    // FIX: compute totalRaw then fallback deterministically
+    const totalRaw = item?.total ?? rerun?.total_attempts ?? (pass + fail);
+    const total = Number((totalRaw ?? 1));
 
     const failRate =
       typeof item?.fail_rate === "number"
@@ -364,7 +342,7 @@ function buildCurrentRunRows(params) {
       total,
       fail_rate: Number(failRate.toFixed(6)),
       classification: cls,
-      first_seen: runAt, // overwritten later when merging history
+      first_seen: runAt,
       last_seen: runAt,
       generated_at: runAt,
     });
@@ -382,20 +360,7 @@ function filterWindow(rows, windowDays, now) {
   });
 }
 
-/**
- * Compute trends:
- *   - runs per test
- *   - avg_fail_rate
- *   - classification counts
- *   - top_n ranking score = avg_fail_rate * flaky_runs + (avg_fail_rate * 0.25 * consistently_failing_runs)
- *
- * Sorting is deterministic:
- *   - score desc
- *   - avg_fail_rate desc
- *   - flaky_runs desc
- *   - suite asc
- *   - test_name asc
- */
+/** Compute rolling trends deterministically. */
 function computeTrends(rows, windowDays, topN) {
   const now = new Date();
   const w = filterWindow(rows, windowDays, now);
@@ -422,7 +387,6 @@ function computeTrends(rows, windowDays, topN) {
   };
 
   for (const [, arr] of byKey.entries()) {
-    // stable order inside group
     arr.sort((a, b) => a.generated_at.localeCompare(b.generated_at));
 
     const suite = arr[0].suite;
@@ -455,7 +419,6 @@ function computeTrends(rows, windowDays, topN) {
     totals.informational_runs += infoRuns;
     totals.quarantine_candidate_runs += quarRuns;
 
-    // Ranking score: prioritize unstable patterns (flaky), but don’t ignore always-failing tests.
     const scoreRaw = avgFail * flakyRuns + avgFail * 0.25 * failRuns;
 
     tests.push({
@@ -494,10 +457,7 @@ function computeTrends(rows, windowDays, topN) {
   };
 }
 
-/**
- * Merge current run rows with historical rows to compute first_seen/last_seen per test.
- * This ensures the per-run summary includes continuity timestamps.
- */
+/** Hydrate first_seen/last_seen for current run from history. */
 function hydrateFirstLastSeen(current, history) {
   /** @type {Map<string, { first: string; last: string }>} */
   const byKey = new Map();
@@ -506,9 +466,8 @@ function hydrateFirstLastSeen(current, history) {
     const key = `${r.suite}::${r.test_name}`;
     const cur = byKey.get(key);
     const t = r.generated_at;
-    if (!cur) {
-      byKey.set(key, { first: t, last: t });
-    } else {
+    if (!cur) byKey.set(key, { first: t, last: t });
+    else {
       if (t < cur.first) cur.first = t;
       if (t > cur.last) cur.last = t;
     }
@@ -573,15 +532,9 @@ function renderMarkdown(params) {
   table(`Top ${params.topN} unstable tests (30 days)`, top30);
 
   lines.push(`## Recommendations`);
-  lines.push(
-    `- Prioritize fixing the top 3 tests in 30-day window (highest recurring instability).`
-  );
-  lines.push(
-    `- If a test is consistently failing (fail_rate=100%), treat it as a **broken contract**, not a flake.`
-  );
-  lines.push(
-    `- If flakiness clusters in one suite, investigate shared setup/teardown, clocks, data isolation, and parallel hazards.`
-  );
+  lines.push(`- Prioritize fixing the top 3 tests in 30-day window (highest recurring instability).`);
+  lines.push(`- If a test is consistently failing (fail_rate=100%), treat it as a **broken contract**, not a flake.`);
+  lines.push(`- If flakiness clusters in one suite, investigate shared setup/teardown, clocks, data isolation, and parallel hazards.`);
   lines.push(``);
 
   return lines.join("\n");
@@ -591,21 +544,18 @@ function renderMarkdown(params) {
 function main() {
   const args = parseArgs(process.argv);
 
-  const suite = String(args["suite"] ?? "integ").trim(); // unit|integ|e2e (free text ok)
+  const suite = String(args["suite"] ?? "integ").trim();
   const auditRoot = String(args["audit-root"] ?? ".audit").trim();
   const outDir = String(args["out-dir"] ?? "out/flaky").trim();
   const topN = clampInt(parseInt(args["top-n"] ?? "10", 10) || 10, 3, 50);
   const writeMd = toBool(args["write-md"], false);
   const pr = inferPrNumber(args["pr"]);
 
-  // Hard gate for governance: only run when explicitly enabled in workflow
-  // (workflows should set this to true only when FLAKY_DETECT=true)
   const requireEnabled = toBool(args["require-enabled"], true);
   const flakyDetectEnv = String(process.env.FLAKY_DETECT ?? "false").toLowerCase();
   const flakyEnabled = flakyDetectEnv === "true" || flakyDetectEnv === "1";
 
   if (requireEnabled && !flakyEnabled) {
-    // Deterministic no-op exit: do not write anything.
     console.log("[FLAKY-ANALYTICS] FLAKY_DETECT is not enabled; skipping export.");
     process.exit(0);
   }
@@ -628,10 +578,8 @@ function main() {
     generated_at: generatedAt,
   };
 
-  // Build current run summary rows
   const currentRaw = buildCurrentRunRows({ suite, outDir, metadata });
 
-  // Load historical summaries (best-effort)
   const histPaths = findHistoricalSummaries(auditRoot);
   /** @type {FlakySummaryRow[]} */
   const history = [];
@@ -639,22 +587,16 @@ function main() {
     try {
       history.push(...parseHistoricalFile(p));
     } catch (e) {
-      console.warn(
-        `[FLAKY-ANALYTICS] WARN: could not parse ${p}: ${e?.message ?? String(e)}`
-      );
+      console.warn(`[FLAKY-ANALYTICS] WARN: could not parse ${p}: ${e?.message ?? String(e)}`);
     }
   }
 
-  // Merge first/last seen into current
   const current = hydrateFirstLastSeen(currentRaw, history);
-
-  // Compute trends on history + current (so this run contributes immediately)
   const all = [...history, ...current];
 
   const trends7 = computeTrends(all, 7, topN);
   const trends30 = computeTrends(all, 30, topN);
 
-  // Write to .audit/YYYY-MM-DD/flaky/
   const stamp = utcDateStamp(new Date());
   const auditDir = path.join(auditRoot, stamp, "flaky");
 
@@ -662,24 +604,14 @@ function main() {
   const trendsPath = path.join(auditDir, "flaky-trends.json");
   const metaPath = path.join(auditDir, "metadata.json");
 
-  // Summary should be per-run; keep it small and auditable.
   writeJsonFile(summaryPath, current);
-
-  // Trends: include both windows in one file for convenience (still deterministic).
   writeJsonFile(trendsPath, { trends7, trends30 });
-
   writeJsonFile(metaPath, metadata);
 
   let mdPath = null;
   if (writeMd) {
     mdPath = path.join(outDir, "flaky-summary.md");
-    const md = renderMarkdown({
-      suite,
-      current,
-      trends7,
-      trends30,
-      topN,
-    });
+    const md = renderMarkdown({ suite, current, trends7, trends30, topN });
     writeTextFile(mdPath, md);
   }
 
