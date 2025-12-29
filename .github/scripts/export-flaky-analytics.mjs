@@ -3,33 +3,37 @@
  * BrikByteOS — Flaky Analytics Exporter (Node ESM)
  * ------------------------------------------------
  * Purpose:
- *   - Read current run flaky evaluation evidence from `out/flaky/*`
- *   - Aggregate historical summaries under `.audit/**flaky/flaky-summary.json`
+ *   - Read current run flaky evaluation evidence (evaluation.json) + rerun summary (summary*.json)
+ *   - Aggregate historical per-run summaries under `.audit/**flaky/flaky-summary.json`
  *   - Emit auditable JSON artifacts under `.audit/YYYY-MM-DD/flaky/`
  *   - Optionally emit a human-readable Markdown summary under `out/flaky/flaky-summary.md`
  *
  * Inputs (current run):
- *   - out/flaky/evaluation.json   (required)
- *   - out/flaky/summary.json      (optional)
+ *   - evaluation.json            (required unless --allow-missing-evaluation true)
+ *   - summary.json OR summary.normalized.json OR labeled summary (optional)
  *
  * Outputs:
- *   - .audit/YYYY-MM-DD/flaky/flaky-summary.json   (per-run, small)
+ *   - .audit/YYYY-MM-DD/flaky/flaky-summary.json   (per-run)
  *   - .audit/YYYY-MM-DD/flaky/flaky-trends.json    (7/30 day trends)
  *   - .audit/YYYY-MM-DD/flaky/metadata.json        (run metadata)
  *   - out/flaky/flaky-summary.md                   (optional)
  *
  * CLI:
  *   node export-flaky-analytics.mjs \
- *     --suite integ \
+ *     --suite unit \
  *     --audit-root .audit \
  *     --out-dir out/flaky \
+ *     --input out/flaky/summary.normalized.json \
+ *     --evaluation out/flaky/evaluation.json \
  *     --top-n 10 \
  *     --write-md true \
  *     --require-enabled true \
+ *     --allow-missing-evaluation true \
  *     --pr 42
  *
- * Governance gate:
- *   - By default (--require-enabled true), script no-ops unless env FLAKY_DETECT=true|1
+ * Notes:
+ * - This exporter is intentionally deterministic: stable sorting, stable output.
+ * - Suite-level reruns will emit test_name="(suite-level)" (NOT "unknown-test").
  */
 
 import fs from "node:fs";
@@ -103,8 +107,7 @@ import path from "node:path";
 /**
  * @typedef {Object} ExportResult
  * @property {FlakySummaryRow[]} summary
- * @property {FlakyTrends} trends7
- * @property {FlakyTrends} trends30
+ * @property {{ trends7: FlakyTrends, trends30: FlakyTrends }} trends
  * @property {RunMetadata} metadata
  * @property {string|null=} mdSummaryPath
  */
@@ -147,6 +150,7 @@ function readJsonFile(filePath) {
  * - throws if exists but invalid JSON (signal corruption)
  */
 function readJsonFileOptional(filePath) {
+  if (!filePath) return null;
   if (!fs.existsSync(filePath)) return null;
   const raw = fs.readFileSync(filePath, "utf-8");
   try {
@@ -224,15 +228,16 @@ function normalizeClassification(raw, failRate) {
 
 /**
  * Find historical flaky-summary.json files under .audit/**flaky/flaky-summary.json
- * without glob deps.
+ * without 
  */
-function findHistoricalSummaries(auditRoot, maxDepth = 8) {
+function findHistoricalSummaries(auditRoot, maxDepth = 10) {
   /** @type {string[]} */
   const results = [];
   if (!fs.existsSync(auditRoot)) return results;
 
   function walk(dir, depth) {
     if (depth > maxDepth) return;
+
     const entries = fs
       .readdirSync(dir, { withFileTypes: true })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -264,10 +269,10 @@ function parseHistoricalFile(filePath) {
   const arr = Array.isArray(j)
     ? j
     : typeof j === "object" && j !== null && Array.isArray(j.summaries)
-    ? j.summaries
-    : typeof j === "object" && j !== null && Array.isArray(j.summary)
-    ? j.summary
-    : null;
+      ? j.summaries
+      : typeof j === "object" && j !== null && Array.isArray(j.summary)
+        ? j.summary
+        : null;
 
   if (!arr) return [];
 
@@ -275,27 +280,30 @@ function parseHistoricalFile(filePath) {
   const rows = [];
   for (const item of arr) {
     if (!item || typeof item !== "object") continue;
-    if (!item.test_name || !item.suite || !item.generated_at) continue;
+    if (!item.suite || !item.generated_at) continue;
+
+    // test_name is required for per-key aggregation; for suite-level evidence we still set it.
+    const testName = String(item.test_name ?? "(suite-level)");
+    if (!testName) continue;
+
+    const pass = Number(item.pass_count ?? 0);
+    const fail = Number(item.fail_count ?? 0);
+    const total = Number(
+      item.total ??
+        Math.max(1, pass + fail)
+    );
+    const failRate = Number(item.fail_rate ?? (total > 0 ? fail / total : 0));
 
     rows.push({
       run_id: String(item.run_id ?? "unknown"),
       repo: String(item.repo ?? "unknown"),
       suite: String(item.suite),
-      test_name: String(item.test_name),
-      pass_count: Number(item.pass_count ?? 0),
-      fail_count: Number(item.fail_count ?? 0),
-      total: Number(
-        item.total ??
-          Math.max(
-            1,
-            Number(item.pass_count ?? 0) + Number(item.fail_count ?? 0)
-          )
-      ),
-      fail_rate: Number(item.fail_rate ?? 0),
-      classification: normalizeClassification(
-        item.classification,
-        Number(item.fail_rate ?? 0)
-      ),
+      test_name: testName,
+      pass_count: pass,
+      fail_count: fail,
+      total,
+      fail_rate: Number(failRate.toFixed(6)),
+      classification: normalizeClassification(item.classification, failRate),
       first_seen: String(item.first_seen ?? item.generated_at),
       last_seen: String(item.last_seen ?? item.generated_at),
       generated_at: String(item.generated_at),
@@ -307,19 +315,18 @@ function parseHistoricalFile(filePath) {
 
 /**
  * Build current run summary rows from:
- *   out/flaky/summary.json      (optional)
- *   out/flaky/evaluation.json   (optional if allowMissingEvaluation=true)
+ *   - summaryPath (optional): summary.json OR summary.normalized.json
+ *   - evaluationPath (optional): evaluation.json
+ *
+ * If evaluation is missing:
+ *   - returns [] (caller may still write empty audit artifacts for traceability)
  */
 function buildCurrentRunRows(params) {
-  const summaryPath = path.join(params.outDir, "summary.json");
-  const evalPath = path.join(params.outDir, "evaluation.json");
-
   const runAt = params.metadata.generated_at;
 
-  const rerun = fs.existsSync(summaryPath) ? readJsonFileOptional(summaryPath) : null;
-  const evalRaw = readJsonFileOptional(evalPath);
+  const rerun = readJsonFileOptional(params.summaryPath);
+  const evalRaw = readJsonFileOptional(params.evaluationPath);
 
-  // If evaluation is missing, treat as "no data this shard/run"
   if (evalRaw == null) return [];
 
   const evalItems = Array.isArray(evalRaw) ? evalRaw : [evalRaw];
@@ -328,22 +335,30 @@ function buildCurrentRunRows(params) {
   const rows = [];
 
   for (const item of evalItems) {
-    const testName = String(item?.test_name ?? "unknown-test");
-    const suite = String(item?.suite ?? params.suite);
+    const suite = String(item?.suite ?? params.suite ?? "unknown").trim() || "unknown";
 
+    // IMPORTANT: suite-level evidence should not emit "unknown-test"
+    const testName = String(item?.test_name ?? "(suite-level)");
+
+    // prefer evaluation counts, else summary.normalized.json fields, else 0
     const pass = Number(item?.pass_count ?? rerun?.pass_count ?? 0);
     const fail = Number(item?.fail_count ?? rerun?.fail_count ?? 0);
 
-    // IMPORTANT: do not mix `??` and `||` in one expression
-    const totalRaw = item?.total ?? rerun?.total_attempts ?? (pass + fail);
+    // Support normalized or legacy shapes
+    const totalRaw =
+      item?.total ??
+      rerun?.total_attempts ??
+      rerun?.total ??
+      (pass + fail);
+
     const total = Number(totalRaw ?? 1);
 
     const failRate =
       typeof item?.fail_rate === "number"
         ? item.fail_rate
         : total > 0
-        ? fail / total
-        : 0;
+          ? fail / total
+          : 0;
 
     const cls = normalizeClassification(item?.classification, failRate);
 
@@ -355,7 +370,7 @@ function buildCurrentRunRows(params) {
       pass_count: pass,
       fail_count: fail,
       total,
-      fail_rate: Number(failRate.toFixed(6)),
+      fail_rate: Number(Number(failRate).toFixed(6)),
       classification: cls,
       first_seen: runAt,
       last_seen: runAt,
@@ -402,6 +417,7 @@ function computeTrends(rows, windowDays, topN) {
   };
 
   for (const [, arr] of byKey.entries()) {
+    // stable ordering
     arr.sort((a, b) => a.generated_at.localeCompare(b.generated_at));
 
     const suite = arr[0].suite;
@@ -409,7 +425,7 @@ function computeTrends(rows, windowDays, topN) {
 
     const runs = arr.length;
     const avgFail =
-      arr.reduce((s, r) => s + r.fail_rate, 0) / Math.max(1, runs);
+      arr.reduce((s, r) => s + Number(r.fail_rate ?? 0), 0) / Math.max(1, runs);
 
     let flakyRuns = 0;
     let failRuns = 0;
@@ -434,6 +450,7 @@ function computeTrends(rows, windowDays, topN) {
     totals.informational_runs += infoRuns;
     totals.quarantine_candidate_runs += quarRuns;
 
+    // Ranking score: prefer recurring flake; then consistent fails (weighted)
     const scoreRaw = avgFail * flakyRuns + avgFail * 0.25 * failRuns;
 
     tests.push({
@@ -454,8 +471,7 @@ function computeTrends(rows, windowDays, topN) {
 
   tests.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    if (b.avg_fail_rate !== a.avg_fail_rate)
-      return b.avg_fail_rate - a.avg_fail_rate;
+    if (b.avg_fail_rate !== a.avg_fail_rate) return b.avg_fail_rate - a.avg_fail_rate;
     if (b.flaky_runs !== a.flaky_runs) return b.flaky_runs - a.flaky_runs;
     if (a.suite !== b.suite) return a.suite.localeCompare(b.suite);
     return a.test_name.localeCompare(b.test_name);
@@ -563,6 +579,14 @@ function renderMarkdown(params) {
   return lines.join("\n");
 }
 
+/** Resolve absolute-ish path deterministically. */
+function resolvePathMaybe(baseDir, p) {
+  if (!p) return "";
+  // If already absolute, keep; else resolve relative to baseDir
+  if (path.isAbsolute(p)) return p;
+  return path.resolve(baseDir, p);
+}
+
 /** Main entrypoint. */
 function main() {
   const args = parseArgs(process.argv);
@@ -605,22 +629,42 @@ function main() {
     generated_at: generatedAt,
   };
 
-  // Determine if evaluation exists BEFORE building rows
-  const evalPath = path.join(outDir, "evaluation.json");
-  const evaluationExists = fs.existsSync(evalPath);
+  // NEW: support explicit --input and --evaluation
+  // Base: resolve relative paths against CWD to be deterministic in GH Actions
+  const cwd = process.cwd();
+  const inputArg = args["input"] ? String(args["input"]).trim() : "";
+  const evaluationArg = args["evaluation"] ? String(args["evaluation"]).trim() : "";
+
+  const effectiveSummaryPath = inputArg
+    ? resolvePathMaybe(cwd, inputArg)
+    : path.join(outDir, "summary.json"); // legacy default
+
+  const effectiveEvalPath = evaluationArg
+    ? resolvePathMaybe(cwd, evaluationArg)
+    : path.join(outDir, "evaluation.json"); // legacy default
+
+  const evaluationExists = fs.existsSync(effectiveEvalPath);
 
   if (!evaluationExists && requireEvaluation) {
-    throw new Error(`[FLAKY-ANALYTICS] evaluation.json is required but missing at: ${evalPath}`);
+    throw new Error(
+      `[FLAKY-ANALYTICS] evaluation.json is required but missing at: ${effectiveEvalPath}`
+    );
   }
 
   if (!evaluationExists && !allowMissingEval) {
     throw new Error(
-      `[FLAKY-ANALYTICS] evaluation.json missing at: ${evalPath} (set --allow-missing-evaluation true to no-op)`
+      `[FLAKY-ANALYTICS] evaluation.json missing at: ${effectiveEvalPath} (set --allow-missing-evaluation true to no-op)`
     );
   }
 
   // Load current rows (returns [] if evaluation missing)
-  const currentRaw = buildCurrentRunRows({ suite, outDir, metadata });
+  const currentRaw = buildCurrentRunRows({
+    suite,
+    outDir,
+    metadata,
+    summaryPath: effectiveSummaryPath,
+    evaluationPath: effectiveEvalPath,
+  });
 
   // Load historical
   const histPaths = findHistoricalSummaries(auditRoot);
@@ -645,14 +689,14 @@ function main() {
   const stamp = utcDateStamp(new Date());
   const auditDir = path.join(auditRoot, stamp, "flaky");
 
-  const summaryPath = path.join(auditDir, "flaky-summary.json");
-  const trendsPath = path.join(auditDir, "flaky-trends.json");
-  const metaPath = path.join(auditDir, "metadata.json");
+  const summaryOutPath = path.join(auditDir, "flaky-summary.json");
+  const trendsOutPath = path.join(auditDir, "flaky-trends.json");
+  const metaOutPath = path.join(auditDir, "metadata.json");
 
   // Always write audit artifacts (even if empty) for traceability
-  writeJsonFile(summaryPath, current);
-  writeJsonFile(trendsPath, { trends7, trends30 });
-  writeJsonFile(metaPath, metadata);
+  writeJsonFile(summaryOutPath, current);
+  writeJsonFile(trendsOutPath, { trends7, trends30 });
+  writeJsonFile(metaOutPath, metadata);
 
   let mdPath = null;
   if (writeMd) {
@@ -663,18 +707,18 @@ function main() {
 
   if (!evaluationExists) {
     console.log(
-      `[FLAKY-ANALYTICS] ℹ️ No evaluation.json found at ${evalPath} (empty shard or no evidence). Wrote empty audit artifacts.`
+      `[FLAKY-ANALYTICS] ℹ️ No evaluation.json found at ${effectiveEvalPath} (empty shard or no evidence). Wrote empty audit artifacts.`
     );
   }
 
   console.log(`[FLAKY-ANALYTICS] ✅ Exported:`);
-  console.log(`- ${summaryPath}`);
-  console.log(`- ${trendsPath}`);
-  console.log(`- ${metaPath}`);
+  console.log(`- ${summaryOutPath}`);
+  console.log(`- ${trendsOutPath}`);
+  console.log(`- ${metaOutPath}`);
   if (mdPath) console.log(`- ${mdPath}`);
 
   /** @type {ExportResult} */
-  const result = { summary: current, trends7, trends30, metadata, mdSummaryPath: mdPath };
+  const result = { summary: current, trends: { trends7, trends30 }, metadata, mdSummaryPath: mdPath };
   return result;
 }
 
