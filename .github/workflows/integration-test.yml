@@ -744,11 +744,11 @@ jobs:
         working-directory: ${{ env.SERVICE_WORKDIR }}
         run: |
           set -euo pipefail
-          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
+          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/org-dotgithub/.github/scripts"
           FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
 
           if [[ ! -f "${FLAKY_SH}" ]]; then
-            echo "❌ export-flaky-analytics.ts not found at: ${FLAKY_SH}"
+            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_SH}"
             echo "📁 Available scripts:"
             ls -la "${BRIK_SCRIPTS}" || true
             exit 1

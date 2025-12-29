@@ -620,7 +620,7 @@ jobs:
           FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
 
           if [[ ! -f "${FLAKY_SH}" ]]; then
-            echo "❌ export-flaky-analytics.ts not found at: ${FLAKY_SH}"
+            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_SH}"
             echo "📁 Available scripts:"
             ls -la "${BRIK_SCRIPTS}" || true
             exit 1
