@@ -7,7 +7,8 @@
 #   - Evaluate against policy with optional enforcement
 #   - Upload flaky-eval artifact per shard
 #
-# Extra hardening (avoid python-unit hurdles):
+# Extra hardening:
+#   - Setup Node (20) explicitly for evaluator stability
 #   - Ensures flaky wrapper evidence is normalized BEFORE evaluation
 #   - Runs evaluator from repo-root with local js-yaml + tsx installed
 #   - Doesn't break if evidence missing (e.g. wrapper never ran due to earlier failure)
@@ -550,7 +551,7 @@ jobs:
           mkdir -p "${LOG_DIR}"
 
           docker logs app > "${LOG_DIR}/app.log" 2>&1 || true
-          docker logs db > "${LOG_DIR}/db.log" 2>&1 || true
+          docker logs db  > "${LOG_DIR}/db.log" 2>&1 || true
 
           if docker ps -a --format '{{.Names}}' | grep -q '^cache$'; then
             docker logs cache > "${LOG_DIR}/cache.log" 2>&1 || true
@@ -569,6 +570,12 @@ jobs:
       # =============================================================================
       # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate evidence against policy-as-code
       # =============================================================================
+
+      - name: "Setup Node (for flaky evaluator)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: "Select policy source (repo override -> central fallback)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
@@ -597,7 +604,7 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      - name: "Install evaluator deps (repo-root) [js-yaml + tsx]"
+      - name: "Install evaluator deps (repo-root, pinned) [js-yaml + tsx]"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
         env:
@@ -620,7 +627,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Evidence is stored inside service workdir
           EXPORT_DIR="${GITHUB_WORKSPACE}/${SERVICE_WORKDIR}/${FLAKY_EXPORT_PATH}"
           EXPECTED="${EXPORT_DIR}/summary.json"
           LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-integration-generic}.summary.json"
@@ -687,9 +693,6 @@ jobs:
           print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
           PY
 
-          echo "=== normalized summary ==="
-          cat "${OUT_NORM}"
-
       - name: "Evaluate flaky policy (use normalized summary)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         run: |
@@ -739,24 +742,22 @@ jobs:
 
           exit "${rc:-0}"
 
-      - name: Export flaky analytics (when enabled)
+      - name: "Export flaky analytics (when enabled)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.SERVICE_WORKDIR }}
         run: |
           set -euo pipefail
-          BRIK_SCRIPTS="${GITHUB_WORKSPACE}/org-dotgithub/.github/scripts"
-          FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
+          FLAKY_JS="${GITHUB_WORKSPACE}/.github/scripts/export-flaky-analytics.mjs"
 
-          if [[ ! -f "${FLAKY_SH}" ]]; then
-            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_SH}"
-            echo "📁 Available scripts:"
-            ls -la "${BRIK_SCRIPTS}" || true
+          if [[ ! -f "${FLAKY_JS}" ]]; then
+            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_JS}"
+            ls -la "${GITHUB_WORKSPACE}/.github/scripts" || true
             exit 1
           fi
 
-          chmod +x "${FLAKY_SH}"
-          node "${FLAKY_SH}" \
-            --suite integ \
+          chmod +x "${FLAKY_JS}"
+          node "${FLAKY_JS}" \
+            --suite integration \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
             --top-n 10 \

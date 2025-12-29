@@ -1,15 +1,18 @@
 # =============================================================================
 # BrikByteOS — Reusable .NET Unit Test Workflow (with governed sharding)
 # -----------------------------------------------------------------------------
-# PIPE-FLAKY-POLICY-CONFIG-002 wiring added:
+# PIPE-FLAKY-POLICY-CONFIG-002 wiring:
 #   - Select policy (repo override -> central fallback)
-#   - Normalize flaky summary to satisfy evaluator contract
+#   - Normalize flaky summary to evaluator contract
 #   - Evaluate using normalized summary (prevents total_attempts=0 hurdle)
 #   - Upload flaky-eval artifact per shard
 #
-# Extra hardening (avoid Python hurdles):
+# Extra hardening:
+#   - Setup Node (20) explicitly for evaluator stability
 #   - Run evaluator from repo-root so Node deps resolve
 #   - Install js-yaml + tsx locally (no reliance on repo’s node_modules)
+#   - Upload junit-dotnet-shard* and flaky-audit-dotnet-shard* when flaky enabled
+#     (merge/report jobs won’t miss evidence)
 # =============================================================================
 name: "BrikByteOS — .NET Unit Tests"
 
@@ -110,7 +113,7 @@ jobs:
     outputs:
       matrix_json: ${{ steps.matrix.outputs.matrix_json }}
     steps:
-      - name: Checkout repository
+      - name: "Checkout repository"
         uses: actions/checkout@v4
 
       - name: "Compute matrix plan (unit)"
@@ -142,7 +145,7 @@ jobs:
       DOTNET_VERSION: ${{ inputs.dotnet-version != '' && inputs.dotnet-version || '8.0.x' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
-      # shard metadata (deterministic) — 0-based
+      # shard metadata — 0-based
       SHARD_INDEX: ${{ matrix.shard }}
       SHARD_TOTAL: ${{ strategy.job-total }}
 
@@ -161,10 +164,10 @@ jobs:
       FORCE_COLOR: "0"
 
     steps:
-      - name: Checkout repository
+      - name: "Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Verify .NET test layout
+      - name: "Verify .NET test layout"
         run: |
           set -euo pipefail
           echo "📁 Working directory: ${WORKING_DIRECTORY}"
@@ -190,7 +193,7 @@ jobs:
             fi
           fi
 
-      - name: Setup .NET
+      - name: "Setup .NET"
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
@@ -201,7 +204,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Compute shard env (1-based for Makefile)
+      - name: "Compute shard env (1-based for Makefile)"
         shell: bash
         run: |
           set -euo pipefail
@@ -220,21 +223,19 @@ jobs:
       # -----------------------------------------------------------------------
       # Parallel runner — produce deterministic per-shard selection file
       # -----------------------------------------------------------------------
-      - name: Parallel runner (serial/static/dynamic)
+      - name: "Parallel runner (serial/static/dynamic)"
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
           parallel_enabled: ${{ env.PARALLEL }}
           parallel_mode: ${{ env.PARALLEL_MODE }}
 
-          # 0-based shard contract (matches matrix-plan)
-          shard_index: ${{ matrix.shard }}
+          shard_index: ${{ matrix.shard }}          # 0-based
           shard_total: ${{ strategy.job-total }}
 
           selection_mode: "file-split"
           working_directory: ${{ env.WORKING_DIRECTORY }}
 
-          # Prefer sharding by test projects; include sln as fallback
           test_glob: |
             **/*Tests.csproj
             **/*.Tests.csproj
@@ -247,7 +248,7 @@ jobs:
       # -----------------------------------------------------------------------
       # Shared scripts (flaky-rerun.sh + evaluator + central policy)
       # -----------------------------------------------------------------------
-      - name: Checkout BrikByte shared scripts
+      - name: "Checkout BrikByte shared scripts"
         uses: actions/checkout@v4
         with:
           repository: BrikByte-Studios/.github
@@ -257,7 +258,7 @@ jobs:
       # -----------------------------------------------------------------------
       # Run unit tests via `make test` (wired through flaky-rerun.sh)
       # -----------------------------------------------------------------------
-      - name: Run .NET unit tests (make test) with flaky reruns (opt-in)
+      - name: "Run .NET unit tests (make test) with flaky reruns (opt-in)"
         if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -298,7 +299,6 @@ jobs:
           fi
           chmod +x "${FLAKY_SH}"
 
-          # Run through wrapper (opt-in via FLAKY_DETECT)
           "${FLAKY_SH}" -- make test
 
           END_TS=$(date +%s)
@@ -307,7 +307,7 @@ jobs:
           echo "✅ [TEST] Status       : COMPLETED"
           echo "⏱  [TEST] Duration     : ${DURATION} seconds"
 
-      - name: Empty shard (nothing to run)
+      - name: "Empty shard (nothing to run)"
         if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -319,13 +319,17 @@ jobs:
       # =============================================================================
       # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate evidence against policy-as-code
       # =============================================================================
+      - name: "Setup Node (for flaky evaluator)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: "Select policy source (repo override -> central fallback)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-
           mkdir -p .tmp-flaky-eval
 
           REPO_POLICY="${GITHUB_WORKSPACE}/${FLAKY_POLICY_PATH}"
@@ -348,7 +352,7 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      - name: "Install evaluator deps (repo-root) [js-yaml + tsx]"
+      - name: "Install evaluator deps (repo-root, pinned) [js-yaml + tsx]"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
         env:
@@ -418,6 +422,7 @@ jobs:
                 rc = int(a.get("exit_code", 0) or 0)
                 s = "pass" if rc == 0 else "fail"
                 a["status"] = s
+
               if s in ("pass", "passed", "ok", "success"):
                 pass_count += 1
               elif s in ("fail", "failed", "error"):
@@ -437,9 +442,6 @@ jobs:
           out_norm.write_text(json.dumps(data, indent=2), encoding="utf-8")
           print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
           PY
-
-          echo "=== normalized summary ==="
-          cat "${OUT_NORM}"
 
       - name: "Evaluate flaky policy (use normalized summary)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
@@ -465,7 +467,6 @@ jobs:
 
           if [[ ! -f "${IN_NORM}" ]]; then
             echo "ℹ️ [FLAKY] Normalized summary missing → skipping evaluation (non-blocking)."
-            ls -la "${EXPORT_DIR}" || true
             exit 0
           fi
 
@@ -490,35 +491,55 @@ jobs:
 
           exit "${rc:-0}"
 
-      - name: Export flaky analytics (when enabled)
+      - name: "Export flaky analytics (when enabled)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
           BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
-          FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
+          FLAKY_JS="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
 
-          if [[ ! -f "${FLAKY_SH}" ]]; then
-            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_SH}"
-            echo "📁 Available scripts:"
+          if [[ ! -f "${FLAKY_JS}" ]]; then
+            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_JS}"
             ls -la "${BRIK_SCRIPTS}" || true
             exit 1
           fi
 
-          chmod +x "${FLAKY_SH}"
-          node "${FLAKY_SH}" \
-            --suite unit \
+          chmod +x "${FLAKY_JS}"
+          node "${FLAKY_JS}" \
+            --suite dotnet-unit \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
             --top-n 10 \
             --write-md true \
             --allow-missing-evaluation true
 
+      - name: "Upload flaky audit ledger (.audit) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-audit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            .audit/**/flaky/*.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: "Upload JUnit (for flaky report) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: flaky-eval-dotnet-shard${{ env.SHARD_INDEX }}
+          name: flaky-eval-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
@@ -528,7 +549,7 @@ jobs:
       # -----------------------------------------------------------------------
       # Detect whether this shard produced Coverlet JSON
       # -----------------------------------------------------------------------
-      - name: Detect Coverlet JSON presence
+      - name: "Detect Coverlet JSON presence"
         id: covdetect
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -546,13 +567,13 @@ jobs:
             echo "✅ Found Coverlet JSON: ${FOUND}"
           else
             echo "has_coverage=false" >> "$GITHUB_OUTPUT"
-            echo "⚠️ No Coverlet JSON found for this shard or coverage not enabled."
+            echo "ℹ️ No Coverlet JSON found for this shard (coverage may be disabled or empty shard)."
           fi
 
       # -----------------------------------------------------------------------
       # Normalize coverage to out/coverage.json (summary.line)
       # -----------------------------------------------------------------------
-      - name: Ensure summary.line is set in out/coverage.json (.NET / Coverlet)
+      - name: "Normalize coverage → out/coverage.json (.NET / Coverlet)"
         if: steps.covdetect.outputs.has_coverage == 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         env:
@@ -613,7 +634,7 @@ jobs:
           echo "✅ out/coverage.json:"
           cat out/coverage.json
 
-      - name: Detect out/coverage.json presence
+      - name: "Detect out/coverage.json presence"
         id: covjson
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -627,11 +648,11 @@ jobs:
       # -----------------------------------------------------------------------
       # Upload artifacts
       # -----------------------------------------------------------------------
-      - name: Upload .NET coverage artifacts (per shard)
+      - name: "Upload .NET coverage artifacts (per shard)"
         if: steps.covjson.outputs.has_covjson == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-dotnet-shard${{ env.SHARD_INDEX }}
+          name: coverage-dotnet-shard${{ matrix.shard }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
@@ -643,11 +664,11 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-      - name: Upload flaky evidence (always)
+      - name: "Upload flaky evidence (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: flaky-dotnet-shard${{ env.SHARD_INDEX }}
+          name: flaky-dotnet-shard${{ matrix.shard }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
