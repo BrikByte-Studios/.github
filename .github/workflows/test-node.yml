@@ -1,12 +1,19 @@
 # =============================================================================
-# BrikByteOS — Reusable Node.js Unit Test Workflow (with governed matrix-plan)
+# BrikByteOS — Reusable Node.js Unit Test Workflow (wired like Python)
 # -----------------------------------------------------------------------------
-# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
+# Mirrors: BrikByteOS — Python Unit Tests wiring (plan -> shard -> flaky rerun ->
+# policy eval -> analytics export -> artifacts)
 #
-# Adds:
-#   - Deterministic shards via BrikPipe matrix-plan (unit)
-#   - Safe-by-default shard caps (clamped by parallel-matrix.yml in .github repo)
-#   - Per-shard coverage artifact naming to support merge later
+# Contract:
+# - Expects Makefile with `make test`
+# - Node project has package.json
+# - Unit tests discoverable under tests/unit/** or project runner honors TEST_ITEMS_FILE
+#
+# Key hurdles avoided:
+# - Evidence file naming drift: summary.json vs *.summary.json -> robust resolver
+# - total_attempts mismatch -> normalized summary.normalized.json always created
+# - js-yaml resolution -> deps installed at repo-root, evaluator run from stable CWD
+# - empty shard -> evaluation/analytics safely no-op (allow-missing-evaluation)
 # =============================================================================
 name: "BrikByteOS — Node.js Unit Tests"
 
@@ -115,6 +122,8 @@ jobs:
           test_type: unit
           config_path: ${{ inputs.matrix_config_path }}
           override_shards: ${{ inputs.override_shards }}
+          browsers: ""
+          items: ""
 
   # ----------------------------------------------------------------------------
   # TEST: shard matrix
@@ -133,11 +142,11 @@ jobs:
       NODE_VERSION: ${{ inputs.node-version != '' && inputs.node-version || '20' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
-      # Shard contract (consumed by your Makefile/test runner when implemented)
-      SHARD_INDEX: ${{ matrix.shard }}              # 0-based
+      # Shard contract (0-based + total)
+      SHARD_INDEX: ${{ matrix.shard }}
       SHARD_TOTAL: ${{ strategy.job-total }}
 
-      # Optional generic contract (if you want to standardize across languages).
+      # Optional generic contract
       E2E_SHARD: ${{ matrix.shard }}
       E2E_SHARD_TOTAL: ${{ strategy.job-total }}
 
@@ -159,13 +168,13 @@ jobs:
       # -----------------------------------------------------------------------
       # 1) Checkout repository
       # -----------------------------------------------------------------------
-      - name: Checkout repository
+      - name: "Checkout repository"
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
       # 2) Verify Node project layout
       # -----------------------------------------------------------------------
-      - name: Verify Node test layout
+      - name: "Verify Node test layout"
         run: |
           set -euo pipefail
           echo "📁 Working directory: ${WORKING_DIRECTORY}"
@@ -189,13 +198,13 @@ jobs:
       # -----------------------------------------------------------------------
       # 3) Setup Node.js runtime
       # -----------------------------------------------------------------------
-      - name: Setup Node.js
+      - name: "Setup Node.js"
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       # -----------------------------------------------------------------------
-      # 4) Cache deps.
+      # 4) Cache deps
       # -----------------------------------------------------------------------
       - name: "Cache Node dependencies (npm / Yarn / pnpm)"
         uses: BrikByte-Studios/.github/.github/actions/cache-node-deps@main
@@ -203,16 +212,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Compute shard env (1-based for Makefile)
+      # -----------------------------------------------------------------------
+      # 5) Compute shard env (1-based for Makefile)
+      # -----------------------------------------------------------------------
+      - name: "Compute shard env (1-based for Makefile)"
         shell: bash
         run: |
           set -euo pipefail
-
-          # matrix.shard is 0-based
           SHARD0="${SHARD_INDEX}"
           TOTAL="${SHARD_TOTAL}"
-
-          # Convert to 1-based (for your Node Makefile/shard runner)
           SHARD1=$((SHARD0 + 1))
 
           {
@@ -222,7 +230,10 @@ jobs:
 
           echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
-      - name: Parallel runner (serial/static/dynamic)
+      # -----------------------------------------------------------------------
+      # 6) Parallel runner selection (file-split)
+      # -----------------------------------------------------------------------
+      - name: "Parallel runner (serial/static/dynamic)"
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
@@ -239,7 +250,7 @@ jobs:
       # -----------------------------------------------------------------------
       # Shared scripts repo (flaky-rerun.sh + evaluator sources + central policy)
       # -----------------------------------------------------------------------
-      - name: Checkout BrikByte shared scripts
+      - name: "Checkout BrikByte shared scripts"
         uses: actions/checkout@v4
         with:
           repository: BrikByte-Studios/.github
@@ -247,9 +258,9 @@ jobs:
           path: .brikbyte-github
 
       # -----------------------------------------------------------------------
-      # 5) Run unit tests via `make test` (wired through flaky-rerun.sh)
+      # Run unit tests via flaky-rerun.sh (2.5.1)
       # -----------------------------------------------------------------------
-      - name: Run Node.js unit tests (make test) with flaky reruns (opt-in)
+      - name: "Run Node.js unit tests (make test) with flaky reruns (opt-in)"
         if: steps.pr.outputs.is_empty_shard != 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -270,7 +281,7 @@ jobs:
           export UNIT_SHARD UNIT_SHARD_TOTAL
           export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
 
-          # Flaky wrapper config (used by flaky-rerun.sh)
+          # Wrapper config
           export FLAKY_DETECT="${FLAKY_DETECT:-false}"
           export FLAKY_RERUNS="${FLAKY_RERUNS:-3}"
           export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
@@ -287,20 +298,17 @@ jobs:
           fi
           chmod +x "${FLAKY_SH}"
 
-          # Run through wrapper (opt-in via FLAKY_DETECT)
           "${FLAKY_SH}" -- make test
 
           echo "✅ [TEST] Status        : COMPLETED"
 
-      - name: Empty shard (skip)
+      - name: "Empty shard (skip)"
         if: steps.pr.outputs.is_empty_shard == 'true'
         run: echo "ℹ️ Empty shard — nothing to run."
 
       # =============================================================================
       # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate evidence against policy-as-code
       # =============================================================================
-
-      # Node is already set up above, so no extra setup-node step needed here.
 
       - name: "Select policy source (repo override -> central fallback)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
@@ -330,8 +338,7 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      # Avoid “Cannot find module 'js-yaml'”:
-      # Install deps at repo root so tsx + require() resolve regardless of CWD.
+      # Fix module resolution: install at repo-root and run evaluator from stable CWD
       - name: "Install evaluator deps (repo-root, pinned) [js-yaml + tsx]"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
@@ -350,9 +357,8 @@ jobs:
           npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
           echo "✅ deps installed into repo-root node_modules"
 
-      # Avoid “Invalid summary: total_attempts must equal fail_count + pass_count”:
-      # Normalize wrapper output to evaluator contract.
-      - name: "Normalize flaky evidence → summary.normalized.json"
+      # Normalize wrapper output to evaluator contract (same resolver strategy as Python)
+      - name: "Normalize flaky summary (derive counts from exit_code)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -375,89 +381,86 @@ jobs:
 
           if [[ -z "${EVIDENCE}" ]]; then
             echo "ℹ️ [FLAKY] No evidence found → skipping normalization."
-            ls -la "${EXPORT_DIR}" || true
             exit 0
           fi
 
           OUT_NORM="${EXPORT_DIR}/summary.normalized.json"
           echo "🔧 [FLAKY] Normalizing: ${EVIDENCE} -> ${OUT_NORM}"
 
-          python - <<'PY'
-          import json
+          EVIDENCE_PATH="${EVIDENCE}" OUT_NORM_PATH="${OUT_NORM}" python - << 'PY'
+          import json, os
           from pathlib import Path
-          import os
 
-          evidence = Path(os.environ["EVIDENCE"])
-          out_norm = Path(os.environ["OUT_NORM"])
+          evidence = Path(os.environ["EVIDENCE_PATH"])
+          out_norm = Path(os.environ["OUT_NORM_PATH"])
 
           data = json.loads(evidence.read_text(encoding="utf-8"))
 
-          # Attempts-based normalization
           attempts = data.get("attempts") if isinstance(data, dict) else None
+          if not isinstance(attempts, list):
+              attempts = []
+
           pass_count = 0
           fail_count = 0
-          total_attempts = 0
 
-          if isinstance(attempts, list) and attempts:
-            total_attempts = len(attempts)
-            for a in attempts:
-              # Prefer explicit status; else infer from exit_code
-              s = (a.get("status") or "").strip().lower()
-              if not s:
-                rc = int(a.get("exit_code", 0) or 0)
-                s = "pass" if rc == 0 else "fail"
-                a["status"] = s
+          for a in attempts:
+              if not isinstance(a, dict):
+                  continue
 
-              if s in ("pass", "passed", "ok", "success"):
-                pass_count += 1
-              elif s in ("fail", "failed", "error"):
-                fail_count += 1
+              status = (a.get("status") or a.get("result") or "").lower().strip()
+              if status in ("pass", "passed", "ok", "success"):
+                  pass_count += 1
+                  a["status"] = "pass"
+                  continue
+              if status in ("fail", "failed", "error"):
+                  fail_count += 1
+                  a["status"] = "fail"
+                  continue
 
-          else:
-            # Counter-based normalization fallback
-            pass_count = int(data.get("pass_count", 0) or 0) if isinstance(data, dict) else 0
-            fail_count = int(data.get("fail_count", 0) or 0) if isinstance(data, dict) else 0
-            total_attempts = pass_count + fail_count
+              exit_code = a.get("exit_code")
+              try:
+                  exit_code = int(exit_code)
+              except Exception:
+                  exit_code = None
 
-          if isinstance(data, dict):
-            data["pass_count"] = pass_count
-            data["fail_count"] = fail_count
-            data["total_attempts"] = total_attempts
-            data["attempts"] = attempts if isinstance(attempts, list) else data.get("attempts", [])
+              if exit_code == 0:
+                  pass_count += 1
+                  a["status"] = "pass"
+              else:
+                  fail_count += 1
+                  a["status"] = "fail"
 
-          out_norm.parent.mkdir(parents=True, exist_ok=True)
+          total_attempts = len(attempts)
+
+          data["attempts"] = attempts
+          data["pass_count"] = pass_count
+          data["fail_count"] = fail_count
+          data["total_attempts"] = total_attempts
+
           out_norm.write_text(json.dumps(data, indent=2), encoding="utf-8")
           print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
           PY
-        env:
-          EVIDENCE: ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/${{ env.FLAKY_LABEL || 'node-unit' }}.summary.json
-          OUT_NORM: ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/summary.normalized.json
 
-      - name: "Evaluate flaky policy (use normalized summary)"
+      - name: "Evaluate flaky policy (normalized + policy-as-code)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
           EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
-          IN_NORM="${EXPORT_DIR}/summary.normalized.json"
+          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
+
+          NORM="${EXPORT_DIR}/summary.normalized.json"
           OUT_JSON="${EXPORT_DIR}/evaluation.json"
 
           echo "🧩 [FLAKY] Policy     : ${POLICY}"
           echo "📁 [FLAKY] Export dir : ${EXPORT_DIR}"
-          echo "📥 [FLAKY] Normalized : ${IN_NORM}"
+          echo "📥 [FLAKY] Normalized : ${NORM}"
           echo "📤 [FLAKY] Output     : ${OUT_JSON}"
           echo "🛡️ [FLAKY] Enforce    : ${FLAKY_POLICY_ENFORCE}"
 
-          if [[ ! -f "${POLICY}" ]]; then
-            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
-            exit 1
-          fi
-
-          if [[ ! -f "${IN_NORM}" ]]; then
+          if [[ ! -f "${NORM}" ]]; then
             echo "ℹ️ [FLAKY] Normalized summary missing → skipping evaluation (non-blocking)."
-            ls -la "${EXPORT_DIR}" || true
             exit 0
           fi
 
@@ -467,11 +470,11 @@ jobs:
             exit 1
           fi
 
-          # Run evaluator from repo root so module resolution is stable.
+          # Run from repo root so node resolves js-yaml
           pushd "${GITHUB_WORKSPACE}" >/dev/null
           npx tsx "${EVAL_TS}" \
             --policy "${POLICY}" \
-            --input "${IN_NORM}" \
+            --input "${NORM}" \
             --out "${OUT_JSON}" \
             --md || rc=$?
           popd >/dev/null
@@ -482,29 +485,49 @@ jobs:
           fi
 
           exit "${rc:-0}"
-      - name: Export flaky analytics (when enabled)
+
+      - name: "Export flaky analytics (when enabled)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
           BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
-          FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
+          EXPORT_MJS="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
 
-          if [[ ! -f "${FLAKY_SH}" ]]; then
-            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_SH}"
+          if [[ ! -f "${EXPORT_MJS}" ]]; then
+            echo "❌ export-flaky-analytics.mjs not found at: ${EXPORT_MJS}"
             echo "📁 Available scripts:"
             ls -la "${BRIK_SCRIPTS}" || true
             exit 1
           fi
 
-          chmod +x "${FLAKY_SH}"
-          node "${FLAKY_SH}" \
-            --suite unit \
+          chmod +x "${EXPORT_MJS}"
+
+          # Use explicit input/eval paths (matches Python wiring and avoids CWD surprises)
+          node "${EXPORT_MJS}" \
+            --suite node-unit \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
+            --input "${PWD}/${FLAKY_EXPORT_PATH}/summary.normalized.json" \
+            --evaluation "${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json" \
             --top-n 10 \
             --write-md true \
             --allow-missing-evaluation true
+
+      # -----------------------------------------------------------------------
+      # Upload flaky artifacts
+      # -----------------------------------------------------------------------
+      - name: "Upload flaky audit ledger (.audit) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-audit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            .audit/**/flaky/*.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
@@ -516,10 +539,20 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+      - name: "Upload JUnit (for flaky report) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
       # -----------------------------------------------------------------------
       # Coverage handling + uploads...
       # -----------------------------------------------------------------------
-      - name: Detect coverage presence
+      - name: "Detect coverage presence"
         id: cov
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -530,15 +563,15 @@ jobs:
             echo "has_coverage=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Normalize coverage → coverage.json
-        if: steps.cov.outputs.has_coverage == 'true'
+      - name: "Normalize coverage → coverage.json"
+        if: ${{ steps.cov.outputs.has_coverage == 'true' }}
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
           language: ${{ env.LANGUAGE }}
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
-      - name: Detect out/coverage.json presence
+      - name: "Detect out/coverage.json presence"
         id: covjson
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -549,7 +582,8 @@ jobs:
             echo "has_covjson=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure summary.line is set in coverage.json (Node + c8 json-summary)
+      - name: "Ensure summary.line is set in coverage.json (Node + c8 json-summary)"
+        if: ${{ steps.cov.outputs.has_coverage == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -558,19 +592,17 @@ jobs:
           # Empty shard => no tests executed => no coverage folder.
           if [ ! -f "coverage/coverage-summary.json" ]; then
             echo "ℹ️ No coverage/coverage-summary.json found (likely empty shard). Skipping summary sync."
-            ls -la
             exit 0
           fi
 
           node - << 'EOF'
           const fs = require('fs');
 
-          function readJson(path) {
-            return JSON.parse(fs.readFileSync(path, 'utf8'));
+          function readJson(p) {
+            return JSON.parse(fs.readFileSync(p, 'utf8'));
           }
 
           const summary = readJson('coverage/coverage-summary.json');
-
           if (!summary.total || !summary.total.lines || typeof summary.total.lines.pct !== 'number') {
             console.error('Unexpected coverage-summary.json format. total.lines.pct is missing.');
             process.exit(1);
@@ -591,8 +623,8 @@ jobs:
           console.log('✅ Updated out/coverage.json with summary.line =', linePct);
           EOF
 
-      - name: Upload Node coverage artifacts (per shard)
-        if: steps.covjson.outputs.has_covjson == 'true'
+      - name: "Upload Node coverage artifacts (per shard)"
+        if: ${{ steps.covjson.outputs.has_covjson == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
@@ -606,7 +638,7 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-      - name: Upload flaky evidence (always)
+      - name: "Upload flaky evidence (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
