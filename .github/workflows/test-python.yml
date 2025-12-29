@@ -493,9 +493,11 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
           node "${FLAKY_SH}" \
-            --suite unit \
+            --suite python-unit \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
+            --input "${PWD}/${FLAKY_EXPORT_PATH}/summary.normalized.json" \
+            --evaluation "${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json" \
             --top-n 10 \
             --write-md true \
             --allow-missing-evaluation true
@@ -510,7 +512,7 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
-          
+
       - name: "Upload JUnit (for flaky report) — shard"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
