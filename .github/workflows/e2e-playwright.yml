@@ -470,6 +470,25 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
+      - name: "Install evaluator deps (repo-root, pinned)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        working-directory: ${{ github.workspace }}
+        env:
+          NPM_CONFIG_FUND: "false"
+          NPM_CONFIG_AUDIT: "false"
+        run: |
+          set -euo pipefail
+
+          node -v
+          npm -v
+
+          if [[ ! -f package.json ]]; then
+            npm init -y >/dev/null 2>&1
+          fi
+
+          npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
+          echo "✅ deps installed into repo-root node_modules"
+
       - name: "Normalize flaky evidence → summary.normalized.json"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         run: |
