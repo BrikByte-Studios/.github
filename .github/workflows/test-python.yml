@@ -500,6 +500,17 @@ jobs:
             --write-md true \
             --allow-missing-evaluation true
 
+      - name: "Upload flaky audit ledger (.audit) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-audit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            .audit/**/flaky/*.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
