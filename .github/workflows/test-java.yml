@@ -1,25 +1,34 @@
 # =============================================================================
-# BrikByteOS — Reusable Java Unit Test Workflow (Maven/Gradle)
+# BrikByteOS — Reusable Java Unit Test Workflow
 # -----------------------------------------------------------------------------
-# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002
-# Repos  :
-#   - Implemented in:
-#       • BrikByte-Studios/.github (.github/workflows/test-java.yml)
-#   - Consumed by:
-#       • BrikByte-Studios/brik-pipe-examples/java-api-example
-#       • Product repos (via workflow_call)
+# WBS ID : PIPE-TEST-UNIT-CI-BUILD-002 (Java variant)
+# Implemented in:
+#   - BrikByte-Studios/.github (.github/workflows/test-java.yml)
+# Consumed by:
+#   - BrikByte product repos (via workflow_call)
 #
 # Contract:
 #   - Expects:
-#       • Makefile with `make test` calling:
-#           - Maven: mvn -B test
-#           - Gradle: ./gradlew test
-#       • src/test/java for tests.
+#       • Makefile with `make test` calling Maven/Gradle tests
+#       • pom.xml OR build.gradle(.kts)
+#       • (optional) shard-aware Makefile:
+#           - UNIT_SHARD, UNIT_SHARD_TOTAL (1-based)
+#           - TEST_ITEMS_FILE (list of tests/files to run)
 #
-# Matrix plan integration:
-#   - Uses BrikPipe Matrix Plan composite action to compute shards deterministically
-#   - Parallel rules live in:
-#       BrikByte-Studios/.github/.github/actions/matrix-plan/parallel-matrix.yml
+# Parallelism (Governed):
+#   - Uses BrikPipe matrix-plan to compute deterministic shard matrix for unit tests
+#   - Default shards + caps come from .github/parallel-matrix.yml (org/repo override)
+#
+# Flaky (Optional):
+#   - Uses shared flaky-rerun.sh to rerun `make test` up to N times (suite-level)
+#   - Normalizes evidence to evaluator contract (summary.normalized.json)
+#   - Evaluates policy-as-code via evaluate-flaky.ts + central policy fallback
+#   - Exports analytics via export-flaky-analytics.mjs
+#
+# Avoided hurdles (from Node/Python incidents):
+#   - Always upload `flaky-<lang>-shard*` so merge job can download correct pattern
+#   - Evaluator deps installed at repo root (stable module resolution)
+#   - Evidence normalization searches for summary.json / *.summary.json robustly
 # =============================================================================
 name: "BrikByteOS — Java Unit Tests"
 
@@ -117,33 +126,29 @@ permissions:
   contents: read
 
 jobs:
-  # ------------------------------------------------------------
-  # 1) PLAN: compute governed matrix JSON (job output)
-  # ------------------------------------------------------------
+  # ----------------------------------------------------------------------------
+  # PLAN: governed deterministic shard matrix for unit tests
+  # ----------------------------------------------------------------------------
   plan:
-    name: "Matrix Plan (java unit)"
+    name: "Plan governed unit matrix"
     runs-on: ubuntu-latest
     outputs:
-      matrix_json: ${{ steps.matrix.outputs.matrix_json }}
+      matrix: ${{ steps.plan.outputs.matrix_json }}
     steps:
-      - name: Checkout repository
+      - name: "Checkout repository"
         uses: actions/checkout@v4
 
-      - name: "Compute matrix plan (unit)"
-        id: matrix
+      - name: "Generate unit shard matrix (governed)"
+        id: plan
         uses: BrikByte-Studios/.github/.github/actions/matrix-plan@main
         with:
-          test_type: "unit"
+          test_type: unit
           config_path: ${{ inputs.matrix_config_path }}
           override_shards: ${{ inputs.override_shards }}
 
-      - name: "Debug matrix_json"
-        run: |
-          echo "matrix_json=${{ steps.matrix.outputs.matrix_json }}"
-
-  # ------------------------------------------------------------
-  # 2) TEST: run shards from matrix computed in plan job
-  # ------------------------------------------------------------
+  # ----------------------------------------------------------------------------
+  # MATRIX: run unit tests per shard
+  # ----------------------------------------------------------------------------
   test:
     name: "Java: Unit Tests • shard ${{ matrix.shard }}"
     needs: plan
@@ -151,22 +156,22 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.plan.outputs.matrix_json) }}
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
 
     env:
       LANGUAGE: java
       JAVA_VERSION: ${{ inputs.java-version != '' && inputs.java-version || '17' }}
-      JAVA_DISTRIBUTION: ${{ inputs.distribution || 'temurin' }}
+      JAVA_DISTRIBUTION: ${{ inputs.distribution != '' && inputs.distribution || 'temurin' }}
       WORKING_DIRECTORY: ${{ inputs.working-directory != '' && inputs.working-directory || '.' }}
 
-      # shard metadata (defined by matrix-plan)
-      SHARD_INDEX: ${{ matrix.shard }}              # 0-based
+      # 0-based shard identity (matrix-plan contract)
+      SHARD_INDEX: ${{ matrix.shard }}
       SHARD_TOTAL: ${{ strategy.job-total }}
 
       PARALLEL_MODE: ${{ inputs.parallel_mode }}
       PARALLEL: ${{ inputs.parallel_enabled }}
 
-      # Flaky detection contract (2.5.1)
+      # Flaky detection (2.5.1)
       FLAKY_DETECT: ${{ inputs.flaky_detect }}
       FLAKY_RERUNS: ${{ inputs.flaky_reruns }}
       FLAKY_EXPORT_PATH: ${{ inputs.flaky_export_path }}
@@ -178,10 +183,10 @@ jobs:
       FORCE_COLOR: "0"
 
     steps:
-      - name: Checkout repository
+      - name: "Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Verify Java test layout
+      - name: "Verify Java test layout"
         run: |
           set -euo pipefail
           echo "📁 Working directory: ${WORKING_DIRECTORY}"
@@ -204,7 +209,7 @@ jobs:
             exit 1
           fi
 
-      - name: Setup Java
+      - name: "Setup Java"
         uses: actions/setup-java@v4
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
@@ -216,15 +221,12 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           project-path: ${{ env.WORKING_DIRECTORY }}
 
-      - name: Compute shard env (1-based for Makefile)
+      - name: "Compute shard env (1-based for Makefile)"
         shell: bash
         run: |
           set -euo pipefail
-
-          SHARD0="${SHARD_INDEX}"
-          TOTAL="${SHARD_TOTAL}"
-
-          # Convert to 1-based (only if your Makefile expects it)
+          SHARD0='${{ matrix.shard }}'
+          TOTAL='${{ strategy.job-total }}'
           SHARD1=$((SHARD0 + 1))
 
           {
@@ -234,7 +236,7 @@ jobs:
 
           echo "[SHARD] 0-based=${SHARD0} -> 1-based=${SHARD1} / total=${TOTAL}"
 
-      - name: Parallel runner (serial/static/dynamic)
+      - name: "Parallel runner (serial/static/dynamic)"
         id: pr
         uses: BrikByte-Studios/.github/.github/actions/parallel-runner@main
         with:
@@ -244,25 +246,27 @@ jobs:
           shard_total: ${{ strategy.job-total }}
           selection_mode: "file-split"
           working_directory: ${{ env.WORKING_DIRECTORY }}
+          # File-split works best when you keep tests in standard locations.
+          # You can tighten this glob later, but keep it broad to avoid empty shard surprises.
           test_glob: "**/*Test.java"
           out_list: "${{ env.WORKING_DIRECTORY }}/out/shard-files.txt"
           allow_missing_items_file: true
 
-      # -----------------------------------------------------------------------
+      # ----------------------------------------------------------------------------
       # Shared scripts repo (flaky-rerun.sh + evaluator sources + central policy)
-      # -----------------------------------------------------------------------
-      - name: Checkout BrikByte shared scripts
+      # ----------------------------------------------------------------------------
+      - name: "Checkout BrikByte shared scripts"
         uses: actions/checkout@v4
         with:
           repository: BrikByte-Studios/.github
           ref: main
           path: .brikbyte-github
 
-      # -----------------------------------------------------------------------
-      # Run unit tests via `make test` (wired through flaky-rerun.sh)
-      # -----------------------------------------------------------------------
-      - name: Run Java unit tests (make test) with flaky reruns (opt-in)
-        if: ${{ steps.pr.outputs.is_empty_shard != 'true' }}
+      # ----------------------------------------------------------------------------
+      # Run unit tests via flaky-rerun.sh (2.5.1)
+      # ----------------------------------------------------------------------------
+      - name: "Run Java unit tests (make test) with flaky reruns (opt-in)"
+        if: steps.pr.outputs.is_empty_shard != 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -270,22 +274,19 @@ jobs:
           echo "🧪 [TEST] Language     : ${LANGUAGE}"
           echo "🧪 [TEST] Runtime      : Java (${JAVA_DISTRIBUTION}) ${JAVA_VERSION}"
           echo "🧪 [TEST] Directory    : ${PWD}"
-          echo "🧪 [TEST] Shard        : ${SHARD_INDEX}/${SHARD_TOTAL}"
           echo "🧪 [TEST] Command      : make test"
+          echo "🧪 [TEST] Shard        : ${UNIT_SHARD}/${UNIT_SHARD_TOTAL}"
+          echo "🧪 [TEST] Selection    : ${{ steps.pr.outputs.selection_path }}"
           echo "🧪 [TEST] FlakyDetect  : ${FLAKY_DETECT:-false}"
           echo "🧪 [TEST] FlakyReruns  : ${FLAKY_RERUNS:-3}"
           echo "🧪 [TEST] FlakyExport  : ${FLAKY_EXPORT_PATH:-out/flaky}"
           echo "🧪 [TEST] Status       : STARTING"
 
-          # Provide selection/shard env to your Makefile if it supports them
-          export UNIT_SHARD="${UNIT_SHARD:-$((SHARD_INDEX + 1))}"
-          export UNIT_SHARD_TOTAL="${UNIT_SHARD_TOTAL:-$SHARD_TOTAL}"
+          # Contract for shard-aware Makefile/runners:
+          export UNIT_SHARD UNIT_SHARD_TOTAL
+          export TEST_ITEMS_FILE="${{ steps.pr.outputs.selection_path }}"
 
-          # Flaky wrapper config (used by flaky-rerun.sh)
-          export FLAKY_DETECT="${FLAKY_DETECT:-false}"
-          export FLAKY_RERUNS="${FLAKY_RERUNS:-3}"
-          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
-          export FLAKY_LABEL="java-unit"
+          mkdir -p out
 
           BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
           FLAKY_SH="${BRIK_SCRIPTS}/flaky-rerun.sh"
@@ -298,27 +299,34 @@ jobs:
           fi
           chmod +x "${FLAKY_SH}"
 
-          # Run through wrapper (opt-in via FLAKY_DETECT)
+          # Absolute export dir so wrapper writes where expected
+          export FLAKY_DETECT="${FLAKY_DETECT:-false}"
+          export FLAKY_RERUNS="${FLAKY_RERUNS:-3}"
+          export FLAKY_EXPORT_PATH="${PWD}/${FLAKY_EXPORT_PATH:-out/flaky}"
+          export FLAKY_LABEL="java-unit"
+
           "${FLAKY_SH}" -- make test
 
           echo "✅ [TEST] Status       : COMPLETED"
-          echo "ℹ️  [TEST] See Maven/Gradle test summary above."
 
-      - name: Empty shard (nothing to run)
-        if: ${{ steps.pr.outputs.is_empty_shard == 'true' }}
-        run: |
-          echo "ℹ️ Empty shard ${SHARD_INDEX}/${SHARD_TOTAL} — skipping tests."
+      - name: "Empty shard (skip)"
+        if: steps.pr.outputs.is_empty_shard == 'true'
+        run: echo "ℹ️ Empty shard — nothing to run."
 
       # =============================================================================
       # PIPE-FLAKY-POLICY-CONFIG-002 — Evaluate evidence against policy-as-code
       # =============================================================================
+      - name: "Setup Node (for flaky policy evaluator)"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: "Select policy source (repo override -> central fallback)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-
           mkdir -p .tmp-flaky-eval
 
           REPO_POLICY="${GITHUB_WORKSPACE}/${FLAKY_POLICY_PATH}"
@@ -341,9 +349,7 @@ jobs:
             cp "${CENTRAL_POLICY}" "${OUT_POLICY}"
           fi
 
-      # Install deps at repo root so tsx + require() resolve regardless of CWD.
-      # We *still* use Node here for evaluate-flaky.ts.
-      - name: "Install evaluator deps (repo-root, pinned) [js-yaml + tsx]"
+      - name: "Install evaluator deps (repo-root, pinned)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ github.workspace }}
         env:
@@ -351,8 +357,6 @@ jobs:
           NPM_CONFIG_AUDIT: "false"
         run: |
           set -euo pipefail
-
-          # Node is available on ubuntu-latest. Pin if you want, but not required.
           node -v
           npm -v
 
@@ -363,10 +367,7 @@ jobs:
           npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
           echo "✅ deps installed into repo-root node_modules"
 
-      # Normalize wrapper output to evaluator contract:
-      # - Ensure attempts have status
-      # - Ensure pass_count/fail_count/total_attempts are consistent
-      - name: "Normalize flaky evidence → summary.normalized.json"
+      - name: "Normalize flaky summary (derive counts from exit_code)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -376,7 +377,7 @@ jobs:
           EXPECTED="${EXPORT_DIR}/summary.json"
           LABELED="${EXPORT_DIR}/${FLAKY_LABEL:-java-unit}.summary.json"
 
-          # Resolve evidence path
+          # Resolve evidence
           EVIDENCE=""
           if [[ -f "${EXPECTED}" ]]; then
             EVIDENCE="${EXPECTED}"
@@ -389,85 +390,86 @@ jobs:
 
           if [[ -z "${EVIDENCE}" ]]; then
             echo "ℹ️ [FLAKY] No evidence found → skipping normalization."
-            ls -la "${EXPORT_DIR}" || true
             exit 0
           fi
 
           OUT_NORM="${EXPORT_DIR}/summary.normalized.json"
           echo "🔧 [FLAKY] Normalizing: ${EVIDENCE} -> ${OUT_NORM}"
 
-          EVIDENCE="${EVIDENCE}" OUT_NORM="${OUT_NORM}" python - <<'PY'
-          import json
+          EVIDENCE_PATH="${EVIDENCE}" OUT_NORM_PATH="${OUT_NORM}" python - << 'PY'
+          import json, os
           from pathlib import Path
-          import os
 
-          evidence = Path(os.environ["EVIDENCE"])
-          out_norm = Path(os.environ["OUT_NORM"])
+          evidence = Path(os.environ["EVIDENCE_PATH"])
+          out_norm = Path(os.environ["OUT_NORM_PATH"])
 
           data = json.loads(evidence.read_text(encoding="utf-8"))
 
           attempts = data.get("attempts") if isinstance(data, dict) else None
+          if not isinstance(attempts, list):
+              attempts = []
+
           pass_count = 0
           fail_count = 0
-          total_attempts = 0
 
-          if isinstance(attempts, list) and attempts:
-            total_attempts = len(attempts)
-            for a in attempts:
-              s = (a.get("status") or "").strip().lower()
-              if not s:
-                rc = int(a.get("exit_code", 0) or 0)
-                s = "pass" if rc == 0 else "fail"
-                a["status"] = s
+          for a in attempts:
+              if not isinstance(a, dict):
+                  continue
 
-              if s in ("pass", "passed", "ok", "success"):
-                pass_count += 1
-              elif s in ("fail", "failed", "error"):
-                fail_count += 1
-          else:
-            pass_count = int(data.get("pass_count", 0) or 0) if isinstance(data, dict) else 0
-            fail_count = int(data.get("fail_count", 0) or 0) if isinstance(data, dict) else 0
-            total_attempts = pass_count + fail_count
+              status = (a.get("status") or a.get("result") or "").lower().strip()
+              if status in ("pass", "passed", "ok", "success"):
+                  pass_count += 1
+                  a["status"] = "pass"
+                  continue
+              if status in ("fail", "failed", "error"):
+                  fail_count += 1
+                  a["status"] = "fail"
+                  continue
 
-          if isinstance(data, dict):
-            data["pass_count"] = pass_count
-            data["fail_count"] = fail_count
-            data["total_attempts"] = total_attempts
-            data["attempts"] = attempts if isinstance(attempts, list) else data.get("attempts", [])
+              exit_code = a.get("exit_code")
+              try:
+                  exit_code = int(exit_code)
+              except Exception:
+                  exit_code = None
 
-          out_norm.parent.mkdir(parents=True, exist_ok=True)
+              if exit_code == 0:
+                  pass_count += 1
+                  a["status"] = "pass"
+              else:
+                  fail_count += 1
+                  a["status"] = "fail"
+
+          total_attempts = len(attempts)
+
+          data["attempts"] = attempts
+          data["pass_count"] = pass_count
+          data["fail_count"] = fail_count
+          data["total_attempts"] = total_attempts
+
           out_norm.write_text(json.dumps(data, indent=2), encoding="utf-8")
           print(f"✅ wrote {out_norm} (pass={pass_count}, fail={fail_count}, total={total_attempts})")
           PY
 
-          echo "=== normalized summary ==="
-          cat "${OUT_NORM}"
-
-      - name: "Evaluate flaky policy (use normalized summary)"
+      - name: "Evaluate flaky policy (normalized + policy-as-code)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
 
-          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
           EXPORT_DIR="${PWD}/${FLAKY_EXPORT_PATH}"
-          IN_NORM="${EXPORT_DIR}/summary.normalized.json"
+          POLICY="${GITHUB_WORKSPACE}/.tmp-flaky-eval/policy.yml"
+
+          NORM="${EXPORT_DIR}/summary.normalized.json"
           OUT_JSON="${EXPORT_DIR}/evaluation.json"
 
           echo "🧩 [FLAKY] Policy     : ${POLICY}"
           echo "📁 [FLAKY] Export dir : ${EXPORT_DIR}"
-          echo "📥 [FLAKY] Normalized : ${IN_NORM}"
+          echo "📥 [FLAKY] Normalized : ${NORM}"
           echo "📤 [FLAKY] Output     : ${OUT_JSON}"
           echo "🛡️ [FLAKY] Enforce    : ${FLAKY_POLICY_ENFORCE}"
 
-          if [[ ! -f "${POLICY}" ]]; then
-            echo "❌ [FLAKY] Missing policy file: ${POLICY}"
-            exit 1
-          fi
-
-          if [[ ! -f "${IN_NORM}" ]]; then
+          if [[ ! -f "${NORM}" ]]; then
             echo "ℹ️ [FLAKY] Normalized summary missing → skipping evaluation (non-blocking)."
-            ls -la "${EXPORT_DIR}" || true
             exit 0
           fi
 
@@ -477,11 +479,10 @@ jobs:
             exit 1
           fi
 
-          # Run evaluator from repo root so module resolution is stable.
-          pushd "${GITHUB_WORKSPACE}" >/dev/null
+          pushd "${GITHUB_WORKSPACE}/.tmp-flaky-eval" >/dev/null
           npx tsx "${EVAL_TS}" \
             --policy "${POLICY}" \
-            --input "${IN_NORM}" \
+            --input "${NORM}" \
             --out "${OUT_JSON}" \
             --md || rc=$?
           popd >/dev/null
@@ -493,35 +494,58 @@ jobs:
 
           exit "${rc:-0}"
 
-      - name: Export flaky analytics (when enabled)
+      - name: "Export flaky analytics (when enabled)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
           BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
-          FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
+          FLAKY_JS="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
 
-          if [[ ! -f "${FLAKY_SH}" ]]; then
-            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_SH}"
+          if [[ ! -f "${FLAKY_JS}" ]]; then
+            echo "❌ export-flaky-analytics.mjs not found at: ${FLAKY_JS}"
             echo "📁 Available scripts:"
             ls -la "${BRIK_SCRIPTS}" || true
             exit 1
           fi
 
-          chmod +x "${FLAKY_SH}"
-          node "${FLAKY_SH}" \
-            --suite unit \
+          chmod +x "${FLAKY_JS}"
+          node "${FLAKY_JS}" \
+            --suite java-unit \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
+            --input "${PWD}/${FLAKY_EXPORT_PATH}/summary.normalized.json" \
+            --evaluation "${PWD}/${FLAKY_EXPORT_PATH}/evaluation.json" \
             --top-n 10 \
             --write-md true \
             --allow-missing-evaluation true
+
+      - name: "Upload flaky audit ledger (.audit) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-audit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            .audit/**/flaky/*.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: "Upload JUnit (for flaky report) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: flaky-eval-java-shard${{ env.SHARD_INDEX }}
+          name: flaky-eval-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
@@ -529,31 +553,28 @@ jobs:
           retention-days: 14
 
       # -----------------------------------------------------------------------
-      # Detect JaCoCo presence (empty shard => no jacoco.xml)
+      # Coverage handling (Java / JaCoCo) + uploads
       # -----------------------------------------------------------------------
-      - name: Detect JaCoCo XML presence
+      - name: "Detect JaCoCo XML presence (this shard)"
         id: jacoco
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
-          if [ -f "target/site/jacoco/jacoco.xml" ] || [ -f "jacoco.xml" ]; then
-            echo "has_jacoco=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_jacoco=false" >> "$GITHUB_OUTPUT"
-          fi
+          has="false"
+          if [ -f "target/site/jacoco/jacoco.xml" ]; then has="true"; fi
+          if [ -f "jacoco.xml" ]; then has="true"; fi
+          echo "has_jacoco=${has}" >> "$GITHUB_OUTPUT"
+          echo "🔎 has_jacoco=${has}"
 
-      # -----------------------------------------------------------------------
-      # Collect coverage (Java: JaCoCo XML)
-      # -----------------------------------------------------------------------
-      - name: Normalize coverage → coverage.json
-        if: steps.jacoco.outputs.has_jacoco == 'true'
+      - name: "Normalize coverage → coverage.json"
+        if: ${{ steps.jacoco.outputs.has_jacoco == 'true' }}
         uses: BrikByte-Studios/.github/.github/actions/coverage-merge@main
         with:
           language: ${{ env.LANGUAGE }}
           working-directory: ${{ env.WORKING_DIRECTORY }}
           out: out/coverage.json
 
-      - name: Detect coverage.json presence
+      - name: "Detect out/coverage.json presence"
         id: covjson
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
@@ -564,49 +585,44 @@ jobs:
             echo "has_covjson=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure summary.line is set in coverage.json (Java / JaCoCo)
-        if: steps.jacoco.outputs.has_jacoco == 'true'
+      - name: "Ensure summary.line is set in coverage.json (Java / JaCoCo)"
+        if: ${{ steps.jacoco.outputs.has_jacoco == 'true' }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
           echo "🔧 Normalizing coverage: syncing summary.line from JaCoCo XML"
 
           if [ -f "target/site/jacoco/jacoco.xml" ]; then
-            export JACOCO_XML="target/site/jacoco/jacoco.xml"
+            JACOCO_XML="target/site/jacoco/jacoco.xml"
           elif [ -f "jacoco.xml" ]; then
-            export JACOCO_XML="jacoco.xml"
+            JACOCO_XML="jacoco.xml"
           else
-            echo "❌ JaCoCo XML not found (expected target/site/jacoco/jacoco.xml or jacoco.xml)."
-            ls -R
+            echo "❌ JaCoCo XML not found."
             exit 1
           fi
 
-          python - <<'EOF'
-          import json
+          JACOCO_XML="${JACOCO_XML}" python - <<'EOF'
+          import json, os
           import xml.etree.ElementTree as ET
           from pathlib import Path
-          import os
 
-          jacoco_path = os.environ.get("JACOCO_XML", "target/site/jacoco/jacoco.xml")
-          xml_path = Path(jacoco_path)
-
-          if not xml_path.is_file():
-            raise SystemExit(f"JaCoCo XML not found at {xml_path}")
-
+          xml_path = Path(os.environ["JACOCO_XML"])
           tree = ET.parse(xml_path)
           root = tree.getroot()
 
-          missed = 0
-          covered = 0
+          missed = covered = None
           for counter in root.iter("counter"):
-            if counter.get("type") == "LINE":
-              missed = int(counter.get("missed", "0"))
-              covered = int(counter.get("covered", "0"))
-              break
+              if counter.get("type") == "LINE":
+                  missed = int(counter.get("missed", "0"))
+                  covered = int(counter.get("covered", "0"))
+                  break
+
+          if missed is None or covered is None:
+              raise SystemExit("No LINE counter found in JaCoCo XML.")
 
           total = missed + covered
           if total == 0:
-            raise SystemExit("No LINE coverage data found in JaCoCo XML.")
+              raise SystemExit("LINE total is 0; cannot compute coverage.")
 
           line_pct = (covered / total) * 100.0
 
@@ -615,9 +631,9 @@ jobs:
           cov_path = out_dir / "coverage.json"
 
           try:
-            cov = json.loads(cov_path.read_text(encoding="utf-8"))
+              cov = json.loads(cov_path.read_text(encoding="utf-8"))
           except FileNotFoundError:
-            cov = {}
+              cov = {}
 
           cov.setdefault("summary", {})
           cov["summary"]["line"] = line_pct
@@ -627,20 +643,15 @@ jobs:
           print(f"✅ Updated out/coverage.json with summary.line = {line_pct:.1f}")
           EOF
 
-          echo "✅ coverage.json after normalization:"
-          cat out/coverage.json
-
-      # -----------------------------------------------------------------------
-      # Upload coverage artifacts (per shard)
-      # -----------------------------------------------------------------------
-      - name: Upload Java coverage artifacts
-        if: steps.covjson.outputs.has_covjson == 'true'
+      - name: "Upload Java coverage artifacts (per shard)"
+        if: ${{ steps.covjson.outputs.has_covjson == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-java-shard${{ env.SHARD_INDEX }}
+          name: coverage-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/out/coverage.json
             ${{ env.WORKING_DIRECTORY }}/target/site/jacoco/jacoco.xml
+            ${{ env.WORKING_DIRECTORY }}/jacoco.xml
             ${{ env.WORKING_DIRECTORY }}/out/junit.xml
             ${{ env.WORKING_DIRECTORY }}/out/shard-files.txt
             ${{ env.WORKING_DIRECTORY }}/out/shard-packages.txt
@@ -648,11 +659,12 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-      - name: Upload flaky evidence (always)
+      # IMPORTANT: Always upload evidence folder so merge job can download flaky-java-shard*
+      - name: "Upload flaky evidence (always)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: flaky-java-shard${{ env.SHARD_INDEX }}
+          name: flaky-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
           path: |
             ${{ env.WORKING_DIRECTORY }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: ignore
