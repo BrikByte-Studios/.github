@@ -141,6 +141,21 @@ function readJsonFile(filePath) {
   }
 }
 
+/**
+ * Optional JSON read:
+ * - returns null if missing
+ * - throws if exists but invalid JSON (signal corruption)
+ */
+function readJsonFileOptional(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  const raw = fs.readFileSync(filePath, "utf-8");
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`Invalid JSON in ${filePath}: ${e?.message ?? String(e)}`);
+  }
+}
+
 /** Write JSON with stable formatting. */
 function writeJsonFile(filePath, data) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -203,7 +218,6 @@ function normalizeClassification(raw, failRate) {
   if (s === "quarantine-candidate" || s === "quarantine" || s === "candidate")
     return "quarantine-candidate";
 
-  // If evaluation is missing/unknown, infer consistently-failing if fail_rate==1.
   if (failRate >= 0.999) return "consistently-failing";
   return "unknown";
 }
@@ -294,10 +308,7 @@ function parseHistoricalFile(filePath) {
 /**
  * Build current run summary rows from:
  *   out/flaky/summary.json      (optional)
- *   out/flaky/evaluation.json   (required)
- *
- * Key fix:
- *   - No mixing of `??` and `||` in a single expression.
+ *   out/flaky/evaluation.json   (optional if allowMissingEvaluation=true)
  */
 function buildCurrentRunRows(params) {
   const summaryPath = path.join(params.outDir, "summary.json");
@@ -305,8 +316,12 @@ function buildCurrentRunRows(params) {
 
   const runAt = params.metadata.generated_at;
 
-  const rerun = fs.existsSync(summaryPath) ? readJsonFile(summaryPath) : null;
-  const evalRaw = readJsonFile(evalPath);
+  const rerun = fs.existsSync(summaryPath) ? readJsonFileOptional(summaryPath) : null;
+  const evalRaw = readJsonFileOptional(evalPath);
+
+  // If evaluation is missing, treat as "no data this shard/run"
+  if (evalRaw == null) return [];
+
   const evalItems = Array.isArray(evalRaw) ? evalRaw : [evalRaw];
 
   /** @type {FlakySummaryRow[]} */
@@ -319,9 +334,9 @@ function buildCurrentRunRows(params) {
     const pass = Number(item?.pass_count ?? rerun?.pass_count ?? 0);
     const fail = Number(item?.fail_count ?? rerun?.fail_count ?? 0);
 
-    // FIX: compute totalRaw then fallback deterministically
+    // IMPORTANT: do not mix `??` and `||` in one expression
     const totalRaw = item?.total ?? rerun?.total_attempts ?? (pass + fail);
-    const total = Number((totalRaw ?? 1));
+    const total = Number(totalRaw ?? 1);
 
     const failRate =
       typeof item?.fail_rate === "number"
@@ -516,7 +531,9 @@ function renderMarkdown(params) {
       lines.push(``);
       return;
     }
-    lines.push(`| Rank | Test | Suite | Runs | Avg fail rate | Flaky runs | Failing runs | Last seen |`);
+    lines.push(
+      `| Rank | Test | Suite | Runs | Avg fail rate | Flaky runs | Failing runs | Last seen |`
+    );
     lines.push(`|---:|---|---|---:|---:|---:|---:|---|`);
     items.forEach((t, i) => {
       lines.push(
@@ -532,9 +549,15 @@ function renderMarkdown(params) {
   table(`Top ${params.topN} unstable tests (30 days)`, top30);
 
   lines.push(`## Recommendations`);
-  lines.push(`- Prioritize fixing the top 3 tests in 30-day window (highest recurring instability).`);
-  lines.push(`- If a test is consistently failing (fail_rate=100%), treat it as a **broken contract**, not a flake.`);
-  lines.push(`- If flakiness clusters in one suite, investigate shared setup/teardown, clocks, data isolation, and parallel hazards.`);
+  lines.push(
+    `- Prioritize fixing the top 3 tests in 30-day window (highest recurring instability).`
+  );
+  lines.push(
+    `- If a test is consistently failing (fail_rate=100%), treat it as a **broken contract**, not a flake.`
+  );
+  lines.push(
+    `- If flakiness clusters in one suite, investigate shared setup/teardown, clocks, data isolation, and parallel hazards.`
+  );
   lines.push(``);
 
   return lines.join("\n");
@@ -551,7 +574,11 @@ function main() {
   const writeMd = toBool(args["write-md"], false);
   const pr = inferPrNumber(args["pr"]);
 
+  // behavior flags
   const requireEnabled = toBool(args["require-enabled"], true);
+  const allowMissingEval = toBool(args["allow-missing-evaluation"], true);
+  const requireEvaluation = toBool(args["require-evaluation"], false);
+
   const flakyDetectEnv = String(process.env.FLAKY_DETECT ?? "false").toLowerCase();
   const flakyEnabled = flakyDetectEnv === "true" || flakyDetectEnv === "1";
 
@@ -578,8 +605,24 @@ function main() {
     generated_at: generatedAt,
   };
 
+  // Determine if evaluation exists BEFORE building rows
+  const evalPath = path.join(outDir, "evaluation.json");
+  const evaluationExists = fs.existsSync(evalPath);
+
+  if (!evaluationExists && requireEvaluation) {
+    throw new Error(`[FLAKY-ANALYTICS] evaluation.json is required but missing at: ${evalPath}`);
+  }
+
+  if (!evaluationExists && !allowMissingEval) {
+    throw new Error(
+      `[FLAKY-ANALYTICS] evaluation.json missing at: ${evalPath} (set --allow-missing-evaluation true to no-op)`
+    );
+  }
+
+  // Load current rows (returns [] if evaluation missing)
   const currentRaw = buildCurrentRunRows({ suite, outDir, metadata });
 
+  // Load historical
   const histPaths = findHistoricalSummaries(auditRoot);
   /** @type {FlakySummaryRow[]} */
   const history = [];
@@ -587,7 +630,9 @@ function main() {
     try {
       history.push(...parseHistoricalFile(p));
     } catch (e) {
-      console.warn(`[FLAKY-ANALYTICS] WARN: could not parse ${p}: ${e?.message ?? String(e)}`);
+      console.warn(
+        `[FLAKY-ANALYTICS] WARN: could not parse ${p}: ${e?.message ?? String(e)}`
+      );
     }
   }
 
@@ -604,6 +649,7 @@ function main() {
   const trendsPath = path.join(auditDir, "flaky-trends.json");
   const metaPath = path.join(auditDir, "metadata.json");
 
+  // Always write audit artifacts (even if empty) for traceability
   writeJsonFile(summaryPath, current);
   writeJsonFile(trendsPath, { trends7, trends30 });
   writeJsonFile(metaPath, metadata);
@@ -613,6 +659,12 @@ function main() {
     mdPath = path.join(outDir, "flaky-summary.md");
     const md = renderMarkdown({ suite, current, trends7, trends30, topN });
     writeTextFile(mdPath, md);
+  }
+
+  if (!evaluationExists) {
+    console.log(
+      `[FLAKY-ANALYTICS] ℹ️ No evaluation.json found at ${evalPath} (empty shard or no evidence). Wrote empty audit artifacts.`
+    );
   }
 
   console.log(`[FLAKY-ANALYTICS] ✅ Exported:`);

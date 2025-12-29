@@ -497,7 +497,8 @@ jobs:
             --audit-root .audit \
             --out-dir out/flaky \
             --top-n 10 \
-            --write-md true
+            --write-md true \
+            --allow-missing-evaluation true
 
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
