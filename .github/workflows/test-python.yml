@@ -436,7 +436,7 @@ jobs:
         run: |
           set -euo pipefail
           BRIK_SCRIPTS="${GITHUB_WORKSPACE}/.brikbyte-github/.github/scripts"
-          FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.ts"
+          FLAKY_SH="${BRIK_SCRIPTS}/export-flaky-analytics.mjs"
 
           if [[ ! -f "${FLAKY_SH}" ]]; then
             echo "❌ export-flaky-analytics.ts not found at: ${FLAKY_SH}"
