@@ -328,7 +328,6 @@ function buildCurrentRunRows(params) {
   const rows = [];
 
   for (const item of evalItems) {
-    console.log(`[FLAKY-ANALYTICS] ${JSON.stringify(item)}`);
     const testName = String(item?.test_name ?? "unknown-test");
     const suite = String(item?.suite ?? params.suite);
 
