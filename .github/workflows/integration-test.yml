@@ -756,7 +756,7 @@ jobs:
 
           chmod +x "${FLAKY_SH}"
           node "${FLAKY_SH}" \
-            --suite unit \
+            --suite integ \
             --audit-root "${GITHUB_WORKSPACE}/.audit" \
             --out-dir "${FLAKY_EXPORT_PATH:-out/flaky}" \
             --top-n 10 \

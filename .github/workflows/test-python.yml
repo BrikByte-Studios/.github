@@ -510,6 +510,16 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
+          
+      - name: "Upload JUnit (for flaky report) — shard"
+        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ env.LANGUAGE }}-shard${{ matrix.shard }}
+          path: |
+            ${{ env.WORKING_DIRECTORY }}/out/junit.xml
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: "Upload flaky evaluation (always)"
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
