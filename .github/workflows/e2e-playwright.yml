@@ -338,24 +338,6 @@ jobs:
         with:
           node-version: "20"
 
-      - name: "Install evaluator deps (repo-root) [js-yaml + tsx]"
-        if: ${{ always() && env.FLAKY_DETECT == 'true' }}
-        working-directory: ${{ github.workspace }}
-        env:
-          NPM_CONFIG_FUND: "false"
-          NPM_CONFIG_AUDIT: "false"
-        run: |
-          set -euo pipefail
-          node -v
-          npm -v
-
-          if [[ ! -f package.json ]]; then
-            npm init -y >/dev/null 2>&1
-          fi
-
-          npm i --no-save js-yaml@4 tsx@4 >/dev/null 2>&1
-          echo "✅ deps installed into repo-root node_modules"
-
       - name: "Docker info (diagnostics)"
         if: ${{ inputs.start_app }}
         run: |
@@ -452,14 +434,9 @@ jobs:
             ls -la "${GITHUB_WORKSPACE}/.github/scripts" || true
             exit 1
           fi
-          chmod +x "${FLAKY_SH}"
 
           "${FLAKY_SH}" -- npx playwright test \
             --project="${PW_BROWSER}" \
-            --workers="${PW_WORKERS}" \
-            --retries="${PW_RETRIES}" \
-            --trace="${PW_TRACE_MODE}" \
-            --video="${PW_VIDEO_MODE}" \
             --shard="${SHARD_1}/${SHARD_TOTAL}"
 
       # =============================================================================
