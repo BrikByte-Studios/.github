@@ -1,145 +1,123 @@
+#!/usr/bin/env node
 /**
- * BrikByteOS — Flaky Analytics Exporter
- * ------------------------------------------------------------
- * TASK: PIPE-FLAKY-ANALYTICS-INTEG-003
+ * BrikByteOS — Flaky Analytics Exporter (Node ESM)
+ * ------------------------------------------------
+ * Purpose:
+ *   - Read current run flaky evaluation evidence from `out/flaky/*`
+ *   - Aggregate historical summaries under `.audit/**flaky/flaky-summary.json`
+ *   - Emit auditable JSON artifacts under `.audit/YYYY-MM-DD/flaky/`
+ *   - Optionally emit a human-readable Markdown summary under `out/flaky/flaky-summary.md`
  *
- * Purpose
- *   - Read current run flaky evidence:
- *       out/flaky/summary.json (rerun attempts evidence)
- *       out/flaky/evaluation.json (policy classification)
- *   - Load historical per-run summaries from:
- *       .audit/**flaky/flaky-summary.json
- *   - Compute rolling 7/30-day trends and Top-N unstable tests.
- *   - Export auditable JSON evidence under:
- *       .audit/YYYY-MM-DD/flaky/
- *         - flaky-summary.json
- *         - flaky-trends.json
- *         - metadata.json
- *   - Optionally render a human-readable Markdown summary:
- *       out/flaky/flaky-summary.md
+ * Inputs (current run):
+ *   - out/flaky/evaluation.json   (required)
+ *   - out/flaky/summary.json      (optional)
  *
- * Determinism rules
- *   - Stable grouping key: `${suite}::${test_name}`
- *   - Window filtering by generated_at timestamp
- *   - Sorting is stable and explicit (tie-breakers included)
+ * Outputs:
+ *   - .audit/YYYY-MM-DD/flaky/flaky-summary.json   (per-run, small)
+ *   - .audit/YYYY-MM-DD/flaky/flaky-trends.json    (7/30 day trends)
+ *   - .audit/YYYY-MM-DD/flaky/metadata.json        (run metadata)
+ *   - out/flaky/flaky-summary.md                   (optional)
  *
- * Usage
- *   node .github/scripts/export-flaky-analytics.ts \
+ * Determinism principles:
+ *   - Sorted directory traversal for history discovery
+ *   - Stable sorting for grouped computations
+ *   - Stable JSON formatting (2-space)
+ *
+ * CLI:
+ *   node export-flaky-analytics.mjs \
  *     --suite integ \
  *     --audit-root .audit \
  *     --out-dir out/flaky \
  *     --top-n 10 \
- *     --write-md true
+ *     --write-md true \
+ *     --require-enabled true \
+ *     --pr 42
  *
- * Env
- *   - GitHub Actions (optional):
- *     GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_SHA, GITHUB_REF_NAME,
- *     GITHUB_HEAD_REF, GITHUB_BASE_REF, GITHUB_ACTOR, GITHUB_WORKFLOW,
- *     GITHUB_RUN_ATTEMPT
+ * Governance gate:
+ *   - By default (--require-enabled true), script no-ops unless env FLAKY_DETECT=true|1
  */
 
-type Classification =
-  | "pass"
-  | "informational"
-  | "flaky"
-  | "quarantine-candidate"
-  | "consistently-failing"
-  | "unknown";
+import fs from "node:fs";
+import path from "node:path";
 
-type RunMetadata = {
-  repo: string;
-  run_id: string;
-  workflow?: string;
-  actor?: string;
-  attempt?: string;
-  commit?: string;
-  branch?: string;
-  pr?: number | null;
-  generated_at: string; // ISO
-  runtime?: string; // e.g. node20
-};
+/** @typedef {"pass"|"informational"|"flaky"|"quarantine-candidate"|"consistently-failing"|"unknown"} Classification */
 
-type CurrentSummaryInput = {
-  total_attempts?: number;
-  pass_count?: number;
-  fail_count?: number;
-  attempts?: Array<{ run: number; status: "pass" | "fail" | string }>;
-  // allow extra fields, do not fail parsing
-  [k: string]: unknown;
-};
+/**
+ * @typedef {Object} RunMetadata
+ * @property {string} repo
+ * @property {string} run_id
+ * @property {string=} workflow
+ * @property {string=} actor
+ * @property {string=} attempt
+ * @property {string=} commit
+ * @property {string=} branch
+ * @property {number|null=} pr
+ * @property {string=} runtime
+ * @property {string} generated_at ISO timestamp
+ */
 
-type EvaluationInput = {
-  suite?: string;
-  test_name?: string;
-  classification?: string;
-  fail_rate?: number;
-  pass_count?: number;
-  fail_count?: number;
-  total?: number;
-  policy?: Record<string, unknown>;
-  [k: string]: unknown;
-};
+/**
+ * @typedef {Object} FlakySummaryRow
+ * @property {string} run_id
+ * @property {string} repo
+ * @property {string} suite
+ * @property {string} test_name
+ * @property {number} pass_count
+ * @property {number} fail_count
+ * @property {number} total
+ * @property {number} fail_rate 0..1
+ * @property {Classification} classification
+ * @property {string} first_seen ISO
+ * @property {string} last_seen ISO
+ * @property {string} generated_at ISO (this run)
+ */
 
-type FlakySummaryRow = {
-  run_id: string;
-  repo: string;
-  suite: string;
-  test_name: string;
-  pass_count: number;
-  fail_count: number;
-  total: number;
-  fail_rate: number; // 0..1
-  classification: Classification;
-  first_seen: string; // ISO
-  last_seen: string; // ISO
-  generated_at: string; // ISO (this run)
-};
+/**
+ * @typedef {Object} TrendsTestRow
+ * @property {string} test_name
+ * @property {string} suite
+ * @property {number} runs
+ * @property {number} avg_fail_rate 0..1
+ * @property {number} flaky_runs
+ * @property {number} consistently_failing_runs
+ * @property {number} pass_runs
+ * @property {number} informational_runs
+ * @property {number} quarantine_candidate_runs
+ * @property {string} last_seen ISO
+ * @property {string} first_seen ISO
+ * @property {number} score ranking score (internal)
+ */
 
-type TrendsTestRow = {
-  test_name: string;
-  suite: string;
-  runs: number;
-  avg_fail_rate: number; // 0..1
-  flaky_runs: number;
-  consistently_failing_runs: number;
-  pass_runs: number;
-  informational_runs: number;
-  quarantine_candidate_runs: number;
-  last_seen: string; // ISO
-  first_seen: string; // ISO
-  score: number; // ranking score used internally
-};
+/**
+ * @typedef {Object} FlakyTrends
+ * @property {number} window_days
+ * @property {string} generated_at ISO
+ * @property {TrendsTestRow[]} tests
+ * @property {string[]} top_n
+ * @property {{
+ *   runs_considered: number,
+ *   unique_tests: number,
+ *   flaky_runs: number,
+ *   consistently_failing_runs: number,
+ *   pass_runs: number,
+ *   informational_runs: number,
+ *   quarantine_candidate_runs: number
+ * }} totals
+ */
 
-type FlakyTrends = {
-  window_days: number;
-  generated_at: string;
-  tests: TrendsTestRow[];
-  top_n: string[];
-  totals: {
-    runs_considered: number;
-    unique_tests: number;
-    flaky_runs: number;
-    consistently_failing_runs: number;
-    pass_runs: number;
-    informational_runs: number;
-    quarantine_candidate_runs: number;
-  };
-};
-
-type ExportResult = {
-  summary: FlakySummaryRow[];
-  trends7: FlakyTrends;
-  trends30: FlakyTrends;
-  metadata: RunMetadata;
-  mdSummaryPath?: string | null;
-};
-
-import fs from "fs";
-import path from "path";
+/**
+ * @typedef {Object} ExportResult
+ * @property {FlakySummaryRow[]} summary
+ * @property {FlakyTrends} trends7
+ * @property {FlakyTrends} trends30
+ * @property {RunMetadata} metadata
+ * @property {string|null=} mdSummaryPath
+ */
 
 /** Parse CLI args (minimal deterministic parser). */
-function parseArgs(argv: string[]): Record<string, string> {
-  const args: Record<string, string> = {};
+function parseArgs(argv) {
+  /** @type {Record<string, string>} */
+  const args = {};
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith("--")) continue;
@@ -156,51 +134,51 @@ function parseArgs(argv: string[]): Record<string, string> {
 }
 
 /** Safe JSON read with clear error messages. */
-function readJsonFile<T>(filePath: string): T {
+function readJsonFile(filePath) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Missing required JSON file: ${filePath}`);
   }
   const raw = fs.readFileSync(filePath, "utf-8");
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(raw);
   } catch (e) {
-    throw new Error(`Invalid JSON in ${filePath}: ${(e as Error).message}`);
+    throw new Error(`Invalid JSON in ${filePath}: ${e?.message ?? String(e)}`);
   }
 }
 
 /** Write JSON with stable formatting. */
-function writeJsonFile(filePath: string, data: unknown): void {
+function writeJsonFile(filePath, data) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
 }
 
 /** Write text with safe directory creation. */
-function writeTextFile(filePath: string, content: string): void {
+function writeTextFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf-8");
 }
 
 /** Convert string to boolean (accept true/false/1/0). */
-function toBool(s: string | undefined, def: boolean): boolean {
+function toBool(s, def) {
   if (s === undefined) return def;
-  const v = s.toLowerCase().trim();
+  const v = String(s).toLowerCase().trim();
   if (v === "true" || v === "1" || v === "yes") return true;
   if (v === "false" || v === "0" || v === "no") return false;
   return def;
 }
 
 /** Clamp integer safely. */
-function clampInt(n: number, min: number, max: number): number {
+function clampInt(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
 /** ISO timestamp helper. */
-function isoNow(): string {
+function isoNow() {
   return new Date().toISOString();
 }
 
 /** YYYY-MM-DD in UTC for audit folder naming. */
-function utcDateStamp(d = new Date()): string {
+function utcDateStamp(d = new Date()) {
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
@@ -212,7 +190,7 @@ function utcDateStamp(d = new Date()): string {
  * - Works if user passes --pr 42
  * - Or if branch looks like "refs/pull/42/merge" (rare in reusable workflows)
  */
-function inferPrNumber(explicit: string | undefined): number | null {
+function inferPrNumber(explicit) {
   if (explicit && /^\d+$/.test(explicit)) return parseInt(explicit, 10);
   const ref = process.env.GITHUB_REF ?? "";
   const m = ref.match(/refs\/pull\/(\d+)\/merge/);
@@ -220,8 +198,8 @@ function inferPrNumber(explicit: string | undefined): number | null {
   return null;
 }
 
-/** Normalize classification strings coming from evaluate-flaky.ts. */
-function normalizeClassification(raw: unknown, failRate: number): Classification {
+/** Normalize classification strings coming from evaluate-flaky output. */
+function normalizeClassification(raw, failRate) {
   const s = String(raw ?? "").toLowerCase().trim();
 
   if (s === "pass" || s === "passed" || s === "success") return "pass";
@@ -243,16 +221,15 @@ function normalizeClassification(raw: unknown, failRate: number): Classification
  *   - Deterministic traversal order: lexical sort.
  *   - Limits depth to avoid huge trees (default 8 levels).
  */
-function findHistoricalSummaries(
-  auditRoot: string,
-  maxDepth = 8
-): string[] {
-  const results: string[] = [];
+function findHistoricalSummaries(auditRoot, maxDepth = 8) {
+  /** @type {string[]} */
+  const results = [];
   if (!fs.existsSync(auditRoot)) return results;
 
-  function walk(dir: string, depth: number) {
+  function walk(dir, depth) {
     if (depth > maxDepth) return;
-    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    const entries = fs
+      .readdirSync(dir, { withFileTypes: true })
       .sort((a, b) => a.name.localeCompare(b.name));
     for (const ent of entries) {
       const full = path.join(dir, ent.name);
@@ -262,7 +239,10 @@ function findHistoricalSummaries(
         walk(full, depth + 1);
       } else if (ent.isFile()) {
         // match .../.audit/<date>/flaky/flaky-summary.json
-        if (ent.name === "flaky-summary.json" && full.includes(`${path.sep}flaky${path.sep}`)) {
+        if (
+          ent.name === "flaky-summary.json" &&
+          full.includes(`${path.sep}flaky${path.sep}`)
+        ) {
           results.push(full);
         }
       }
@@ -274,42 +254,57 @@ function findHistoricalSummaries(
 }
 
 /** Parse summary rows from historical file (supports array or object wrapper). */
-function parseHistoricalFile(filePath: string): FlakySummaryRow[] {
-  const j = readJsonFile<unknown>(filePath);
+function parseHistoricalFile(filePath) {
+  const j = readJsonFile(filePath);
 
   // Allow either:
   //  1) array of rows
   //  2) { summaries: [...] }
   //  3) { summary: [...] }
-  const arr =
-    Array.isArray(j) ? j :
-    (typeof j === "object" && j !== null && Array.isArray((j as any).summaries)) ? (j as any).summaries :
-    (typeof j === "object" && j !== null && Array.isArray((j as any).summary)) ? (j as any).summary :
-    null;
+  const arr = Array.isArray(j)
+    ? j
+    : typeof j === "object" &&
+      j !== null &&
+      Array.isArray(j.summaries)
+    ? j.summaries
+    : typeof j === "object" &&
+      j !== null &&
+      Array.isArray(j.summary)
+    ? j.summary
+    : null;
 
   if (!arr) return [];
 
-  const rows: FlakySummaryRow[] = [];
+  /** @type {FlakySummaryRow[]} */
+  const rows = [];
   for (const item of arr) {
     if (!item || typeof item !== "object") continue;
-    const r = item as any;
 
     // Minimal required fields
-    if (!r.test_name || !r.suite || !r.generated_at) continue;
+    if (!item.test_name || !item.suite || !item.generated_at) continue;
 
     rows.push({
-      run_id: String(r.run_id ?? "unknown"),
-      repo: String(r.repo ?? "unknown"),
-      suite: String(r.suite),
-      test_name: String(r.test_name),
-      pass_count: Number(r.pass_count ?? 0),
-      fail_count: Number(r.fail_count ?? 0),
-      total: Number(r.total ?? Math.max(1, Number(r.pass_count ?? 0) + Number(r.fail_count ?? 0))),
-      fail_rate: Number(r.fail_rate ?? 0),
-      classification: normalizeClassification(r.classification, Number(r.fail_rate ?? 0)),
-      first_seen: String(r.first_seen ?? r.generated_at),
-      last_seen: String(r.last_seen ?? r.generated_at),
-      generated_at: String(r.generated_at),
+      run_id: String(item.run_id ?? "unknown"),
+      repo: String(item.repo ?? "unknown"),
+      suite: String(item.suite),
+      test_name: String(item.test_name),
+      pass_count: Number(item.pass_count ?? 0),
+      fail_count: Number(item.fail_count ?? 0),
+      total: Number(
+        item.total ??
+          Math.max(
+            1,
+            Number(item.pass_count ?? 0) + Number(item.fail_count ?? 0)
+          )
+      ),
+      fail_rate: Number(item.fail_rate ?? 0),
+      classification: normalizeClassification(
+        item.classification,
+        Number(item.fail_rate ?? 0)
+      ),
+      first_seen: String(item.first_seen ?? item.generated_at),
+      last_seen: String(item.last_seen ?? item.generated_at),
+      generated_at: String(item.generated_at),
     });
   }
 
@@ -325,43 +320,39 @@ function parseHistoricalFile(filePath: string): FlakySummaryRow[] {
  *   - evaluation.json as a single object OR array of test objects.
  *   - summary.json attempt counts.
  */
-function buildCurrentRunRows(params: {
-  suite: string;
-  outDir: string;
-  metadata: RunMetadata;
-}): FlakySummaryRow[] {
+function buildCurrentRunRows(params) {
   const summaryPath = path.join(params.outDir, "summary.json");
   const evalPath = path.join(params.outDir, "evaluation.json");
 
   const runAt = params.metadata.generated_at;
 
-  const rerun = fs.existsSync(summaryPath)
-    ? readJsonFile<CurrentSummaryInput>(summaryPath)
-    : null;
+  const rerun = fs.existsSync(summaryPath) ? readJsonFile(summaryPath) : null;
+  const evalRaw = readJsonFile(evalPath);
 
-  const evalRaw = readJsonFile<unknown>(evalPath);
+  const evalItems = Array.isArray(evalRaw) ? evalRaw : [evalRaw];
 
-  const evalItems: EvaluationInput[] = Array.isArray(evalRaw)
-    ? (evalRaw as EvaluationInput[])
-    : [evalRaw as EvaluationInput];
-
-  const rows: FlakySummaryRow[] = [];
+  /** @type {FlakySummaryRow[]} */
+  const rows = [];
 
   for (const item of evalItems) {
-    const testName = String(item.test_name ?? "unknown-test");
-    const suite = String(item.suite ?? params.suite);
+    const testName = String(item?.test_name ?? "unknown-test");
+    const suite = String(item?.suite ?? params.suite);
 
     // prefer evaluation counts, else rerun summary counts, else fallback
-    const pass = Number(item.pass_count ?? rerun?.pass_count ?? 0);
-    const fail = Number(item.fail_count ?? rerun?.fail_count ?? 0);
-    const total = Number(item.total ?? rerun?.total_attempts ?? (pass + fail) || 1);
+    const pass = Number(item?.pass_count ?? rerun?.pass_count ?? 0);
+    const fail = Number(item?.fail_count ?? rerun?.fail_count ?? 0);
+    const total = Number(
+      item?.total ?? rerun?.total_attempts ?? (pass + fail) || 1
+    );
 
     const failRate =
-      typeof item.fail_rate === "number"
+      typeof item?.fail_rate === "number"
         ? item.fail_rate
-        : total > 0 ? (fail / total) : 0;
+        : total > 0
+        ? fail / total
+        : 0;
 
-    const cls = normalizeClassification(item.classification, failRate);
+    const cls = normalizeClassification(item?.classification, failRate);
 
     rows.push({
       run_id: params.metadata.run_id,
@@ -383,9 +374,9 @@ function buildCurrentRunRows(params: {
 }
 
 /** Filter rows whose generated_at is within `windowDays` of `now`. */
-function filterWindow(rows: FlakySummaryRow[], windowDays: number, now: Date): FlakySummaryRow[] {
+function filterWindow(rows, windowDays, now) {
   const cutoff = now.getTime() - windowDays * 24 * 60 * 60 * 1000;
-  return rows.filter(r => {
+  return rows.filter((r) => {
     const t = Date.parse(r.generated_at);
     return Number.isFinite(t) && t >= cutoff;
   });
@@ -396,7 +387,7 @@ function filterWindow(rows: FlakySummaryRow[], windowDays: number, now: Date): F
  *   - runs per test
  *   - avg_fail_rate
  *   - classification counts
- *   - top_n ranking score = avg_fail_rate * flaky_runs (default) + small penalty for consistently failing
+ *   - top_n ranking score = avg_fail_rate * flaky_runs + (avg_fail_rate * 0.25 * consistently_failing_runs)
  *
  * Sorting is deterministic:
  *   - score desc
@@ -405,11 +396,12 @@ function filterWindow(rows: FlakySummaryRow[], windowDays: number, now: Date): F
  *   - suite asc
  *   - test_name asc
  */
-function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number): FlakyTrends {
+function computeTrends(rows, windowDays, topN) {
   const now = new Date();
   const w = filterWindow(rows, windowDays, now);
 
-  const byKey = new Map<string, FlakySummaryRow[]>();
+  /** @type {Map<string, FlakySummaryRow[]>} */
+  const byKey = new Map();
   for (const r of w) {
     const key = `${r.suite}::${r.test_name}`;
     const arr = byKey.get(key) ?? [];
@@ -417,8 +409,9 @@ function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number
     byKey.set(key, arr);
   }
 
-  const tests: TrendsTestRow[] = [];
-  let totals = {
+  /** @type {TrendsTestRow[]} */
+  const tests = [];
+  const totals = {
     runs_considered: w.length,
     unique_tests: byKey.size,
     flaky_runs: 0,
@@ -428,7 +421,7 @@ function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number
     quarantine_candidate_runs: 0,
   };
 
-  for (const [key, arr] of byKey.entries()) {
+  for (const [, arr] of byKey.entries()) {
     // stable order inside group
     arr.sort((a, b) => a.generated_at.localeCompare(b.generated_at));
 
@@ -436,7 +429,8 @@ function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number
     const testName = arr[0].test_name;
 
     const runs = arr.length;
-    const avgFail = arr.reduce((s, r) => s + r.fail_rate, 0) / Math.max(1, runs);
+    const avgFail =
+      arr.reduce((s, r) => s + r.fail_rate, 0) / Math.max(1, runs);
 
     let flakyRuns = 0;
     let failRuns = 0;
@@ -444,8 +438,8 @@ function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number
     let infoRuns = 0;
     let quarRuns = 0;
 
-    let firstSeen = arr[0].generated_at;
-    let lastSeen = arr[arr.length - 1].generated_at;
+    const firstSeen = arr[0].generated_at;
+    const lastSeen = arr[arr.length - 1].generated_at;
 
     for (const r of arr) {
       if (r.classification === "flaky") flakyRuns++;
@@ -462,10 +456,7 @@ function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number
     totals.quarantine_candidate_runs += quarRuns;
 
     // Ranking score: prioritize unstable patterns (flaky), but don’t ignore always-failing tests.
-    // - avgFail in [0..1]
-    // - flakyRuns increases priority
-    // - failRuns adds small boost because consistent failures are also urgent (but different from flake)
-    const scoreRaw = (avgFail * flakyRuns) + (avgFail * 0.25 * failRuns);
+    const scoreRaw = avgFail * flakyRuns + avgFail * 0.25 * failRuns;
 
     tests.push({
       suite,
@@ -485,13 +476,14 @@ function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number
 
   tests.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    if (b.avg_fail_rate !== a.avg_fail_rate) return b.avg_fail_rate - a.avg_fail_rate;
+    if (b.avg_fail_rate !== a.avg_fail_rate)
+      return b.avg_fail_rate - a.avg_fail_rate;
     if (b.flaky_runs !== a.flaky_runs) return b.flaky_runs - a.flaky_runs;
     if (a.suite !== b.suite) return a.suite.localeCompare(b.suite);
     return a.test_name.localeCompare(b.test_name);
   });
 
-  const top = tests.slice(0, topN).map(t => t.test_name);
+  const top = tests.slice(0, topN).map((t) => t.test_name);
 
   return {
     window_days: windowDays,
@@ -506,11 +498,9 @@ function computeTrends(rows: FlakySummaryRow[], windowDays: number, topN: number
  * Merge current run rows with historical rows to compute first_seen/last_seen per test.
  * This ensures the per-run summary includes continuity timestamps.
  */
-function hydrateFirstLastSeen(
-  current: FlakySummaryRow[],
-  history: FlakySummaryRow[]
-): FlakySummaryRow[] {
-  const byKey = new Map<string, { first: string; last: string }>();
+function hydrateFirstLastSeen(current, history) {
+  /** @type {Map<string, { first: string; last: string }>} */
+  const byKey = new Map();
 
   for (const r of history) {
     const key = `${r.suite}::${r.test_name}`;
@@ -524,41 +514,31 @@ function hydrateFirstLastSeen(
     }
   }
 
-  return current.map(r => {
+  return current.map((r) => {
     const key = `${r.suite}::${r.test_name}`;
     const hl = byKey.get(key);
     if (!hl) return r;
-    return {
-      ...r,
-      first_seen: hl.first,
-      last_seen: hl.last,
-    };
+    return { ...r, first_seen: hl.first, last_seen: hl.last };
   });
 }
 
 /** Render optional Markdown summary for PR visibility. */
-function renderMarkdown(params: {
-  suite: string;
-  current: FlakySummaryRow[];
-  trends7: FlakyTrends;
-  trends30: FlakyTrends;
-  topN: number;
-}): string {
+function renderMarkdown(params) {
   const rows = params.current;
 
   const counts = {
-    pass: rows.filter(r => r.classification === "pass").length,
-    informational: rows.filter(r => r.classification === "informational").length,
-    flaky: rows.filter(r => r.classification === "flaky").length,
-    quarantine: rows.filter(r => r.classification === "quarantine-candidate").length,
-    failing: rows.filter(r => r.classification === "consistently-failing").length,
-    unknown: rows.filter(r => r.classification === "unknown").length,
+    pass: rows.filter((r) => r.classification === "pass").length,
+    informational: rows.filter((r) => r.classification === "informational").length,
+    flaky: rows.filter((r) => r.classification === "flaky").length,
+    quarantine: rows.filter((r) => r.classification === "quarantine-candidate").length,
+    failing: rows.filter((r) => r.classification === "consistently-failing").length,
+    unknown: rows.filter((r) => r.classification === "unknown").length,
   };
 
   const top7 = params.trends7.tests.slice(0, params.topN);
   const top30 = params.trends30.tests.slice(0, params.topN);
 
-  const lines: string[] = [];
+  const lines = [];
   lines.push(`# Flaky Analytics Summary (${params.suite})`);
   lines.push(``);
   lines.push(`**Current run classifications**`);
@@ -570,7 +550,7 @@ function renderMarkdown(params: {
   if (counts.unknown > 0) lines.push(`- Unknown: ${counts.unknown}`);
   lines.push(``);
 
-  function table(title: string, items: TrendsTestRow[]) {
+  function table(title, items) {
     lines.push(`## ${title}`);
     if (items.length === 0) {
       lines.push(`No historical data available in this window.`);
@@ -581,7 +561,9 @@ function renderMarkdown(params: {
     lines.push(`|---:|---|---|---:|---:|---:|---:|---|`);
     items.forEach((t, i) => {
       lines.push(
-        `| ${i + 1} | \`${t.test_name}\` | ${t.suite} | ${t.runs} | ${(t.avg_fail_rate * 100).toFixed(1)}% | ${t.flaky_runs} | ${t.consistently_failing_runs} | ${t.last_seen} |`
+        `| ${i + 1} | \`${t.test_name}\` | ${t.suite} | ${t.runs} | ${(
+          t.avg_fail_rate * 100
+        ).toFixed(1)}% | ${t.flaky_runs} | ${t.consistently_failing_runs} | ${t.last_seen} |`
       );
     });
     lines.push(``);
@@ -591,20 +573,27 @@ function renderMarkdown(params: {
   table(`Top ${params.topN} unstable tests (30 days)`, top30);
 
   lines.push(`## Recommendations`);
-  lines.push(`- Prioritize fixing the top 3 tests in 30-day window (highest recurring instability).`);
-  lines.push(`- If a test is consistently failing (fail_rate=100%), treat it as a **broken contract**, not a flake.`);
-  lines.push(`- If flakiness clusters in one suite, investigate shared setup/teardown, clocks, data isolation, and parallel hazards.`);
+  lines.push(
+    `- Prioritize fixing the top 3 tests in 30-day window (highest recurring instability).`
+  );
+  lines.push(
+    `- If a test is consistently failing (fail_rate=100%), treat it as a **broken contract**, not a flake.`
+  );
+  lines.push(
+    `- If flakiness clusters in one suite, investigate shared setup/teardown, clocks, data isolation, and parallel hazards.`
+  );
   lines.push(``);
 
   return lines.join("\n");
 }
 
-function main(): ExportResult {
+/** Main entrypoint. */
+function main() {
   const args = parseArgs(process.argv);
 
-  const suite = (args["suite"] ?? "integ").trim(); // unit|integ|e2e (free text ok)
-  const auditRoot = (args["audit-root"] ?? ".audit").trim();
-  const outDir = (args["out-dir"] ?? "out/flaky").trim();
+  const suite = String(args["suite"] ?? "integ").trim(); // unit|integ|e2e (free text ok)
+  const auditRoot = String(args["audit-root"] ?? ".audit").trim();
+  const outDir = String(args["out-dir"] ?? "out/flaky").trim();
   const topN = clampInt(parseInt(args["top-n"] ?? "10", 10) || 10, 3, 50);
   const writeMd = toBool(args["write-md"], false);
   const pr = inferPrNumber(args["pr"]);
@@ -612,7 +601,7 @@ function main(): ExportResult {
   // Hard gate for governance: only run when explicitly enabled in workflow
   // (workflows should set this to true only when FLAKY_DETECT=true)
   const requireEnabled = toBool(args["require-enabled"], true);
-  const flakyDetectEnv = (process.env.FLAKY_DETECT ?? "false").toLowerCase();
+  const flakyDetectEnv = String(process.env.FLAKY_DETECT ?? "false").toLowerCase();
   const flakyEnabled = flakyDetectEnv === "true" || flakyDetectEnv === "1";
 
   if (requireEnabled && !flakyEnabled) {
@@ -624,7 +613,9 @@ function main(): ExportResult {
   const generatedAt = isoNow();
   const repo = process.env.GITHUB_REPOSITORY ?? "unknown/unknown";
   const runId = process.env.GITHUB_RUN_ID ?? "local";
-  const metadata: RunMetadata = {
+
+  /** @type {RunMetadata} */
+  const metadata = {
     repo,
     run_id: `gh-${runId}`,
     workflow: process.env.GITHUB_WORKFLOW ?? undefined,
@@ -633,7 +624,7 @@ function main(): ExportResult {
     commit: process.env.GITHUB_SHA ?? undefined,
     branch: process.env.GITHUB_REF_NAME ?? process.env.GITHUB_HEAD_REF ?? undefined,
     pr,
-    runtime: `node${process.versions.node.split(".")[0]}`,
+    runtime: `node${String(process.versions.node ?? "0").split(".")[0]}`,
     generated_at: generatedAt,
   };
 
@@ -642,12 +633,15 @@ function main(): ExportResult {
 
   // Load historical summaries (best-effort)
   const histPaths = findHistoricalSummaries(auditRoot);
-  const history: FlakySummaryRow[] = [];
+  /** @type {FlakySummaryRow[]} */
+  const history = [];
   for (const p of histPaths) {
     try {
       history.push(...parseHistoricalFile(p));
     } catch (e) {
-      console.warn(`[FLAKY-ANALYTICS] WARN: could not parse ${p}: ${(e as Error).message}`);
+      console.warn(
+        `[FLAKY-ANALYTICS] WARN: could not parse ${p}: ${e?.message ?? String(e)}`
+      );
     }
   }
 
@@ -676,7 +670,7 @@ function main(): ExportResult {
 
   writeJsonFile(metaPath, metadata);
 
-  let mdPath: string | null = null;
+  let mdPath = null;
   if (writeMd) {
     mdPath = path.join(outDir, "flaky-summary.md");
     const md = renderMarkdown({
@@ -695,7 +689,9 @@ function main(): ExportResult {
   console.log(`- ${metaPath}`);
   if (mdPath) console.log(`- ${mdPath}`);
 
-  return { summary: current, trends7, trends30, metadata, mdSummaryPath: mdPath };
+  /** @type {ExportResult} */
+  const result = { summary: current, trends7, trends30, metadata, mdSummaryPath: mdPath };
+  return result;
 }
 
 main();
