@@ -768,7 +768,7 @@ jobs:
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: > 
+          name: >
             flaky-eval-integration
             -${{ inputs.service_name != '' && inputs.service_name || github.workflow }}
             -shard${{ matrix.shard }}
