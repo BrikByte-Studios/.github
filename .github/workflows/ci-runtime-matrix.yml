@@ -12,6 +12,7 @@ on:
       - "docs/pipelines/runtime-matrix.yml"
       - "schemas/runtime-matrix.schema.json"
       - "scripts/validate-runtime-matrix.mjs"
+  workflow_dispatch: {}
 
 jobs:
   validate-runtime-matrix:

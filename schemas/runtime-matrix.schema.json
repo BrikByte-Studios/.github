@@ -3,11 +3,19 @@
   "$id": "https://brikbyte.studio/schemas/runtime-matrix.schema.json",
   "title": "BrikByteOS Runtime & Toolchain Matrix",
   "type": "object",
-  "required": ["schemaVersion", "stacks", "runnerRequirements", "policy", "owner", "lastUpdated"],
+  "required": [
+    "schemaVersion",
+    "stacks",
+    "runnerRequirements",
+    "policy",
+    "owner",
+    "lastUpdated"
+  ],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
     "lastUpdated": { "type": "string", "minLength": 8 },
     "owner": { "type": "string", "minLength": 2 },
+
     "policy": {
       "type": "object",
       "required": ["name", "description"],
@@ -23,6 +31,7 @@
       },
       "additionalProperties": false
     },
+
     "runnerRequirements": {
       "type": "object",
       "required": ["github"],
@@ -43,6 +52,28 @@
       },
       "additionalProperties": false
     },
+
+    "contingency": {
+      "type": "object",
+      "properties": {
+        "disputes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["topic", "currentDecision", "nextReview"],
+            "properties": {
+              "topic": { "type": "string", "minLength": 3 },
+              "currentDecision": { "type": "string", "minLength": 3 },
+              "nextReview": { "type": "string", "minLength": 8 },
+              "reference": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
     "stacks": {
       "type": "array",
       "minItems": 1,
@@ -53,6 +84,7 @@
           "supportedVersions",
           "defaultVersion",
           "supportStatus",
+          "adoptionPriority",
           "toolchain",
           "defaultCommands",
           "projectConventions",
@@ -72,6 +104,12 @@
             },
             "additionalProperties": false
           },
+
+          "adoptionPriority": {
+            "type": "string",
+            "enum": ["primary", "secondary"]
+          },
+
           "supportedVersions": {
             "type": "object",
             "required": ["policy", "versions"],
@@ -85,11 +123,14 @@
             },
             "additionalProperties": false
           },
+
           "defaultVersion": { "type": "string", "minLength": 1 },
+
           "supportStatus": {
             "type": "string",
             "enum": ["supported", "experimental", "planned"]
           },
+
           "toolchain": {
             "type": "object",
             "required": ["packageManagers", "buildTools"],
@@ -123,6 +164,7 @@
             },
             "additionalProperties": false
           },
+
           "defaultCommands": {
             "type": "object",
             "required": ["install", "test", "build"],
@@ -134,6 +176,7 @@
             },
             "additionalProperties": false
           },
+
           "projectConventions": {
             "type": "object",
             "required": ["directories", "buildOutput"],
@@ -163,6 +206,7 @@
             },
             "additionalProperties": false
           },
+
           "deprecationPolicy": {
             "type": "object",
             "required": ["alignsToVendorEOL", "removalRule", "exceptionProcess"],
@@ -173,6 +217,42 @@
             },
             "additionalProperties": false
           },
+
+          "exceptions": {
+            "type": "object",
+            "required": ["enabled"],
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "rules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "type", "description"],
+                  "properties": {
+                    "id": { "type": "string", "minLength": 3 },
+                    "type": {
+                      "type": "string",
+                      "enum": ["per-repo-override", "temporary-policy-exception"]
+                    },
+                    "description": { "type": "string", "minLength": 3 },
+                    "expiresOn": { "type": "string" },
+                    "approval": {
+                      "type": "object",
+                      "required": ["owner"],
+                      "properties": {
+                        "owner": { "type": "string", "minLength": 2 },
+                        "reference": { "type": "string" }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+
           "notes": {
             "type": "array",
             "items": { "type": "string" }
