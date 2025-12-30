@@ -251,10 +251,14 @@ jobs:
           PKG_SHARD="out/shard-packages.txt"
 
           # List packages deterministically; filter out vendor; stable sort.
-          go list ./... | grep -vE '(^|/)vendor($|/)' | sort > "${PKG_ALL}"
+          go list ./... \
+            | grep -vE '(^|/)vendor($|/)' \
+            | sort \
+            > "${PKG_ALL}"
 
           TOTAL_PKGS="$(wc -l < "${PKG_ALL}" | tr -d ' ')"
           echo "📦 Total packages: ${TOTAL_PKGS}"
+
           if [ "${TOTAL_PKGS}" -eq 0 ]; then
             echo "ℹ️ No packages found. Marking shard empty."
             echo "is_empty_shard=true" >> "$GITHUB_OUTPUT"
@@ -264,7 +268,12 @@ jobs:
           fi
 
           # Split by modulo: (line_index % SHARD_TOTAL) == SHARD_INDEX
-          awk -v idx="${SHARD_INDEX}" -v tot="${SHARD_TOTAL}" 'NR>0 { if ((NR-1) % tot == idx) print }' "${PKG_ALL}" > "${PKG_SHARD}"
+          awk \
+            -v idx="${SHARD_INDEX}" \
+            -v tot="${SHARD_TOTAL}" \
+            'NR>0 { if ((NR-1) % tot == idx) print }' \
+            "${PKG_ALL}" \
+            > "${PKG_SHARD}"
 
           SHARD_COUNT="$(wc -l < "${PKG_SHARD}" | tr -d ' ')"
           echo "📦 Packages in shard ${SHARD_INDEX}/${SHARD_TOTAL}: ${SHARD_COUNT}"

@@ -768,7 +768,10 @@ jobs:
         if: ${{ always() && env.FLAKY_DETECT == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: flaky-eval-integration-${{ inputs.service_name != '' && inputs.service_name || github.workflow }}-shard${{ matrix.shard }}
+          name: > 
+            flaky-eval-integration
+            -${{ inputs.service_name != '' && inputs.service_name || github.workflow }}
+            -shard${{ matrix.shard }}
           path: |
             ${{ inputs.context }}/${{ inputs.flaky_export_path }}/
           if-no-files-found: warn
