@@ -1,0 +1,36 @@
+name: "CI — Runtime Matrix Validation"
+
+on:
+  pull_request:
+    paths:
+      - "docs/pipelines/runtime-matrix.yml"
+      - "schemas/runtime-matrix.schema.json"
+      - "scripts/validate-runtime-matrix.mjs"
+  push:
+    branches: ["main"]
+    paths:
+      - "docs/pipelines/runtime-matrix.yml"
+      - "schemas/runtime-matrix.schema.json"
+      - "scripts/validate-runtime-matrix.mjs"
+
+jobs:
+  validate-runtime-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install validator deps
+        run: |
+          # If your .github repo already has package.json, this becomes:
+          # npm ci
+          npm init -y
+          npm i ajv js-yaml
+
+      - name: Validate runtime matrix
+        run: node scripts/validate-runtime-matrix.mjs

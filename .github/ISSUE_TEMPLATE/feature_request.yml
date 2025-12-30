@@ -41,7 +41,7 @@ body:
       required: true
 
   # --- Product / area / environment context ---
-  - type: input
+  - type: textarea
     id: product_area
     attributes:
       label: "Product / Repo / Area"
