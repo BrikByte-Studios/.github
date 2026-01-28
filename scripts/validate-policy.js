@@ -10,23 +10,21 @@
  * - Overlay is shallow-merged per object key (no deep merge complexity)
  *
  * Usage:
- *   node scripts/validate-policy.ts
+ *   node scripts/validate-policy.js
  */
 
-import fs from "fs";
-import path from "path";
-import yaml from "js-yaml";
-import Ajv from "ajv";
+const fs = require("fs");
+const path = require("path");
+const yaml = require("js-yaml");
+const Ajv = require("ajv");
 
-type AnyObj = Record<string, any>;
-
-function readYaml(filePath: string): AnyObj {
+function readYaml(filePath) {
   const raw = fs.readFileSync(filePath, "utf-8");
   const parsed = yaml.load(raw);
   if (!parsed || typeof parsed !== "object") {
     throw new Error(`YAML file did not parse into an object: ${filePath}`);
   }
-  return parsed as AnyObj;
+  return parsed;
 }
 
 /**
@@ -36,15 +34,16 @@ function readYaml(filePath: string): AnyObj {
  *
  * This is intentionally conservative for v1 to avoid complex inheritance semantics.
  */
-function shallowOverlay(base: AnyObj, overlay: AnyObj): AnyObj {
-  const out: AnyObj = { ...base };
+function shallowOverlay(base, overlay) {
+  const out = { ...base };
 
   for (const key of Object.keys(overlay)) {
     const oVal = overlay[key];
     const bVal = out[key];
 
     const bothObjects =
-      bVal && oVal &&
+      bVal &&
+      oVal &&
       typeof bVal === "object" &&
       typeof oVal === "object" &&
       !Array.isArray(bVal) &&
@@ -62,7 +61,7 @@ function shallowOverlay(base: AnyObj, overlay: AnyObj): AnyObj {
   return out;
 }
 
-function fileExists(p: string): boolean {
+function fileExists(p) {
   try {
     fs.accessSync(p, fs.constants.F_OK);
     return true;
@@ -71,7 +70,7 @@ function fileExists(p: string): boolean {
   }
 }
 
-function main(): void {
+function main() {
   const root = process.cwd();
 
   const policyPath = path.join(root, ".github", "policy.yml");
@@ -103,14 +102,14 @@ function main(): void {
   if (!ok) {
     console.error("❌ Policy validation FAILED.");
     console.error("Schema errors:");
-    for (const err of validate.errors ?? []) {
+    for (const err of validate.errors || []) {
       console.error(`- ${err.instancePath || "(root)"}: ${err.message}`);
     }
 
     console.error("\nHelpful tips:");
-    console.error("- Check `release.semver.tag_pattern` must be strict vX.Y.Z in v1.");
-    console.error("- Ensure `allowed_branches` is non-empty when semver.enabled=true.");
-    console.error("- Ensure `initial_version` matches ^v\\d+\\.\\d+\\.\\d+$.");
+    console.error("- `release.semver.tag_pattern` must be strict vX.Y.Z in v1.");
+    console.error("- `allowed_branches` must be non-empty when semver.enabled=true.");
+    console.error("- `initial_version` must match ^v\\d+\\.\\d+\\.\\d+$.");
 
     process.exit(1);
   }

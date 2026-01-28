@@ -37,4 +37,4 @@ jobs:
 
       - name: Validate policy against schema
         run: |
-          node scripts/validate-policy.ts
+          node scripts/validate-policy.js
