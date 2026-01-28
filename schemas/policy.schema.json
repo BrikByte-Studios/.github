@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brikbyte.studios/schemas/policy.schema.json",
+  "title": "BrikByteOS Policy Schema",
+  "type": "object",
+  "additionalProperties": true,
+
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+
+    "release": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "semver": { "$ref": "#/$defs/releaseSemverV1" }
+      }
+    }
+  },
+
+  "required": ["version"],
+
+  "$defs": {
+    "releaseSemverV1": {
+      "title": "Release SemVer Policy (v1)",
+      "type": "object",
+      "additionalProperties": false,
+
+      "properties": {
+        "enabled": { "type": "boolean" },
+
+        "source_of_truth": {
+          "type": "string",
+          "enum": ["git-tags"],
+          "description": "v1 constraint: git tags are canonical."
+        },
+
+        "tag_prefix": {
+          "type": "string",
+          "minLength": 1
+        },
+
+        "tag_pattern": {
+          "type": "string",
+          "const": "^v\\d+\\.\\d+\\.\\d+$",
+          "description": "v1 constraint: strict vX.Y.Z only."
+        },
+
+        "allowed_branches": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+
+        "enforcement_mode": {
+          "type": "string",
+          "enum": ["warn", "block"]
+        },
+
+        "idempotency": {
+          "type": "string",
+          "enum": ["fail", "noop"]
+        },
+
+        "tag_type": {
+          "type": "string",
+          "enum": ["annotated", "lightweight"]
+        },
+
+        "initial_version": {
+          "type": "string",
+          "pattern": "^v\\d+\\.\\d+\\.\\d+$"
+        },
+
+        "prerelease": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "allowed_channels": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": ["rc", "beta"]
+            }
+          },
+          "required": ["enabled"]
+        },
+
+        "guardrails": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "require_full_history": { "type": "boolean" },
+            "require_checks_passed": { "type": "boolean" },
+            "prevent_tag_move": { "type": "boolean" }
+          },
+          "required": ["require_full_history", "require_checks_passed", "prevent_tag_move"]
+        }
+      },
+
+      "required": [
+        "enabled",
+        "source_of_truth",
+        "tag_prefix",
+        "tag_pattern",
+        "allowed_branches",
+        "enforcement_mode",
+        "idempotency",
+        "tag_type",
+        "initial_version",
+        "prerelease",
+        "guardrails"
+      ],
+
+      "allOf": [
+        {
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "required": [
+              "allowed_branches",
+              "source_of_truth",
+              "tag_prefix",
+              "tag_pattern",
+              "initial_version"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

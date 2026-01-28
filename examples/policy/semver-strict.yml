@@ -1,0 +1,19 @@
+version: 1
+release:
+  semver:
+    enabled: true
+    source_of_truth: "git-tags"
+    tag_prefix: "v"
+    tag_pattern: "^v\\d+\\.\\d+\\.\\d+$"
+    allowed_branches: ["main", "master"]
+    enforcement_mode: "block"
+    idempotency: "fail"
+    tag_type: "annotated"
+    initial_version: "v0.1.0"
+    prerelease:
+      enabled: false
+      allowed_channels: ["rc", "beta"]
+    guardrails:
+      require_full_history: true
+      require_checks_passed: false
+      prevent_tag_move: true

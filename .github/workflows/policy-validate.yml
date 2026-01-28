@@ -1,0 +1,40 @@
+name: Policy Validate
+
+on:
+  pull_request:
+    paths:
+      - ".github/policy.yml"
+      - ".github/policy.local.yml"
+      - "schemas/**"
+      - "scripts/**"
+      - "docs/governance/**"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/policy.yml"
+      - ".github/policy.local.yml"
+      - "schemas/**"
+      - "scripts/**"
+
+jobs:
+  validate-policy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: |
+          npm ci
+
+      - name: Validate policy against schema
+        run: |
+          node scripts/validate-policy.ts

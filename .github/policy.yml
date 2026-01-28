@@ -1,258 +1,56 @@
-# BrikByte Studios — Org-wide Governance Policy (PIPE-GOV-7.1)
-#
-# This file defines the **baseline governance policy** for BrikByte-Studios.
-# Product / service repos MAY define their own .github/policy.yml, but:
-#   - They MUST conform to docs/policy/policy.schema.json
-#   - They MUST NOT relax org-wide minimums
-#   - They MAY tighten (stricter) rules
+# BrikByteOS Global Policy (Org Default)
+# NOTE: Repo-level overrides may layer via `.github/policy.local.yml` (see docs).
 
-version: 1                     # Schema version (not policy_version)
-policy_version: "1.0.0"        # Policy version (semantic versioning)
-mode: "advisory"               # advisory | enforce
+version: 1
 
-# ---------------------------------------------------------------------------
-# REVIEWS — PIPE-GOV-7.3.1
-# ---------------------------------------------------------------------------
+release:
+  semver:
+    # Enables SemVer policy + automated tagging workflows.
+    enabled: true
 
-reviews:
-  # Legacy baseline (still enforced by the merge/extends logic)
-  required_approvals: 2
-  require_code_owner_review: true
-  additional_reviewer_teams:
-    - "platform-leads"
+    # v1 constraint: Git tags are the only source of truth.
+    # This avoids drift between version files and tags.
+    source_of_truth: "git-tags" # enum(v1): ["git-tags"]
 
-  # New standardized form
-  default:
-    required_approvals: 2
-    require_code_owner_review: true
-    required_roles: []  # None globally by default
+    # Tag naming rules (v1 strict)
+    tag_prefix: "v"
+    tag_pattern: "^v\\d+\\.\\d+\\.\\d+$" # STRICT: vX.Y.Z only in v1
 
-  branches:
-    main:
-      required_approvals: 2
-      require_code_owner_review: true
+    # Release eligibility: tagging allowed only on these branches/patterns.
+    # Wildcards: "release/*" matches e.g. "release/v1", "release/2026-01"
+    allowed_branches:
+      - "main"
+      - "master"
+      - "release/*"
 
-    "release/*":
-      required_approvals: 2
-      require_code_owner_review: true
+    # Enforcement behavior
+    # warn  = logs warnings but continues (useful during rollout)
+    # block = fails the workflow/job (default for mainline governance)
+    enforcement_mode: "block" # enum: ["warn", "block"]
 
-    "hotfix/*":
-      required_approvals: 2
-      required_roles:
-        - "platform-leads"
+    # Idempotency behavior when tag exists:
+    # fail = fail immediately (default)
+    # noop = succeed only if tag exists AND points to the same commit SHA (conflicts still fail)
+    idempotency: "fail" # enum: ["fail", "noop"]
 
-    "feature/*":
-      required_approvals: 1
-      require_code_owner_review: false
+    # Tag type:
+    # annotated = required for auditability (default)
+    # lightweight = allowed but discouraged
+    tag_type: "annotated" # enum: ["annotated", "lightweight"]
 
-# ---------------------------------------------------------------------------
-# TESTS — PIPE-GOV-7.3.2
-# ---------------------------------------------------------------------------
+    # Bootstrap behavior when no valid SemVer tags exist.
+    # The resolver (3.1.2) will treat this as the baseline before bumping.
+    initial_version: "v0.1.0" # must match vX.Y.Z
 
-tests:
-  # Org-wide baseline coverage minimum (non-relaxable)
-  coverage_min: 80
+    # Reserved for v2/v3. Present now to keep forward-compatible shape.
+    prerelease:
+      enabled: false
+      allowed_channels:
+        - "rc"
+        - "beta"
 
-  # All tests must be green for gate to pass
-  require_tests_green: true
-
-  # Future enhancement: restrict to critical-path coverage only
-  critical_paths_only: false
-
-  # Allowed drop vs baseline in percentage points
-  coverage_delta_min: -2
-
-  # Location of test coverage summary artifact (relative to repo root)
-  coverage_report_path: "coverage/coverage-summary.json"
-
-# ---------------------------------------------------------------------------
-# SECURITY — PIPE-GOV-7.3.3
-# ---------------------------------------------------------------------------
-
-security:
-  sast:
-    tool: "codeql"                        # or "semgrep"
-    max_severity: "medium"                # no high/critical allowed unless waived
-    report_path: "reports/codeql-results.json"
-
-  sca:
-    tool: "npm-audit"                     # or pip-audit, mvn-dependency-check
-    max_severity: "high"                  # critical only allowed via waiver
-    report_path: "reports/npm-audit.json"
-
-# ---------------------------------------------------------------------------
-# DOCUMENTATION GOVERNANCE
-# ---------------------------------------------------------------------------
-
-docs:
-  require_docs_on_feature_change: true
-  paths:
-    - "docs/**"
-    - "ADR/**"
-    - "adr/**"
-    - "docs/adr/**"
-
-# ---------------------------------------------------------------------------
-# SUPPLY CHAIN — Release integrity, SBOMs, signatures
-# ---------------------------------------------------------------------------
-
-supply_chain:
-  require_signed_artifacts: true
-  require_sbom: true
-
-adr:
-  # Paths where changes *usually* require ADRs
-  required_on_paths:
-    - "infra/**"
-    - ".github/**"
-    - "charts/**"
-    - "security/**"
-
-  # If true, ADRs referenced in PRs must have status: Accepted
-  require_accepted_adr: true
-
-  # Glob used by ADR tooling to find ADR files
-  adr_file_glob: "docs/adr/[0-9][0-9][0-9]-*.md"
-
-artifacts:
-  require_sbom: true
-  require_hashes: true
-  require_signatures: true
-
-  # Hash algorithm used when generating manifest entries.
-  hash_algorithm: "sha256"
-
-  # Where SBOM and hash manifests are expected to be found.
-  sbom_path: "artifacts/sbom.spdx.json"
-  hashes_manifest_path: "artifacts/manifest.json"
-
-  # Signature verification expectations.
-  signature:
-    tool: "cosign"
-    verify_subject: "BrikByte-Studios"
-    # JSON status file generated by prior CI step:
-    status_path: "artifacts/signature-status.json"
-
-
-# ---------------------------------------------------------------------------
-# BrikByteOS Governance Policy — Container Image Tagging
-#
-# GOV-IMAGES-TAG-POLICY-CONFIG-001
-#
-# Purpose:
-#   - Enforce strong, traceable tagging for all CI-built container images.
-#   - Require both:
-#       1) A SHA-based tag (immutable identity)
-#       2) A SemVer-style tag (human-friendly release identity)
-#
-# This block is consumed by:
-#   - .github/scripts/check-image-tags.mjs
-#   - (Future) Policy gate engine (PIPE-GOV-8.x)
-# ---------------------------------------------------------------------------
-
-images:
-  tagging:
-    # Require a SHA-style tag on every CI-built image.
-    # Convention:
-    #   - sha-<short-sha> (e.g. "sha-0f9b9113")
-    #
-    # Rationale:
-    #   - Immutable identity for rollbacks, forensics, and audit trails.
-    require_sha_tag: true
-
-    # Require a SemVer (or equivalent) release tag on every CI-built image.
-    # Accepted examples:
-    #   - "v1.0.0"
-    #   - "1.2.3"
-    #   - "v2.0.0-rc.1"
-    #
-    # Rationale:
-    #   - Human-friendly versioning for releases, changelogs, and docs.
-    require_semver_tag: true
-
-    # Whether the "latest" tag is allowed at all.
-    #
-    # NOTE:
-    #   - If true, "latest" MAY be present but MUST NOT be the only tag.
-    #   - If false, "latest" will be treated as a violation.
-    allow_latest: true
-
-    # Whether environment tags are allowed (e.g. ":staging", ":prod").
-    #
-    # NOTE:
-    #   - These are allowed as *additional* tags but do NOT replace
-    #     the required SHA + SemVer tags.
-    allow_env_tags: true
-
-    # Optional explicit allow-list of environment tags. This is advisory
-    # for now; enforcement can be added later if needed.
-    allowed_env_tags:
-      - "dev"
-      - "staging"
-      - "prod"
-
-    # Minimum number of tags required on a CI-built image. With the
-    # default conventions:
-    #   - 2 tags = minimally acceptable (e.g. "v1.0.0" + "sha-0f9b9113")
-    #   - Environment tags and "latest" are treated as extra.
-    min_tags_required: 2
-
-    # Pattern used to recognize SemVer-style tags.
-    #
-    # Accepts:
-    #   - "1.2.3"
-    #   - "v1.2.3"
-    #   - "1.2.3-rc.1"
-    #   - "v1.2.3+build.5"
-    #
-    # NOTE:
-    #   - Keep this aligned with the release/versioning strategy
-    #     (PIPE-CICD-BUILD-003).
-    semver_pattern: "^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:[-+][0-9A-Za-z\\.-]+)?$"
-
-    # Pattern used to recognize SHA-style tags.
-    #
-    # Convention:
-    #   - sha-<short-sha> where <short-sha> is 7–40 hex chars.
-    #
-    # Example:
-    #   - "sha-0f9b9113"
-    #   - "sha-2f3bb1c25d0538663163186b933507302d46cfee"
-    sha_pattern: "^sha-[0-9a-f]{7,40}$"
-
-    # Treat "latest" as a soft/alias tag only. If true:
-    #   - "latest" MAY appear in the tag set.
-    #   - But at least one SemVer and one SHA tag MUST also be present.
-    #
-    # Example (GOOD):
-    #   - ["v1.0.0", "sha-0f9b9113", "latest"]
-    #
-    # Example (BAD — will fail):
-    #   - ["latest"]
-    treat_latest_as_soft_tag: true
-
-    # Examples (for docs and validation scripts)
-    examples:
-      good:
-        - ["v1.0.0", "sha-0f9b9113"]
-        - ["1.2.3", "sha-abcdef1", "latest"]
-        - ["v2.0.0-rc.1", "sha-1234567", "staging"]
-      bad:
-        - ["latest"]              # missing SHA + SemVer
-        - ["v1.0.0"]              # missing SHA
-        - ["sha-0f9b9113"]        # missing SemVer
-        - ["prod"]                # env-only, missing SHA + SemVer
-
-
-# ---------------------------------------------------------------------------
-# WAIVERS — explicit, time-bound, auditable
-# ---------------------------------------------------------------------------
-
-waivers:
-  # EXAMPLE (keep or remove)
-  - rule: "security.sca"
-    scope: "CVE-2025-12345"
-    reason: "Vendor patch not yet available; WAF rule in place"
-    ttl: "2025-12-31"
-    approver: "@security-lead"
-    evidence: "https://internal/wiki/waivers/CVE-2025-12345"
+    # Guardrails (primarily enforced by the tag workflow in 3.1.4)
+    guardrails:
+      require_full_history: true
+      require_checks_passed: false
+      prevent_tag_move: true
