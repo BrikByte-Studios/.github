@@ -16,7 +16,8 @@
 const fs = require("fs");
 const path = require("path");
 const yaml = require("js-yaml");
-const Ajv = require("ajv");
+// Ajv 8 requires the correct draft build to validate $schema=2020-12
+const Ajv2020 = require("ajv/dist/2020");
 
 function readYaml(filePath) {
   const raw = fs.readFileSync(filePath, "utf-8");
@@ -32,7 +33,7 @@ function readYaml(filePath) {
  * - For each top-level key in overlay, replace base[key] if scalar/array
  * - If both are objects, merge one level deep (still shallow)
  *
- * This is intentionally conservative for v1 to avoid complex inheritance semantics.
+ * Intentionally conservative for v1 to avoid complex inheritance semantics.
  */
 function shallowOverlay(base, overlay) {
   const out = { ...base };
@@ -94,7 +95,8 @@ function main() {
   const schemaRaw = fs.readFileSync(schemaPath, "utf-8");
   const schemaJson = JSON.parse(schemaRaw);
 
-  const ajv = new Ajv({ allErrors: true, strict: false });
+  // Ajv 2020 instance (supports $schema draft 2020-12 out of the box)
+  const ajv = new Ajv2020.default({ allErrors: true, strict: false });
   const validate = ajv.compile(schemaJson);
 
   const ok = validate(finalPolicy);
