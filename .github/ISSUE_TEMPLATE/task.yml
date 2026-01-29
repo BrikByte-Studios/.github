@@ -1,111 +1,111 @@
 name: "🧰 Task / Work Item"
-description: "Plan and track a concrete piece of work aligned to a feature, bug, or platform initiative."
-title: "[TASK] <short summary>"
+description: "Plan, implement, and govern a concrete engineering work item."
+title: "[TASK] <concise, action-oriented summary>"
 labels:
   - "type:task"
   - "status:triage"
+
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for creating a task for BrikByte Studios 👋
+        👋 Welcome to BrikByte Studios Engineering.
 
-        This template is designed for **small to medium work items**
-        that implement a feature, fix, refactor, or platform improvement.
-        Use it when the work is **well-defined, actionable, and deliverable within a sprint**.
+        Use this template for **well-scoped, sprint-sized work items**:
+        - Feature slices, bug fixes, refactors, platform improvements, enablement work
 
-        > 🔐 **Note:** Do not include secrets, credentials, or personal information.
+        ❗ If this item exceeds **5 days**, split it or create an Epic.
 
-  # --- High-level summary ---
+        🔐 Do not include secrets, credentials, or personal data.
+
+  # --- Executive Summary ---
   - type: textarea
     id: summary
     attributes:
       label: "Task Summary"
-      description: "Short, clear description of the task."
-      placeholder: "e.g., Implement Ozow payment provider adapter in CargoPulse API."
+      description: "One-paragraph executive summary."
+      placeholder: |
+        What is being done?
+        Why is it needed?
+        What outcome is expected?
     validations:
       required: true
 
-  # --- Label taxonomy & classification ---
+  # --- Classification ---
   - type: dropdown
     id: task_type
     attributes:
-      label: "Task Type (Label Taxonomy: type:*)"
-      description: "What kind of work is this? This should align with your label taxonomy."
+      label: "Work Classification (type:*)"
       options:
+        - "type:feature"
         - "type:improvement"
-        - "type:feature-implementation"
-        - "type:bug-fix"
+        - "type:bug"
         - "type:refactor"
         - "type:chore"
         - "type:spike"
         - "type:docs"
         - "type:test"
+        - "type:governance"
       default: 0
     validations:
       required: true
 
   - type: input
-    id: proj
+    id: project
     attributes:
-      label: "Project / Subsystem (proj/*)"
-      description: "Which project or subsystem does this task belong to?"
-      placeholder: "e.g., proj/cargopulse, proj/telemedease, proj/brikbyteos"
+      label: "Project / Platform (proj/*)"
+      placeholder: "proj/brikbyteos, proj/cargopulse"
     validations:
       required: true
 
   - type: input
     id: area
     attributes:
-      label: "Area (area:*)"
-      description: "Tech or domain area affected by this task."
-      placeholder: "e.g., area:billing, area:auth, area:infra, area:observability"
+      label: "Primary Domain / Area (area:*)"
+      placeholder: "area:auth, area:ci-cd, area:billing"
     validations:
       required: true
 
   - type: input
     id: phase
     attributes:
-      label: "Phase (phase/*)"
-      description: "Milestone wave or phase this task contributes to."
-      placeholder: "e.g., phase/foundation, phase/expansion, phase/hardening"
+      label: "Delivery Phase (phase/*)"
+      placeholder: "phase/foundation, phase/hardening"
     validations:
       required: false
 
+  # --- Priority & Sizing ---
   - type: dropdown
     id: priority
     attributes:
-      label: "Priority (P*)"
-      description: "How urgent/important is this task?"
+      label: "Priority"
       options:
-        - "P0 - Urgent / Blocker"
-        - "P1 - High"
-        - "P2 - Medium"
-        - "P3 - Low"
+        - "P0 — Production Blocker"
+        - "P1 — Critical"
+        - "P2 — Important"
+        - "P3 — Nice-to-have"
     validations:
       required: true
 
   - type: dropdown
     id: size
     attributes:
-      label: "Size Estimate"
-      description: "Rough effort estimate for planning (story points / t-shirt size)."
+      label: "Estimated Size"
       options:
-        - "XS (0.5–1 day)"
+        - "XS (≤1 day)"
         - "S (1–2 days)"
         - "M (2–3 days)"
         - "L (3–5 days)"
-        - "XL (>5 days / consider splitting)"
+        - "XL (>5 days — split)"
     validations:
       required: false
 
-  # --- Assignment & parent relationship ---
+  # --- Ownership ---
   - type: input
-    id: suggested_assignee
+    id: owner
     attributes:
-      label: "Suggested Assignee"
-      description: "Who should primarily own this task? (GitHub handle or team name)"
-      placeholder: "e.g., @platform-lead, @cargopulse-team"
+      label: "Primary Owner"
+      placeholder: "@platform-lead, @qa-team"
     validations:
       required: false
 
@@ -113,217 +113,242 @@ body:
     id: reporter
     attributes:
       label: "Reporter"
-      description: "Your name or GitHub handle."
-      placeholder: "e.g., @thapelomagqazana"
+      placeholder: "@thapelomagqazana"
     validations:
       required: true
 
+  # --- Parent & Traceability ---
   - type: dropdown
     id: parent_type
     attributes:
-      label: "Parent Type"
-      description: "What is this task implementing or contributing to?"
+      label: "Work Hierarchy"
       options:
-        - "Standalone task"
-        - "Feature Request"
-        - "Bug / Defect"
-        - "Epic / Initiative"
-        - "Governance / Policy item"
+        - "Standalone"
+        - "Epic"
+        - "Feature"
+        - "Defect"
+        - "Governance"
       default: 0
     validations:
       required: true
 
   - type: input
-    id: parent_issue
+    id: parent_ref
     attributes:
-      label: "Parent Issue / Epic Link"
-      description: "Link the parent issue if this task implements it."
-      placeholder: "e.g., #123 (Feature Request: Add Ozow payments)"
+      label: "Parent Reference"
+      placeholder: "#123, EPIC-004"
     validations:
       required: false
 
-  # --- Objective & context ---
+  # --- Outcome Definition ---
   - type: textarea
     id: objective
     attributes:
-      label: "Objective"
-      description: |
-        "Describe the purpose and intended outcome of this task.
-        Focus on the result, not the implementation details."
+      label: "Outcome / Objective"
       placeholder: |
-        - What should be true once this task is completed?
-        - What problem does this task solve?
-        - How does it move the parent feature/epic forward?
+        After this task:
+        - What will be measurably better?
+        - What risk is reduced?
+        - What capability is added?
     validations:
       required: true
 
   - type: textarea
-    id: context
+    id: success_metrics
     attributes:
-      label: "Description / Context"
-      description: "Background, dependencies, or context needed to understand the task fully."
+      label: "Success Criteria / KPIs"
       placeholder: |
-        - Current behavior / state:
-        - Why this is needed now:
-        - Links to specs, designs, ADRs, Slack threads:
+        - Latency < X ms
+        - Error rate < Y%
+        - Coverage ≥ Z%
+        - Manual steps eliminated
     validations:
       required: false
 
-  # --- Deliverables & Definition of Done ---
+  # --- Context ---
+  - type: textarea
+    id: context
+    attributes:
+      label: "Context & Background"
+      placeholder: |
+        Current state
+        Constraints
+        Related incidents
+        Prior attempts
+    validations:
+      required: false
+
+  # --- Deliverables ---
   - type: textarea
     id: deliverables
     attributes:
       label: "Deliverables"
-      description: "List the concrete outputs of this task."
       placeholder: |
-        - [ ] New API endpoint implemented and covered by tests
-        - [ ] UI component wired to backend
-        - [ ] Docs updated in /docs/...
-        - [ ] Monitoring / alerts configured
+        - [ ] Code merged
+        - [ ] Tests added
+        - [ ] Docs updated
+        - [ ] Dashboards created
     validations:
       required: true
 
+  # --- Test Plan / Scenarios (NEW) ---
   - type: textarea
-    id: definition_of_done
+    id: test_plan
     attributes:
-      label: "Definition of Done (DoD)"
-      description: "What conditions must be satisfied for this task to be considered complete?"
+      label: "Test Plan / Scenarios"
+      description: "Describe how this change will be validated (unit/integration/e2e/manual), including key scenarios."
       placeholder: |
-        Include checks such as:
-        - [ ] Unit / integration tests added and passing
-        - [ ] CI pipeline green
-        - [ ] Code reviewed and merged
-        - [ ] Feature flag added (if applicable)
-        - [ ] Documentation updated (README, ADRs, runbooks, etc.)
+        Testing levels:
+        - Unit:
+        - Integration:
+        - E2E:
+        - Manual QA / UAT:
+
+        Core scenarios:
+        - ✅ Positive: <what should work>
+        - ❌ Negative: <what must fail safely>
+        - ⚠️ Edge: <boundaries, weird inputs>
+        - 🧨 Corner: <rare combinations>
+
+        Non-functional (if relevant):
+        - Security:
+        - Performance:
+        - Reliability / rollback verification:
+
+        Evidence:
+        - Link to TC IDs / test files / run logs
+    validations:
+      required: true
+
+  # --- Definition of Done ---
+  - type: textarea
+    id: dod
+    attributes:
+      label: "Definition of Done"
+      placeholder: |
+        - [ ] CI green
+        - [ ] Review approved
+        - [ ] Test Plan executed (evidence attached)
+        - [ ] Monitoring/alerts updated (if relevant)
+        - [ ] Evidence archived
     validations:
       required: false
 
-  # --- Technical details & dependencies ---
+  # --- Technical Design ---
   - type: textarea
-    id: technical_notes
+    id: technical_plan
     attributes:
-      label: "Technical Notes / Proposed Approach"
-      description: |
-        "High-level implementation notes, options, or constraints.
-        Not a full design, but enough to orient the implementer."
+      label: "Technical Approach"
       placeholder: |
-        - Implementation outline:
-        - Affected modules / files:
-        - Patterns / guidelines to follow (DDD, hexagonal, etc.):
-        - Config / feature flags:
+        Architecture
+        Affected services
+        APIs
+        Data changes
+        Migration strategy
     validations:
       required: false
 
+  # --- Dependencies ---
   - type: textarea
     id: dependencies
     attributes:
-      label: "Dependencies & Relationships (rel/*)"
-      description: "List upstream/downstream dependencies or related work items."
+      label: "Dependencies (rel/*)"
       placeholder: |
-        - rel/depends-on: #456, #789
-        - rel/blocks: #321
-        - External dependencies (services, APIs, infra changes):
+        rel/depends-on: #234
+        rel/blocks: #456
+    validations:
+      required: false
+
+  # --- Governance ---
+  - type: textarea
+    id: governance
+    attributes:
+      label: "Governance & Compliance"
+      placeholder: |
+        ADRs
+        Policies
+        RTM
+        Audit refs
+    validations:
+      required: false
+
+  # --- Risk Management ---
+  - type: textarea
+    id: risks
+    attributes:
+      label: "Risks & Failure Modes"
+      placeholder: |
+        Technical
+        Product
+        Operational
+        Security
     validations:
       required: false
 
   - type: textarea
-    id: governance_links
+    id: mitigations
     attributes:
-      label: "Governance / Traceability (REQ, TC, ADR, RTM)"
-      description: "If known, link related requirements, test cases, ADRs, or RTM entries."
+      label: "Mitigation & Rollback Plan"
       placeholder: |
-        - REQ-XXX:
-        - TC-YYY:
-        - ADR-00X:
-        - RTM row(s):
+        Feature flags
+        Canary
+        Rollback steps
+        Observability hooks
     validations:
       required: false
 
-  # --- Risk, impact & timeline ---
-  - type: textarea
-    id: risk_impact
-    attributes:
-      label: "Risk & Impact"
-      description: "Call out any notable risks or impacts (technical, product, operational)."
-      placeholder: |
-        - Risks:
-        - Impact radius (modules/services/users):
-        - Potential failure modes:
-    validations:
-      required: false
-
-  - type: textarea
-    id: considerations_mitigations
-    attributes:
-      label: "Considerations / Mitigations"
-      description: |
-        "List mitigation strategies, safeguards,
-        and fallbacks to reduce the likelihood
-        or impact of the identified risks."
-      placeholder: |
-        - Mitigation 1: (e.g., hide behind feature flag; dark launch before full rollout)
-        - Mitigation 2: (e.g., add extra logging / metrics to observe behaviour)
-        - Mitigation 3: (e.g., run change in lower envs first; canary or phased rollout)
-        - Safeguards: (e.g., alerts, dashboards, health checks)
-        - Contingency plan: (e.g., how to rollback, disable, or revert changes quickly)
-    validations:
-      required: false
-
-
+  # --- Delivery Planning ---
   - type: input
-    id: target_milestone
+    id: milestone
     attributes:
       label: "Target Milestone / Sprint"
-      description: "When do we aim to complete this task?"
-      placeholder: "e.g., Sprint 2025-11-3, Milestone v1.4.0"
+      placeholder: "Sprint-2026-02, v2.1.0"
     validations:
       required: false
 
-  # --- Estimation & logistics ---
   - type: input
     id: estimate
     attributes:
-      label: "Effort Estimate (optional)"
-      description: "Numeric estimate if your team uses story points or hours."
-      placeholder: "e.g., 3 points, 8h"
+      label: "Numeric Estimate"
+      placeholder: "5 pts, 12h"
     validations:
       required: false
 
+  # --- Evidence ---
   - type: textarea
-    id: references
+    id: evidence
     attributes:
-      label: "References / Attachments"
-      description: "Links to designs, documents, or other artefacts relevant to this task."
+      label: "Evidence & Artefacts"
       placeholder: |
-        - Figma:
-        - Confluence / Notion:
-        - API docs:
-        - Slack thread:
+        PR:
+        Logs:
+        Screenshots:
+        Benchmarks:
+        Test run links:
     validations:
       required: false
 
   - type: input
-    id: commit_sha
+    id: implementation_ref
     attributes:
-      label: "Commit SHA / PR Link (optional)"
-      description: "If known, link the commit or pull request that implements or completes this task."
-      placeholder: "e.g., 9f8a12b, or #456"
+      label: "PR / Commit"
+      placeholder: "#456, abc123"
     validations:
       required: false
 
-
-  # --- Pre-flight checklist ---
+  # --- Preflight ---
   - type: checkboxes
     id: preflight
     attributes:
-      label: "Pre-Flight Checklist"
-      description: "Confirm before submitting this task."
+      label: "Preflight Validation"
       options:
-        - label: "The objective and scope of this task are clear and focused."
+        - label: "Scope is clearly defined"
           required: true
-        - label: "This task is small enough to be completed within a single sprint/iteration."
+        - label: "Task is sprint-sized"
           required: true
-        - label: "Parent issue / epic is linked if this task implements a larger feature."
-          required: false
-        - label: "No secrets, credentials, or personal data are included in this issue."
+        - label: "Dependencies identified"
+          required: true
+        - label: "Test plan/scenarios are included"
+          required: true
+        - label: "No sensitive data included"
           required: true
