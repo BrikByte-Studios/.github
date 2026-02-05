@@ -37,6 +37,10 @@ on:
         type: string
         default: "release/artifacts"
 
+      tag:
+        required: true
+        type: string
+
     outputs:
       release_url:
         value: ${{ jobs.publish.outputs.release_url }}
@@ -66,6 +70,7 @@ jobs:
         id: pub
         uses: BrikByte-Studios/brik-pipe-actions/.github/actions/publish-github-release@main
         with:
+          tag: ${{ inputs.tag }}
           artifacts_glob: ${{ inputs.artifacts_glob }}
           attachments_glob: ${{ inputs.attachments_glob }}
           overwrite_policy: ${{ inputs.overwrite_policy }}
