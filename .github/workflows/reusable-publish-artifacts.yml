@@ -3,16 +3,22 @@ name: "reusable-publish-artifacts"
 on:
   workflow_call:
     inputs:
+      tag:
+        required: true
+        type: string
+
       artifacts_glob:
         required: true
         type: string
       attachments_glob:
         required: false
         type: string
+
       overwrite_policy:
         required: false
         type: string
         default: "fail"
+
       draft:
         required: false
         type: boolean
@@ -21,13 +27,17 @@ on:
         required: false
         type: boolean
         default: false
+
+      # Optional: callers can override, otherwise we generate release notes file.
       body_path:
         required: false
         type: string
+
       require_attachments:
         required: false
         type: boolean
         default: true
+
       audit_dir:
         required: false
         type: string
@@ -37,9 +47,10 @@ on:
         type: string
         default: "release/artifacts"
 
-      tag:
-        required: true
-        type: string
+      generate_release_notes:
+        required: false
+        type: boolean
+        default: true
 
     outputs:
       release_url:
@@ -48,12 +59,68 @@ on:
         value: ${{ jobs.publish.outputs.audit_path }}
 
 permissions:
-  contents: write  # required for release create + asset upload
+  contents: write
 
 jobs:
+  # ------------------------------------------------------------
+  # 1) Generate release notes file + upload as artifact
+  # ------------------------------------------------------------
+  release_notes:
+    if: ${{ inputs.generate_release_notes }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      notes_file: ${{ steps.mk.outputs.notes_file }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes (preview)
+        id: cl
+        uses: BrikByte-Studios/brik-pipe-actions/.github/actions/changelog-builder@main
+        with:
+          mode: "preview"
+          version: ${{ inputs.tag }}
+          infer_version: "false"
+          include_merges: "false"
+          enforcement_mode: "warn"
+          audit_enabled: "true"
+          audit_dir: ${{ inputs.audit_dir }}
+
+      # Robust: write step output to a file using Node to avoid heredoc pitfalls
+      - name: Write release notes file
+        id: mk
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          node - <<'NODE'
+          const fs = require("fs");
+          const p = "dist/release/release-notes.md";
+          const content = process.env.RELEASE_NOTES || "";
+          fs.writeFileSync(p, content, "utf8");
+          console.log("Wrote", p, "bytes=", Buffer.byteLength(content, "utf8"));
+          NODE
+          echo "notes_file=dist/release/release-notes.md" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_NOTES: ${{ steps.cl.outputs.release_notes_md }}
+
+      - name: Upload release notes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ steps.mk.outputs.notes_file }}
+          if-no-files-found: error
+
+  # ------------------------------------------------------------
+  # 2) Publish GitHub release assets (downloads release notes file)
+  # ------------------------------------------------------------
   publish:
     name: publish-github-release
     runs-on: ubuntu-latest
+    needs: [release_notes]
 
     outputs:
       release_url: ${{ steps.pub.outputs.release_url }}
@@ -63,8 +130,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Artifacts should already exist (built earlier in your pipeline).
-      # If you want build+publish in one workflow, keep build in a separate job and pass artifacts via upload/download.
+      # If we generated notes, download them into workspace
+      - name: Download release notes artifact
+        if: ${{ inputs.generate_release_notes }}
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: dist/release
+
+      # Decide which body_path to use:
+      # - If caller provided inputs.body_path, use it (assumed to exist)
+      # - Else if generated notes enabled, use dist/release/release-notes.md
+      - name: Resolve body path
+        id: body
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.body_path }}" ]; then
+            echo "body_path=${{ inputs.body_path }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.generate_release_notes }}" = "true" ]; then
+            echo "body_path=dist/release/release-notes.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "body_path=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish GitHub Release assets
         id: pub
@@ -76,7 +163,7 @@ jobs:
           overwrite_policy: ${{ inputs.overwrite_policy }}
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
-          body_path: ${{ inputs.body_path }}
+          body_path: ${{ steps.body.outputs.body_path }}
           require_attachments: ${{ inputs.require_attachments }}
           audit_dir: ${{ inputs.audit_dir }}
           audit_namespace: ${{ inputs.audit_namespace }}
