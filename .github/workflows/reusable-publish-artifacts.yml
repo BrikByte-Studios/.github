@@ -1,0 +1,86 @@
+name: "reusable-publish-artifacts"
+
+on:
+  workflow_call:
+    inputs:
+      artifacts_glob:
+        required: true
+        type: string
+      attachments_glob:
+        required: false
+        type: string
+      overwrite_policy:
+        required: false
+        type: string
+        default: "fail"
+      draft:
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        required: false
+        type: boolean
+        default: false
+      body_path:
+        required: false
+        type: string
+      require_attachments:
+        required: false
+        type: boolean
+        default: true
+      audit_dir:
+        required: false
+        type: string
+        default: ".audit"
+      audit_namespace:
+        required: false
+        type: string
+        default: "release/artifacts"
+
+    outputs:
+      release_url:
+        value: ${{ jobs.publish.outputs.release_url }}
+      audit_path:
+        value: ${{ jobs.publish.outputs.audit_path }}
+
+permissions:
+  contents: write  # required for release create + asset upload
+
+jobs:
+  publish:
+    name: publish-github-release
+    runs-on: ubuntu-latest
+
+    outputs:
+      release_url: ${{ steps.pub.outputs.release_url }}
+      audit_path: ${{ steps.pub.outputs.audit_path }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Artifacts should already exist (built earlier in your pipeline).
+      # If you want build+publish in one workflow, keep build in a separate job and pass artifacts via upload/download.
+
+      - name: Publish GitHub Release assets
+        id: pub
+        uses: BrikByte-Studios/brik-pipe-actions/.github/actions/publish-github-release@main
+        with:
+          artifacts_glob: ${{ inputs.artifacts_glob }}
+          attachments_glob: ${{ inputs.attachments_glob }}
+          overwrite_policy: ${{ inputs.overwrite_policy }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          body_path: ${{ inputs.body_path }}
+          require_attachments: ${{ inputs.require_attachments }}
+          audit_dir: ${{ inputs.audit_dir }}
+          audit_namespace: ${{ inputs.audit_namespace }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload .audit bundle as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-bundle
+          path: ${{ steps.pub.outputs.audit_path }}
+          if-no-files-found: error
