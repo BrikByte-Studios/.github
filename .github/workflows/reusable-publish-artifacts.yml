@@ -3,12 +3,10 @@ name: "reusable-publish-artifacts"
 on:
   workflow_call:
     inputs:
-      # --- Core ---
       tag:
         required: true
         type: string
 
-      # IMPORTANT: caller repo to publish into (because reusable runs from BrikByte-Studios/.github)
       repository:
         required: true
         type: string # e.g. BrikByte-Studios/brik-pipe-examples
@@ -20,7 +18,6 @@ on:
         required: false
         type: string
 
-      # --- Publishing controls ---
       overwrite_policy:
         required: false
         type: string
@@ -45,7 +42,6 @@ on:
         type: boolean
         default: true
 
-      # --- Audit ---
       audit_dir:
         required: false
         type: string
@@ -55,13 +51,11 @@ on:
         type: string
         default: "release/artifacts"
 
-      # --- Release notes generation (optional) ---
       generate_release_notes:
         required: false
         type: boolean
         default: true
 
-      # --- Artifact handoff names (caller must match these) ---
       dist_artifact_name:
         required: false
         type: string
@@ -86,15 +80,9 @@ on:
         value: ${{ jobs.publish.outputs.audit_path }}
 
 permissions:
-  contents: write # required for release create + asset upload
+  contents: write
 
 jobs:
-  # ------------------------------------------------------------
-  # 1) Generate release notes file + upload as artifact (optional)
-  # Runs only when:
-  # - generate_release_notes=true
-  # - body_path is not provided
-  # ------------------------------------------------------------
   release_notes:
     name: Generate release notes
     if: ${{ inputs.generate_release_notes && inputs.body_path == '' }}
@@ -145,9 +133,6 @@ jobs:
           path: ${{ steps.mk.outputs.notes_file }}
           if-no-files-found: error
 
-  # ------------------------------------------------------------
-  # 2) Publish GitHub release assets
-  # ------------------------------------------------------------
   publish:
     name: publish-github-release
     runs-on: ubuntu-latest
@@ -175,37 +160,35 @@ jobs:
           echo "dist_artifact_name=${{ inputs.dist_artifact_name }}"
           echo "changelog_artifact_name=${{ inputs.changelog_artifact_name }}"
 
-      # Download artifacts to workspace root to preserve their internal paths
+      # ✅ Always land build outputs under dist/release so artifacts_glob works
       - name: Download release dist artifacts
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.dist_artifact_name }}
-          path: .
+          path: dist/release
 
       - name: Download generated release notes artifact
         if: ${{ inputs.generate_release_notes && inputs.body_path == '' }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.notes_artifact_name }}
-          path: .
+          path: dist/release
 
       - name: Download caller-provided body file artifact
         if: ${{ inputs.body_path != '' }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.changelog_artifact_name }}
-          path: .
+          path: dist/notes
 
       - name: Resolve body path
         id: body
         shell: bash
         run: |
           set -euo pipefail
-
           if [ -n "${{ inputs.body_path }}" ]; then
-            # body file should exist exactly as uploaded (e.g. CHANGELOG.md at repo root)
             base="$(basename "${{ inputs.body_path }}")"
-            echo "body_path=${base}" >> "$GITHUB_OUTPUT"
+            echo "body_path=dist/notes/${base}" >> "$GITHUB_OUTPUT"
           elif [ "${{ inputs.generate_release_notes }}" = "true" ] && [ "${{ inputs.body_path }}" = "" ]; then
             echo "body_path=dist/release/release-notes.md" >> "$GITHUB_OUTPUT"
           else
@@ -216,10 +199,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "[preflight] ls -la"
-          ls -la
-          echo "[preflight] ls -la dist/release"
+          echo "[preflight] dist/release"
           ls -la dist/release || true
+          echo "[preflight] dist/notes"
+          ls -la dist/notes || true
+
+          test "$(find dist/release -maxdepth 2 -type f | wc -l)" -gt 0 || (echo "No files in dist/release (missing release-dist?)" && exit 1)
 
           if [ -n "${{ steps.body.outputs.body_path }}" ]; then
             test -f "${{ steps.body.outputs.body_path }}" || (echo "body_path missing: ${{ steps.body.outputs.body_path }}" && exit 1)
