@@ -75,6 +75,11 @@ on:
         required: false
         type: string
         default: "changelog-md" # should contain CHANGELOG.md (or whatever body_path basename is)
+      repository:
+        description: "Target repository in owner/repo form. Defaults to github.context.repo."
+        type: string
+        required: false
+        default: ""
 
     outputs:
       release_url:
