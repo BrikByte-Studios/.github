@@ -75,11 +75,6 @@ on:
         required: false
         type: string
         default: "changelog-md" # should contain CHANGELOG.md (or whatever body_path basename is)
-      repository:
-        description: "Target repository in owner/repo form. Defaults to github.context.repo."
-        type: string
-        required: false
-        default: ""
 
     outputs:
       release_url:
@@ -233,6 +228,7 @@ jobs:
         id: pub
         uses: BrikByte-Studios/brik-pipe-actions/.github/actions/publish-github-release@main
         with:
+          repository: ${{ github.repository }}
           tag: ${{ inputs.tag }}
           artifacts_glob: ${{ inputs.artifacts_glob }}
           attachments_glob: ${{ inputs.attachments_glob }}
