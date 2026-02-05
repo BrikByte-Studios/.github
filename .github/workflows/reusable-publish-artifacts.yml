@@ -150,11 +150,15 @@ jobs:
   # - Caller uploads build outputs as artifact: inputs.dist_artifact_name
   # - If caller provides body_path, caller uploads that file as artifact: inputs.changelog_artifact_name
   # - Otherwise (and enabled) this workflow generates release notes and downloads notes artifact.
+  #
+  # IMPORTANT:
+  # - publish must run even when release_notes is skipped (generate_release_notes=false OR body_path provided)
   # ------------------------------------------------------------
   publish:
     name: publish-github-release
     runs-on: ubuntu-latest
     needs: [release_notes]
+    if: ${{ always() && (needs.release_notes.result == 'success' || needs.release_notes.result == 'skipped') }}
 
     outputs:
       release_url: ${{ steps.pub.outputs.release_url }}
