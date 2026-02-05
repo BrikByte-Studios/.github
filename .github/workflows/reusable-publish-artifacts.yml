@@ -215,6 +215,7 @@ jobs:
         uses: BrikByte-Studios/brik-pipe-actions/.github/actions/publish-github-release@main
         with:
           repository: ${{ inputs.repository }}
+          token: ${{ secrets.release_token }}
           tag: ${{ inputs.tag }}
           artifacts_glob: ${{ inputs.artifacts_glob }}
           attachments_glob: ${{ inputs.attachments_glob }}
