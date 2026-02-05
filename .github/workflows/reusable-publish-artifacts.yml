@@ -3,10 +3,14 @@ name: "reusable-publish-artifacts"
 on:
   workflow_call:
     inputs:
+      # --- Core ---
       tag:
         required: true
         type: string
 
+      # These globs are evaluated in THIS workflow workspace.
+      # In production we expect the caller to upload build outputs as workflow artifacts,
+      # and this reusable downloads them into dist/release before publishing.
       artifacts_glob:
         required: true
         type: string
@@ -14,10 +18,11 @@ on:
         required: false
         type: string
 
+      # --- Publishing controls ---
       overwrite_policy:
         required: false
         type: string
-        default: "fail"
+        default: "fail" # fail | skip | overwrite
 
       draft:
         required: false
@@ -28,16 +33,19 @@ on:
         type: boolean
         default: false
 
-      # Optional: callers can override, otherwise we generate release notes file.
+      # Optional: callers can pass a file path (e.g. CHANGELOG.md).
+      # If provided, we expect the caller to upload a workflow artifact containing that file.
       body_path:
         required: false
         type: string
+        default: ""
 
       require_attachments:
         required: false
         type: boolean
         default: true
 
+      # --- Audit ---
       audit_dir:
         required: false
         type: string
@@ -47,10 +55,26 @@ on:
         type: string
         default: "release/artifacts"
 
+      # --- Release notes generation (optional) ---
+      # If true and body_path is empty, we generate release notes (preview) and use them as release body.
       generate_release_notes:
         required: false
         type: boolean
         default: true
+
+      # --- Artifact handoff names (caller must match these) ---
+      dist_artifact_name:
+        required: false
+        type: string
+        default: "release-dist" # should contain dist/release/*
+      notes_artifact_name:
+        required: false
+        type: string
+        default: "release-notes" # produced by this workflow when generate_release_notes=true
+      changelog_artifact_name:
+        required: false
+        type: string
+        default: "changelog-md" # should contain CHANGELOG.md (or whatever body_path basename is)
 
     outputs:
       release_url:
@@ -59,14 +83,18 @@ on:
         value: ${{ jobs.publish.outputs.audit_path }}
 
 permissions:
-  contents: write
+  contents: write # required for release create + asset upload
 
 jobs:
   # ------------------------------------------------------------
-  # 1) Generate release notes file + upload as artifact
+  # 1) Generate release notes file + upload as artifact (optional)
+  # Runs only when:
+  # - generate_release_notes=true
+  # - body_path is not provided
   # ------------------------------------------------------------
   release_notes:
-    if: ${{ inputs.generate_release_notes }}
+    name: Generate release notes
+    if: ${{ inputs.generate_release_notes && inputs.body_path == '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -90,11 +118,12 @@ jobs:
           audit_enabled: "true"
           audit_dir: ${{ inputs.audit_dir }}
 
-      # Robust: write step output to a file using Node to avoid heredoc pitfalls
+      # Robust writing: avoid heredoc quoting issues.
       - name: Write release notes file
         id: mk
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist/release
           node - <<'NODE'
           const fs = require("fs");
@@ -110,12 +139,17 @@ jobs:
       - name: Upload release notes artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-notes
+          name: ${{ inputs.notes_artifact_name }}
           path: ${{ steps.mk.outputs.notes_file }}
           if-no-files-found: error
 
   # ------------------------------------------------------------
-  # 2) Publish GitHub release assets (downloads release notes file)
+  # 2) Publish GitHub release assets
+  #
+  # Data contract:
+  # - Caller uploads build outputs as artifact: inputs.dist_artifact_name
+  # - If caller provides body_path, caller uploads that file as artifact: inputs.changelog_artifact_name
+  # - Otherwise (and enabled) this workflow generates release notes and downloads notes artifact.
   # ------------------------------------------------------------
   publish:
     name: publish-github-release
@@ -129,28 +163,61 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # If we generated notes, download them into workspace
-      - name: Download release notes artifact
-        if: ${{ inputs.generate_release_notes }}
+      # --- Always download dist artifacts (required for artifacts_glob to match) ---
+      - name: Download release dist artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-notes
+          name: ${{ inputs.dist_artifact_name }}
           path: dist/release
 
+      # --- If we generated notes, download them into dist/release ---
+      - name: Download generated release notes artifact
+        if: ${{ inputs.generate_release_notes && inputs.body_path == '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.notes_artifact_name }}
+          path: dist/release
+
+      # --- If caller provided body_path, download that artifact safely into dist/notes ---
+      - name: Download caller-provided body file artifact
+        if: ${{ inputs.body_path != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.changelog_artifact_name }}
+          path: dist/notes
+
       # Decide which body_path to use:
-      # - If caller provided inputs.body_path, use it (assumed to exist)
-      # - Else if generated notes enabled, use dist/release/release-notes.md
+      # - If caller provided inputs.body_path => resolve to dist/notes/<basename>
+      # - Else if we generated notes => dist/release/release-notes.md
+      # - Else => empty (no body)
       - name: Resolve body path
         id: body
         shell: bash
         run: |
+          set -euo pipefail
+
           if [ -n "${{ inputs.body_path }}" ]; then
-            echo "body_path=${{ inputs.body_path }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ inputs.generate_release_notes }}" = "true" ]; then
+            base="$(basename "${{ inputs.body_path }}")"
+            echo "body_path=dist/notes/${base}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.generate_release_notes }}" = "true" ] && [ "${{ inputs.body_path }}" = "" ]; then
             echo "body_path=dist/release/release-notes.md" >> "$GITHUB_OUTPUT"
           else
             echo "body_path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preflight validate artifacts + attachments
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "[preflight] listing dist/release"
+          ls -la dist/release || true
+
+          # Validate body_path if set
+          if [ -n "${{ steps.body.outputs.body_path }}" ]; then
+            test -f "${{ steps.body.outputs.body_path }}" || (echo "body_path missing: ${{ steps.body.outputs.body_path }}" && exit 1)
           fi
 
       - name: Publish GitHub Release assets
