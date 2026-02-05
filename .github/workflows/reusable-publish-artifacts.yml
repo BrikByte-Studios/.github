@@ -8,9 +8,11 @@ on:
         required: true
         type: string
 
-      # These globs are evaluated in THIS workflow workspace.
-      # In production we expect the caller to upload build outputs as workflow artifacts,
-      # and this reusable downloads them into dist/release before publishing.
+      # IMPORTANT: caller repo to publish into (because reusable runs from BrikByte-Studios/.github)
+      repository:
+        required: true
+        type: string # e.g. BrikByte-Studios/brik-pipe-examples
+
       artifacts_glob:
         required: true
         type: string
@@ -33,8 +35,6 @@ on:
         type: boolean
         default: false
 
-      # Optional: callers can pass a file path (e.g. CHANGELOG.md).
-      # If provided, we expect the caller to upload a workflow artifact containing that file.
       body_path:
         required: false
         type: string
@@ -56,7 +56,6 @@ on:
         default: "release/artifacts"
 
       # --- Release notes generation (optional) ---
-      # If true and body_path is empty, we generate release notes (preview) and use them as release body.
       generate_release_notes:
         required: false
         type: boolean
@@ -66,15 +65,19 @@ on:
       dist_artifact_name:
         required: false
         type: string
-        default: "release-dist" # should contain dist/release/*
+        default: "release-dist"
       notes_artifact_name:
         required: false
         type: string
-        default: "release-notes" # produced by this workflow when generate_release_notes=true
+        default: "release-notes"
       changelog_artifact_name:
         required: false
         type: string
-        default: "changelog-md" # should contain CHANGELOG.md (or whatever body_path basename is)
+        default: "changelog-md"
+
+    secrets:
+      release_token:
+        required: false
 
     outputs:
       release_url:
@@ -118,7 +121,6 @@ jobs:
           audit_enabled: "true"
           audit_dir: ${{ inputs.audit_dir }}
 
-      # Robust writing: avoid heredoc quoting issues.
       - name: Write release notes file
         id: mk
         shell: bash
@@ -145,14 +147,6 @@ jobs:
 
   # ------------------------------------------------------------
   # 2) Publish GitHub release assets
-  #
-  # Data contract:
-  # - Caller uploads build outputs as artifact: inputs.dist_artifact_name
-  # - If caller provides body_path, caller uploads that file as artifact: inputs.changelog_artifact_name
-  # - Otherwise (and enabled) this workflow generates release notes and downloads notes artifact.
-  #
-  # IMPORTANT:
-  # - publish must run even when release_notes is skipped (generate_release_notes=false OR body_path provided)
   # ------------------------------------------------------------
   publish:
     name: publish-github-release
@@ -170,33 +164,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      # --- Always download dist artifacts (required for artifacts_glob to match) ---
+      - name: Debug context (safe)
+        shell: bash
+        run: |
+          echo "reusable_repo=${{ github.repository }}"
+          echo "target_repo=${{ inputs.repository }}"
+          echo "tag=${{ inputs.tag }}"
+          echo "body_path_input='${{ inputs.body_path }}'"
+          echo "generate_release_notes=${{ inputs.generate_release_notes }}"
+          echo "dist_artifact_name=${{ inputs.dist_artifact_name }}"
+          echo "changelog_artifact_name=${{ inputs.changelog_artifact_name }}"
+
+      # Download artifacts to workspace root to preserve their internal paths
       - name: Download release dist artifacts
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.dist_artifact_name }}
-          path: dist/release
+          path: .
 
-      # --- If we generated notes, download them into dist/release ---
       - name: Download generated release notes artifact
         if: ${{ inputs.generate_release_notes && inputs.body_path == '' }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.notes_artifact_name }}
-          path: dist/release
+          path: .
 
-      # --- If caller provided body_path, download that artifact safely into dist/notes ---
       - name: Download caller-provided body file artifact
         if: ${{ inputs.body_path != '' }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.changelog_artifact_name }}
-          path: dist/notes
+          path: .
 
-      # Decide which body_path to use:
-      # - If caller provided inputs.body_path => resolve to dist/notes/<basename>
-      # - Else if we generated notes => dist/release/release-notes.md
-      # - Else => empty (no body)
       - name: Resolve body path
         id: body
         shell: bash
@@ -204,22 +203,24 @@ jobs:
           set -euo pipefail
 
           if [ -n "${{ inputs.body_path }}" ]; then
+            # body file should exist exactly as uploaded (e.g. CHANGELOG.md at repo root)
             base="$(basename "${{ inputs.body_path }}")"
-            echo "body_path=dist/notes/${base}" >> "$GITHUB_OUTPUT"
+            echo "body_path=${base}" >> "$GITHUB_OUTPUT"
           elif [ "${{ inputs.generate_release_notes }}" = "true" ] && [ "${{ inputs.body_path }}" = "" ]; then
             echo "body_path=dist/release/release-notes.md" >> "$GITHUB_OUTPUT"
           else
             echo "body_path=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Preflight validate artifacts + attachments
+      - name: Preflight validate workspace
         shell: bash
         run: |
           set -euo pipefail
-          echo "[preflight] listing dist/release"
+          echo "[preflight] ls -la"
+          ls -la
+          echo "[preflight] ls -la dist/release"
           ls -la dist/release || true
 
-          # Validate body_path if set
           if [ -n "${{ steps.body.outputs.body_path }}" ]; then
             test -f "${{ steps.body.outputs.body_path }}" || (echo "body_path missing: ${{ steps.body.outputs.body_path }}" && exit 1)
           fi
@@ -228,7 +229,7 @@ jobs:
         id: pub
         uses: BrikByte-Studios/brik-pipe-actions/.github/actions/publish-github-release@main
         with:
-          repository: ${{ github.repository }}
+          repository: ${{ inputs.repository }}
           tag: ${{ inputs.tag }}
           artifacts_glob: ${{ inputs.artifacts_glob }}
           attachments_glob: ${{ inputs.attachments_glob }}
@@ -240,7 +241,7 @@ jobs:
           audit_dir: ${{ inputs.audit_dir }}
           audit_namespace: ${{ inputs.audit_namespace }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.release_token || secrets.GITHUB_TOKEN }}
 
       - name: Upload .audit bundle as workflow artifact
         uses: actions/upload-artifact@v4
