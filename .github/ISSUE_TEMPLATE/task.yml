@@ -336,6 +336,32 @@ body:
     validations:
       required: false
 
+  # --- Future Enhancements (Out of Scope) ---
+  - type: textarea
+    id: future_enhancements
+    attributes:
+      label: "Future Enhancements / Expansion (Out of Scope)"
+      description: "Capture follow-up improvements or architectural evolutions intentionally excluded from this task."
+      placeholder: |
+        🚀 Potential Enhancements:
+        - Performance scaling improvements
+        - Horizontal scaling support
+        - Multi-region readiness
+        - Extended validation rules
+
+        🧠 Architectural Evolution:
+        - Extract to shared module
+        - Convert to event-driven architecture
+        - Add caching layer
+
+        📊 Product Extensions:
+        - Expose via public API
+        - Add dashboard metrics
+
+        📌 If large, create Epic and reference here.
+    validations:
+      required: false
+
   # --- Preflight ---
   - type: checkboxes
     id: preflight
