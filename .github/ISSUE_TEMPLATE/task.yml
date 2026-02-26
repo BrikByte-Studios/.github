@@ -14,24 +14,50 @@ body:
         Use this template for **well-scoped, sprint-sized work items**:
         - Feature slices, bug fixes, refactors, platform improvements, enablement work
 
-        ❗ If this item exceeds **5 days**, split it or create an Epic.
+        ⛔ If this item exceeds **5 days**, split it or create an Epic.
 
         🔐 Do not include secrets, credentials, or personal data.
 
-  # --- Executive Summary ---
+  # --- 1) Intent (Why) ---
   - type: textarea
     id: summary
     attributes:
-      label: "Task Summary"
-      description: "One-paragraph executive summary."
+      label: "Task Summary (Executive)"
+      description: "One paragraph: what, why, outcome."
       placeholder: |
         What is being done?
-        Why is it needed?
-        What outcome is expected?
+        Why is it needed now?
+        What measurable outcome is expected?
     validations:
       required: true
 
-  # --- Classification ---
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: "Problem Statement"
+      description: "Describe the current pain/failure mode in concrete terms."
+      placeholder: |
+        Current behavior:
+        Who is affected:
+        Evidence (logs, metrics, user reports):
+        Why it matters (cost/risk/delay):
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: "Objective (Outcome)"
+      description: "What will be measurably better after this task?"
+      placeholder: |
+        After this task:
+        - Capability added:
+        - Risk reduced:
+        - Constraint improved (speed, reliability, cost, compliance):
+    validations:
+      required: true
+
+  # --- 2) Classification (What kind of work) ---
   - type: dropdown
     id: task_type
     attributes:
@@ -54,7 +80,7 @@ body:
     id: project
     attributes:
       label: "Project / Platform (proj/*)"
-      placeholder: "proj/brikbyteos, proj/cargopulse"
+      placeholder: "proj/brikbyteos, proj/stackcraft-ts, proj/cargopulse"
     validations:
       required: true
 
@@ -62,7 +88,7 @@ body:
     id: area
     attributes:
       label: "Primary Domain / Area (area:*)"
-      placeholder: "area:auth, area:ci-cd, area:billing"
+      placeholder: "area:auth, area:ci-cd, area:billing, area:evidence"
     validations:
       required: true
 
@@ -70,11 +96,22 @@ body:
     id: phase
     attributes:
       label: "Delivery Phase (phase/*)"
-      placeholder: "phase/foundation, phase/hardening"
+      placeholder: "phase/foundation, phase/hardening, phase/enterprise"
     validations:
       required: false
 
-  # --- Priority & Sizing ---
+  # --- 3) Impact, Priority, Size (Triage discipline) ---
+  - type: dropdown
+    id: impact
+    attributes:
+      label: "Impact"
+      options:
+        - "High — customer/prod risk or major capability"
+        - "Medium — noticeable improvement / important debt"
+        - "Low — localized / internal"
+    validations:
+      required: true
+
   - type: dropdown
     id: priority
     attributes:
@@ -98,16 +135,24 @@ body:
         - "L (3–5 days)"
         - "XL (>5 days — split)"
     validations:
+      required: true
+
+  - type: input
+    id: estimate
+    attributes:
+      label: "Numeric Estimate"
+      placeholder: "5 pts, 12h"
+    validations:
       required: false
 
-  # --- Ownership ---
+  # --- 4) Ownership & Traceability (Accountability + links) ---
   - type: input
     id: owner
     attributes:
       label: "Primary Owner"
-      placeholder: "@platform-lead, @qa-team"
+      placeholder: "@platform-lead"
     validations:
-      required: false
+      required: true
 
   - type: input
     id: reporter
@@ -117,7 +162,6 @@ body:
     validations:
       required: true
 
-  # --- Parent & Traceability ---
   - type: dropdown
     id: parent_type
     attributes:
@@ -140,63 +184,110 @@ body:
     validations:
       required: false
 
-  # --- Outcome Definition ---
   - type: textarea
-    id: objective
+    id: references
     attributes:
-      label: "Outcome / Objective"
+      label: "References (links)"
+      description: "Anything that proves context: incidents, docs, ADRs, designs, customer tickets."
       placeholder: |
-        After this task:
-        - What will be measurably better?
-        - What risk is reduced?
-        - What capability is added?
+        Docs:
+        ADR:
+        Incident:
+        Customer ticket:
+        Related PRs:
+    validations:
+      required: false
+
+  # --- 5) Scope Control (Stop task creep) ---
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Scope (In / Out)"
+      description: "Be explicit. This keeps it sprint-sized."
+      placeholder: |
+        In scope:
+        - ...
+        Out of scope / non-goals:
+        - ...
+        Assumptions:
+        - ...
+        Constraints:
+        - ...
+    validations:
+      required: true
+
+  # --- 6) Acceptance Criteria (What ‘done’ means) ---
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: "Acceptance Criteria"
+      description: "Binary, testable statements. Avoid vague wording."
+      placeholder: |
+        - [ ] Given <context>, when <action>, then <expected outcome>
+        - [ ] Error handling: <what must happen on failure>
+        - [ ] Backward compatibility preserved (if applicable)
+        - [ ] No breaking changes without version bump/migration
     validations:
       required: true
 
   - type: textarea
     id: success_metrics
     attributes:
-      label: "Success Criteria / KPIs"
+      label: "Success Criteria / KPIs (optional but preferred)"
       placeholder: |
-        - Latency < X ms
+        - Latency p95 < X ms
         - Error rate < Y%
         - Coverage ≥ Z%
-        - Manual steps eliminated
+        - Manual steps eliminated: N → 0
     validations:
       required: false
 
-  # --- Context ---
-  - type: textarea
-    id: context
-    attributes:
-      label: "Context & Background"
-      placeholder: |
-        Current state
-        Constraints
-        Related incidents
-        Prior attempts
-    validations:
-      required: false
-
-  # --- Deliverables ---
+  # --- 7) Deliverables (Artifacts checklist) ---
   - type: textarea
     id: deliverables
     attributes:
       label: "Deliverables"
       placeholder: |
         - [ ] Code merged
-        - [ ] Tests added
+        - [ ] Tests added/updated
         - [ ] Docs updated
-        - [ ] Dashboards created
+        - [ ] Observability updated (dashboards/alerts)
+        - [ ] Evidence attached (logs/screenshots/results)
     validations:
       required: true
 
-  # --- Test Plan / Scenarios (NEW) ---
+  # --- 8) Technical Approach (How) ---
+  - type: textarea
+    id: technical_plan
+    attributes:
+      label: "Technical Approach"
+      placeholder: |
+        Architecture sketch:
+        Affected services/modules:
+        APIs/contracts:
+        Data changes:
+        Migration strategy:
+        Backward compatibility:
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: "Dependencies (rel/*)"
+      placeholder: |
+        rel/depends-on: #234
+        rel/blocks: #456
+        rel/related: #789
+    validations:
+      required: false
+
+  # --- 9) Test Plan / Scenarios (Proof) ---
   - type: textarea
     id: test_plan
     attributes:
       label: "Test Plan / Scenarios"
-      description: "Describe how this change will be validated (unit/integration/e2e/manual), including key scenarios."
+      description: "How you will validate + what evidence will be produced."
       placeholder: |
         Testing levels:
         - Unit:
@@ -205,83 +296,75 @@ body:
         - Manual QA / UAT:
 
         Core scenarios:
-        - ✅ Positive: <what should work>
-        - ❌ Negative: <what must fail safely>
-        - ⚠️ Edge: <boundaries, weird inputs>
-        - 🧨 Corner: <rare combinations>
+        - ✅ Positive:
+        - ❌ Negative (fail safely):
+        - ⚠️ Edge:
+        - 🧨 Corner:
 
         Non-functional (if relevant):
         - Security:
         - Performance:
-        - Reliability / rollback verification:
+        - Reliability:
+        - Rollback verification (must be explicit):
 
-        Evidence:
-        - Link to TC IDs / test files / run logs
+        Evidence (required):
+        - Test IDs/files:
+        - Run logs:
+        - Screenshots/recordings:
     validations:
       required: true
 
-  # --- Definition of Done ---
+  # --- 10) Rollout & Observability (Ship safely) ---
   - type: textarea
-    id: dod
+    id: rollout
     attributes:
-      label: "Definition of Done"
+      label: "Rollout Plan"
+      description: "How this change is shipped with control."
       placeholder: |
-        - [ ] CI green
-        - [ ] Review approved
-        - [ ] Test Plan executed (evidence attached)
-        - [ ] Monitoring/alerts updated (if relevant)
-        - [ ] Evidence archived
+        Deployment strategy (flag/canary/phased):
+        Rollback trigger:
+        Rollback steps:
+        Data rollback (if any):
     validations:
       required: false
 
-  # --- Technical Design ---
   - type: textarea
-    id: technical_plan
+    id: observability
     attributes:
-      label: "Technical Approach"
+      label: "Observability Plan"
+      description: "What will you watch in prod to confirm success?"
       placeholder: |
-        Architecture
-        Affected services
-        APIs
-        Data changes
-        Migration strategy
+        Metrics:
+        Logs:
+        Traces:
+        Dashboards:
+        Alerts:
     validations:
       required: false
 
-  # --- Dependencies ---
-  - type: textarea
-    id: dependencies
-    attributes:
-      label: "Dependencies (rel/*)"
-      placeholder: |
-        rel/depends-on: #234
-        rel/blocks: #456
-    validations:
-      required: false
-
-  # --- Governance ---
+  # --- 11) Governance, Risk, Compliance (Trust) ---
   - type: textarea
     id: governance
     attributes:
       label: "Governance & Compliance"
       placeholder: |
-        ADRs
-        Policies
-        RTM
-        Audit refs
+        ADRs:
+        Policies:
+        RTM links:
+        Audit refs:
+        Data privacy considerations (PII/POPIA):
     validations:
       required: false
 
-  # --- Risk Management ---
   - type: textarea
     id: risks
     attributes:
       label: "Risks & Failure Modes"
       placeholder: |
-        Technical
-        Product
-        Operational
-        Security
+        Technical:
+        Product:
+        Operational:
+        Security:
     validations:
       required: false
 
@@ -290,37 +373,23 @@ body:
     attributes:
       label: "Mitigation & Rollback Plan"
       placeholder: |
-        Feature flags
-        Canary
-        Rollback steps
-        Observability hooks
+        Feature flags:
+        Canary:
+        Backward compatibility:
+        Rollback steps:
+        Observability hooks:
     validations:
       required: false
 
-  # --- Delivery Planning ---
-  - type: input
-    id: milestone
-    attributes:
-      label: "Target Milestone / Sprint"
-      placeholder: "Sprint-2026-02, v2.1.0"
-    validations:
-      required: false
-
-  - type: input
-    id: estimate
-    attributes:
-      label: "Numeric Estimate"
-      placeholder: "5 pts, 12h"
-    validations:
-      required: false
-
-  # --- Evidence ---
+  # --- 12) Evidence & Implementation Links ---
   - type: textarea
     id: evidence
     attributes:
       label: "Evidence & Artefacts"
       placeholder: |
         PR:
+        Commit(s):
+        CI run:
         Logs:
         Screenshots:
         Benchmarks:
@@ -336,45 +405,34 @@ body:
     validations:
       required: false
 
-  # --- Future Enhancements (Out of Scope) ---
+  # --- 13) Future Enhancements (Intentional leftovers) ---
   - type: textarea
     id: future_enhancements
     attributes:
       label: "Future Enhancements / Expansion (Out of Scope)"
-      description: "Capture follow-up improvements or architectural evolutions intentionally excluded from this task."
       placeholder: |
-        🚀 Potential Enhancements:
-        - Performance scaling improvements
-        - Horizontal scaling support
-        - Multi-region readiness
-        - Extended validation rules
-
-        🧠 Architectural Evolution:
-        - Extract to shared module
-        - Convert to event-driven architecture
-        - Add caching layer
-
-        📊 Product Extensions:
-        - Expose via public API
-        - Add dashboard metrics
-
-        📌 If large, create Epic and reference here.
+        - Follow-up improvements:
+        - Architectural evolutions:
+        - Product extensions:
+        - If large, create Epic and reference here.
     validations:
       required: false
 
-  # --- Preflight ---
+  # --- 14) Preflight (Hard gate before work starts) ---
   - type: checkboxes
     id: preflight
     attributes:
       label: "Preflight Validation"
       options:
-        - label: "Scope is clearly defined"
+        - label: "Scope is clearly defined (in/out)"
           required: true
-        - label: "Task is sprint-sized"
+        - label: "Task is sprint-sized (≤5 days) or split planned"
           required: true
-        - label: "Dependencies identified"
+        - label: "Acceptance criteria are binary/testable"
           required: true
-        - label: "Test plan/scenarios are included"
+        - label: "Dependencies identified or explicitly none"
+          required: true
+        - label: "Test plan includes negative + rollback verification"
           required: true
         - label: "No sensitive data included"
           required: true

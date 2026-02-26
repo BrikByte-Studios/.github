@@ -11,22 +11,22 @@ body:
       value: |
         This form is for **customer / internal support requests**.
 
-        Use it to capture:
+        Capture:
         - Who is affected
         - What they’re experiencing
-        - Business impact
-        - Enough detail for engineering / product to act
+        - Business impact + urgency
+        - Enough evidence for engineering/product to act
 
-        > 🔐 **Note:** Do not paste secrets, credentials,
-        > or sensitive personal information. Mask any such data before submission.
+        🔐 Do not paste secrets, credentials, or sensitive personal data. Mask before submission.
 
-  # --- Requester & Customer Info ---
+  # -------------------------------------------------------
+  # 1) Requester & Customer Identity
+  # -------------------------------------------------------
   - type: input
     id: requester_name
     attributes:
       label: "Requester Name"
-      description: "Who raised this ticket? (customer or internal)"
-      placeholder: "e.g., John Doe / Internal: @support-agent"
+      placeholder: "John Doe / Internal: @support-agent"
     validations:
       required: true
 
@@ -34,8 +34,7 @@ body:
     id: requester_contact
     attributes:
       label: "Requester Contact"
-      description: "Preferred contact details for follow-up."
-      placeholder: "e.g., john.doe@example.com, +27..., or internal Slack handle"
+      placeholder: "john.doe@example.com, +27..., or Slack handle"
     validations:
       required: false
 
@@ -43,16 +42,14 @@ body:
     id: customer_account
     attributes:
       label: "Customer / Tenant / Account"
-      description: "Which customer or tenant is affected?"
-      placeholder: "e.g., Tenant: ACME Logistics, Zone: SA-North"
+      placeholder: "Tenant: ACME Logistics • Region: ZA"
     validations:
-      required: false
+      required: true
 
   - type: dropdown
     id: request_channel
     attributes:
       label: "Request Channel"
-      description: "How did this request come in?"
       options:
         - "Email"
         - "Support Portal"
@@ -63,12 +60,27 @@ body:
     validations:
       required: true
 
-  # --- Classification & Impact ---
+  - type: dropdown
+    id: data_sensitivity
+    attributes:
+      label: "Data Sensitivity (handling)"
+      description: "Controls how we share logs/screenshots and who can access the ticket."
+      options:
+        - "None / General"
+        - "Non-PII data (operational)"
+        - "PII present (mask required)"
+        - "Financial/Billing sensitive"
+        - "Regulated (POPIA/GDPR/contractual)"
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 2) Classification & Urgency (customer vs internal)
+  # -------------------------------------------------------
   - type: dropdown
     id: request_type
     attributes:
       label: "Request Type"
-      description: "Classify the nature of the request."
       options:
         - "Question / How-to"
         - "Bug / Something is broken"
@@ -84,34 +96,62 @@ body:
     id: urgency
     attributes:
       label: "Urgency (Customer View)"
-      description: "How urgent is this from the requester’s perspective?"
       options:
-        - "Critical – Cannot work / system unusable"
-        - "High – Major disruption / no workaround"
-        - "Medium – Some disruption / workaround exists"
-        - "Low – Minor issue / general query"
+        - "Critical — Cannot work / system unusable"
+        - "High — Major disruption / no workaround"
+        - "Medium — Some disruption / workaround exists"
+        - "Low — Minor issue / general query"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: internal_priority
+    attributes:
+      label: "Internal Priority (Support Triage)"
+      description: "How we prioritize internally (separate from customer tone)."
+      options:
+        - "P0 — Potential incident / many users / major revenue risk"
+        - "P1 — Core workflow blocked (single customer/tenant)"
+        - "P2 — Degraded workflow / workaround exists"
+        - "P3 — Question / minor / backlog"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ticket_status
+    attributes:
+      label: "Ticket Status"
+      options:
+        - "New"
+        - "Investigating"
+        - "Waiting on Customer"
+        - "Escalated"
+        - "Resolved"
+        - "Closed"
     validations:
       required: true
 
   - type: textarea
     id: business_impact
     attributes:
-      label: "Business Impact Description"
-      description: "Describe how this affects the customer’s business or operations."
+      label: "Business Impact"
       placeholder: |
-        - What business process is blocked?
-        - Approx. number of affected users:
-        - Time sensitivity / deadlines:
+        Business process blocked:
+        Approx affected users:
+        Deadline / time sensitivity:
+        Financial impact (if known):
     validations:
       required: true
 
-  # --- Product & Environment Context ---
+  # -------------------------------------------------------
+  # 3) Product Context
+  # -------------------------------------------------------
   - type: input
     id: product_area
     attributes:
       label: "Product / Module / Repo"
-      description: "Which BrikByte product or module is involved? Use your proj/* and area:* taxonomy where possible."
-      placeholder: "e.g., CargoPulse Web • proj/cargopulse • area:shipments"
+      description: "Use proj/* and area:* taxonomy where possible."
+      placeholder: "CargoPulse Web • proj/cargopulse • area:shipments"
     validations:
       required: true
 
@@ -119,7 +159,6 @@ body:
     id: environment
     attributes:
       label: "Environment"
-      description: "Where is the issue observed?"
       options:
         - "Production"
         - "Staging / UAT"
@@ -132,141 +171,177 @@ body:
     id: app_version
     attributes:
       label: "Version / Build (if known)"
-      description: "App version, build number, or release tag if the customer provided it."
-      placeholder: "e.g., v1.4.2 (web), Android app v1.0.3"
+      placeholder: "v1.4.2 (web) / Android v1.0.3"
     validations:
       required: false
 
-  # --- Description & Reproduction (if applicable) ---
+  - type: input
+    id: client_platform
+    attributes:
+      label: "Client Platform (if known)"
+      placeholder: "Chrome 122 Windows 11 / Safari iOS / Android"
+    validations:
+      required: false
+
+  # -------------------------------------------------------
+  # 4) The Ask (customer voice) + Evidence
+  # -------------------------------------------------------
   - type: input
     id: summary
     attributes:
-      label: "Short Summary of the Issue / Question"
-      description: "One-line summary from the customer’s point of view."
-      placeholder: "e.g., Unable to upload documents to shipment record."
+      label: "Short Summary (customer POV)"
+      placeholder: "Unable to upload documents to shipment record."
     validations:
       required: true
 
   - type: textarea
     id: description
     attributes:
-      label: "Full Description (Customer’s Words, if possible)"
-      description: |
-        "Paste or paraphrase the customer’s description.
-        Highlight their exact wording for key parts, if helpful."
+      label: "Full Description (customer words if possible)"
       placeholder: |
-        - What the customer reports:
-        - Additional clarifications from support:
+        Customer says:
+        Support clarification:
+        What changed recently (if they know):
     validations:
       required: true
 
   - type: textarea
     id: steps_to_reproduce
     attributes:
-      label: "Steps to Reproduce (if this looks like a bug)"
-      description: "If it appears to be a bug, list clear steps so engineering/QA can try to reproduce."
+      label: "Steps to Reproduce (if bug-like)"
       placeholder: |
-        1. Customer logs in as ...
-        2. Navigates to ...
-        3. Clicks on ...
-        4. Observes ...
+        1.
+        2.
+        3.
     validations:
       required: false
 
   - type: textarea
     id: expected_vs_actual
     attributes:
-      label: "Expected vs Actual Behaviour"
-      description: "What did the customer expect, and what actually happened?"
+      label: "Expected vs Actual"
       placeholder: |
         Expected:
-        - ...
-
         Actual:
-        - ...
     validations:
       required: false
 
-  # --- Attachments & Diagnostics ---
   - type: textarea
     id: attachments
     attributes:
       label: "Screenshots / Attachments / Recording Links"
-      description: "List or paste links to any screenshots, recordings, or files provided by the customer."
-      placeholder: "Drag-and-drop images here or paste Loom / video / file links."
+      placeholder: "Drag-and-drop images here or paste Loom/file links."
     validations:
       required: false
 
+  # -------------------------------------------------------
+  # 5) Support Investigation (containment + routing)
+  # -------------------------------------------------------
   - type: textarea
     id: diagnostics
     attributes:
-      label: "Support Diagnostics (If Any)"
-      description: "Any quick checks you did (e.g., replicated on your side, checked logs, confirmed status page)."
+      label: "Support Diagnostics Performed"
       placeholder: |
-        - Checks performed:
-        - Could you reproduce it?
-        - Any obvious configuration issues?
+        Checks performed:
+        Reproduced? (Y/N) How:
+        Logs checked? (where/what query):
+        Status page checked?:
+        Similar tickets found?:
     validations:
       required: false
 
-  # --- Internal Routing & Links ---
   - type: textarea
-    id: internal_links
+    id: workaround
     attributes:
-      label: "Related Internal Items (Optional)"
-      description: "Link any related bugs, incidents, feature requests, or governance issues if already created."
+      label: "Workaround / Mitigation Provided"
+      description: "Support-first: what can the customer do right now?"
       placeholder: |
-        - Bug: #123
-        - Incident: #456
-        - Feature request: #789
-        - GOV issue: #101
+        Workaround steps:
+        Temporary configuration:
+        Feature flag toggle (if any):
+        Customer guidance:
     validations:
       required: false
 
   - type: dropdown
-    id: suggested_routing
+    id: suspected_routing
     attributes:
-      label: "Suggested Routing"
-      description: "Where should this likely go next?"
+      label: "Suggested Routing (next destination)"
       options:
         - "Support team investigation"
-        - "Engineering – potential bug"
-        - "Product – potential feature request"
+        - "Engineering — potential bug"
+        - "SRE — potential incident"
+        - "Product — potential feature request"
         - "Billing / Finance"
-        - "Access / Identity team"
+        - "Access / Identity"
         - "Unsure / Needs triage"
+    validations:
+      required: true
+
+  - type: textarea
+    id: escalation_readiness
+    attributes:
+      label: "Escalation Readiness (what we have / what’s missing)"
+      description: "Make escalation cheap: list what’s ready and what must still be collected."
+      placeholder: |
+        Collected:
+        - Tenant/customer:
+        - Environment/version:
+        - Repro steps:
+        - Evidence:
+
+        Missing (to request from customer):
+        - Time observed:
+        - Screenshots:
+        - Error messages:
+        - Request IDs:
     validations:
       required: false
 
-  # --- Follow-up & SLA Notes ---
+  # -------------------------------------------------------
+  # 6) Internal Links & SLA
+  # -------------------------------------------------------
+  - type: textarea
+    id: internal_links
+    attributes:
+      label: "Related Internal Items"
+      placeholder: |
+        Bug:
+        Incident:
+        Feature request:
+        GOV/Policy:
+    validations:
+      required: false
+
   - type: input
     id: sla_or_deadline
     attributes:
-      label: "SLA / Deadline (If Any)"
-      description: "Any promised SLA, go-live date, or critical external deadline."
-      placeholder: "e.g., Go-live on 2025-11-30; customer expecting response within 4 business hours."
+      label: "SLA / Deadline"
+      placeholder: "Response in 4 business hours / go-live 2026-03-01"
     validations:
       required: false
 
   - type: textarea
-    id: next_steps
+    id: customer_message_draft
     attributes:
-      label: "Immediate Next Steps for Support"
-      description: "What should support do next (acknowledge, gather more info, escalate, etc.)?"
+      label: "Customer Reply Draft (optional)"
+      description: "A ready-to-send response improves speed and consistency."
       placeholder: |
-        - Acknowledge ticket with template:
-        - Request more details:
-        - Escalate to:
+        Acknowledgement:
+        What we’re doing:
+        What we need from them:
+        Next update time:
     validations:
       required: false
 
-  # --- Metadata & Checklist ---
+  # -------------------------------------------------------
+  # 7) Metadata & Preflight
+  # -------------------------------------------------------
   - type: input
     id: support_agent
     attributes:
       label: "Support Agent"
-      description: "Who logged this ticket?"
-      placeholder: "e.g., @support-agent"
+      placeholder: "@support-agent"
     validations:
       required: true
 
@@ -274,13 +349,14 @@ body:
     id: preflight
     attributes:
       label: "Pre-Flight Checklist"
-      description: "Confirm before submitting this ticket."
       options:
-        - label: "Customer’s main concern is captured clearly."
+        - label: "Customer identity/tenant + environment are captured."
           required: true
         - label: "Impact and urgency reflect the customer’s reality."
           required: true
-        - label: "Any screenshots/attachments are added (if provided)."
+        - label: "Workaround/mitigation is included if known."
           required: false
-        - label: "No secrets, credentials, or sensitive personal data are included."
+        - label: "No secrets/credentials/PII are included (or they are masked)."
+          required: true
+        - label: "Suggested routing is selected."
           required: true

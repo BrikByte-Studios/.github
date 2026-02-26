@@ -15,226 +15,55 @@ body:
       value: |
         # 📘 Request for Comments (RFC)
 
-        RFCs are used for:
-        - Architecture changes or new architectural patterns
-        - Platform-wide initiatives (BrikByteOS, pipelines, SREOps, QAOps, etc.)
-        - Major product or system changes
-        - Infrastructure, CI/CD, security, or observability redesigns
-        - Governance changes that require broad consensus
-        - Any change that will result in an ADR once approved
+        RFCs are used for significant changes that require broad alignment and will
+        typically produce an ADR once accepted.
 
-        This template captures **motivation, context, options, risks, governance, and traceability**.
+        ✅ This RFC should make decision-making **easy** by clarifying:
+        - Problem + constraints
+        - Options + trade-offs
+        - Risks + reversibility
+        - Governance + approvals
+        - Rollout + operational readiness
 
-        > 🔐 **Do not include secrets, credentials, or sensitive personal data.**
+        🔐 Do not include secrets, credentials, or sensitive personal data.
 
-  # --- Summary & Context ---
+  # -------------------------------------------------------
+  # 1) RFC Metadata (Decision framing)
+  # -------------------------------------------------------
   - type: input
     id: summary
     attributes:
       label: "RFC Summary"
-      description: "Short, clear description summarizing the intent of the RFC."
-      placeholder: "e.g., Introduce unified Feature Flag Lifecycle Governance across all BrikByte products."
+      placeholder: "e.g., Introduce unified Feature Flag Lifecycle Governance across BrikByte products."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: rfc_status
+    attributes:
+      label: "RFC Stage"
+      description: "Where is this RFC in its lifecycle?"
+      options:
+        - "Draft"
+        - "In Review"
+        - "Accepted"
+        - "Rejected"
+        - "Implementing"
+        - "Completed"
+      default: 0
     validations:
       required: true
 
   - type: textarea
-    id: context
+    id: decision_request
     attributes:
-      label: "Context & Background"
-      description: "Explain the background, current situation, and why the RFC is necessary."
+      label: "Decision Request (What approval means)"
+      description: "State the exact decision being requested and the scope of authorization."
       placeholder: |
-        - What problem or gap exists?
-        - What is the current system/process?
-        - Why now? (timing, incidents, growth, scalability, etc.)
-    validations:
-      required: true
-
-  # --- Problem Statement ---
-  - type: textarea
-    id: problem_statement
-    attributes:
-      label: "Problem Statement"
-      description: "Define the problem clearly and precisely. Do not propose a solution here."
-      placeholder: |
-        - What is broken or suboptimal?
-        - Who is affected and how?
-        - What constraints or limitations exist?
-    validations:
-      required: true
-
-  # --- Goals & Non-Goals ---
-  - type: textarea
-    id: goals
-    attributes:
-      label: "Goals (What This RFC Intends to Achieve)"
-      description: "Describe the objectives of this RFC."
-      placeholder: |
-        - Standardize X
-        - Support Y capability
-        - Improve Z metric (availability, latency, governance, etc.)
-    validations:
-      required: true
-
-  - type: textarea
-    id: out_of_scope
-    attributes:
-      label: "Non-Goals (What This RFC Will NOT Do)"
-      description: "Clarify explicit boundaries to avoid scope creep."
-      placeholder: |
-        - This RFC does NOT redesign...
-        - This RFC does NOT change...
-    validations:
-      required: false
-
-  # --- Proposal / Design ---
-  - type: textarea
-    id: proposal
-    attributes:
-      label: "Proposed Design / Solution"
-      description: "Describe the proposed design or approach in detail."
-      placeholder: |
-        Include:
-        - Architecture or system design
-        - API updates (if any)
-        - Data model changes
-        - CI/CD impacts
-        - Feature flags
-        - Security & compliance considerations
-        - Interaction with other systems
-    validations:
-      required: true
-
-  - type: textarea
-    id: diagrams
-    attributes:
-      label: "Architecture Diagrams / Flows (optional)"
-      description: "Paste links to diagrams, sketches, Figma boards, or draw.io exports."
-      placeholder: |
-        - High-level architecture:
-        - Sequence diagrams:
-        - Data flows:
-    validations:
-      required: false
-
-  # --- Alternatives ---
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: "Alternatives Considered"
-      description: "List evaluated alternatives and explain why they were not selected."
-      placeholder: |
-        Alternative 1:
-        - Pros:
-        - Cons:
-
-        Alternative 2:
-        - Pros:
-        - Cons:
-    validations:
-      required: true
-
-  # --- Impact ---
-  - type: textarea
-    id: impact_analysis
-    attributes:
-      label: "Impact Analysis"
-      description: "Describe the impact of this RFC on systems, teams, processes, and customers."
-      placeholder: |
-        - Affected services / modules:
-        - DevOps / CI/CD impact:
-        - QA / TestOps impact:
-        - SRE impact (SLOs, error budgets, incident response):
-        - Compliance / security impact:
-        - DocsOps updates:
-    validations:
-      required: true
-
-  # --- Migration / Rollout Plan ---
-  - type: textarea
-    id: rollout_plan
-    attributes:
-      label: "Migration / Rollout Strategy"
-      description: "Describe how this RFC will be rolled out safely and incrementally."
-      placeholder: |
-        - Feature flag gating
-        - Backward-compatibility strategy
-        - Incremental rollout phases
-        - Data migration plan
-        - Rollback plan
-    validations:
-      required: true
-
-  # --- Risks & Mitigations ---
-  - type: textarea
-    id: risks
-    attributes:
-      label: "Risks & Mitigations"
-      description: "List technical, organizational, and operational risks with mitigation strategies."
-      placeholder: |
-        - Risk:
-        - Probability:
-        - Impact:
-        - Mitigation:
-    validations:
-      required: true
-
-  # --- Governance & Traceability ---
-  - type: textarea
-    id: governance
-    attributes:
-      label: "Governance & Traceability (BrikByteOS)"
-      description: "List all governance items this RFC relates to or requires changes for."
-      placeholder: |
-        - ADR to create: ADR-00X
-        - Related policies (GOV-POLICY-*):
-        - REQ-* to update:
-        - Test cases (TC-*):
-        - RTM rows affected:
-        - CI/Rulesets:
-    validations:
-      required: false
-
-  # --- Dependencies ---
-  - type: textarea
-    id: dependencies
-    attributes:
-      label: "Dependencies & Blockers"
-      description: "List upstream or downstream dependencies."
-      placeholder: |
-        - Blocks:
-        - Depends on:
-        - Cross-team coordination required:
-    validations:
-      required: false
-
-  # --- Success Metrics ---
-  - type: textarea
-    id: success_metrics
-    attributes:
-      label: "Success Metrics"
-      description: "How will we know this RFC was successful?"
-      placeholder: |
-        - Engineering KPIs:
-        - SLO improvements:
-        - DX improvements:
-        - Reduced incidents:
-        - Process compliance:
-    validations:
-      required: false
-
-  # --- Required Reviewers & Approvals ---
-  - type: textarea
-    id: reviewers
-    attributes:
-      label: "Required Reviewers / Approvals"
-      description: "List the teams or roles required to review and approve this RFC."
-      placeholder: |
-        - Architecture Review Board (ARB)
-        - Platform Lead (Governance)
-        - Security Lead (if applicable)
-        - SRE
-        - QA Lead
-        - Product Owner (if cross-cutting)
+        Approve/reject:
+        Decision boundary:
+        What will change if accepted:
+        What will NOT change even if accepted:
     validations:
       required: true
 
@@ -242,25 +71,351 @@ body:
     id: reporter
     attributes:
       label: "RFC Author / Reporter"
-      description: "Your name or GitHub handle."
       placeholder: "@thapelomagqazana"
     validations:
       required: true
 
-  # --- Pre-flight Checklist ---
+  - type: textarea
+    id: stakeholders
+    attributes:
+      label: "Stakeholders (RACI)"
+      description: "List who owns, approves, is consulted, and informed."
+      placeholder: |
+        Responsible (builders):
+        Accountable (final approver):
+        Consulted:
+        Informed:
+    validations:
+      required: true
+
+  - type: textarea
+    id: reviewers
+    attributes:
+      label: "Required Reviewers / Approvals"
+      placeholder: |
+        - Architecture Review Board (ARB)
+        - Platform/Governance Lead
+        - Security Lead (if applicable)
+        - SRE
+        - QA Lead
+        - Product Owner (if cross-cutting)
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 2) Context (Reality today)
+  # -------------------------------------------------------
+  - type: textarea
+    id: context
+    attributes:
+      label: "Context & Background"
+      placeholder: |
+        Current state:
+        What problem/gap exists:
+        Why now (incidents, scaling, cost, compliance, roadmap):
+        Constraints (time, compliance, tech debt, vendor lock-in):
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: "Problem Statement (solution-free)"
+      placeholder: |
+        What is broken or suboptimal:
+        Who is affected and how:
+        Failure modes observed today:
+        Constraints/limitations:
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 3) Goals & Non-Goals (Scope control)
+  # -------------------------------------------------------
+  - type: textarea
+    id: goals
+    attributes:
+      label: "Goals"
+      placeholder: |
+        - Standardize X
+        - Enable Y capability
+        - Improve Z metric (availability, latency, governance, DX)
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: "Non-Goals"
+      placeholder: |
+        - This RFC will NOT redesign...
+        - This RFC will NOT change...
+        - Explicit exclusions:
+    validations:
+      required: true
+
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: "Success Criteria (binary + measurable)"
+      description: "What must be true for this RFC to be considered successful?"
+      placeholder: |
+        Must-haves:
+        - ...
+
+        Metrics targets:
+        - ...
+
+        Operational targets:
+        - ...
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 4) Proposal (The recommended option)
+  # -------------------------------------------------------
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed Design / Solution"
+      placeholder: |
+        Include:
+        - Architecture/design overview
+        - Interfaces/APIs/contracts
+        - Data model/storage changes
+        - CI/CD changes
+        - Security/privacy controls
+        - Compatibility/deprecation approach
+        - How it integrates with existing systems
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagrams
+    attributes:
+      label: "Architecture Diagrams / Flows (optional)"
+      placeholder: |
+        High-level architecture:
+        Sequence diagrams:
+        Data flows:
+        Threat model sketch:
+    validations:
+      required: false
+
+  - type: textarea
+    id: backwards_compat
+    attributes:
+      label: "Backward Compatibility & Deprecation Plan"
+      description: "What breaks, what remains stable, and how we migrate safely."
+      placeholder: |
+        Compatibility guarantees:
+        Deprecations:
+        Versioning strategy:
+        Migration path:
+        Sunset timeline (if any):
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 5) Alternatives (Real trade-offs)
+  # -------------------------------------------------------
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives Considered"
+      description: "At least 2 is ideal (including 'do nothing' if relevant)."
+      placeholder: |
+        Alternative 1:
+        - Pros:
+        - Cons:
+        - Why rejected:
+
+        Alternative 2:
+        - Pros:
+        - Cons:
+        - Why rejected:
+    validations:
+      required: true
+
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: "Trade-offs & Design Tensions"
+      description: "Name the hard decisions (simplicity vs flexibility, speed vs safety, etc.)."
+      placeholder: |
+        Tension:
+        Choice made:
+        What we give up:
+        Why acceptable:
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 6) Impact Analysis (People + systems + operations)
+  # -------------------------------------------------------
+  - type: textarea
+    id: impact_analysis
+    attributes:
+      label: "Impact Analysis"
+      placeholder: |
+        Affected services/modules:
+        Developer workflow/DX impact:
+        CI/CD impact:
+        QA/TestOps impact:
+        SRE/On-call impact:
+        Compliance/security impact:
+        DocsOps/training needs:
+        Customer impact (if any):
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk_level
+    attributes:
+      label: "Risk Level"
+      options:
+        - "High — large blast radius / hard to rollback"
+        - "Medium — manageable risk"
+        - "Low — localized / easily reversible"
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 7) Security, Privacy, Compliance (don’t skip)
+  # -------------------------------------------------------
+  - type: textarea
+    id: security_privacy
+    attributes:
+      label: "Security / Privacy / Compliance Considerations"
+      placeholder: |
+        Data classification (PII/PHI/secrets/none):
+        Threat model (abuse cases):
+        AuthN/AuthZ impacts:
+        Logging/telemetry safety:
+        Compliance (POPIA/GDPR/SOC2/etc.):
+        Security review needed? (Y/N):
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 8) Rollout, Migration, Reversibility (safe change)
+  # -------------------------------------------------------
+  - type: textarea
+    id: rollout_plan
+    attributes:
+      label: "Migration / Rollout Strategy"
+      placeholder: |
+        Phases (Phase 0/1/2...):
+        Feature flag gating:
+        Backward-compat strategy:
+        Data migration/backfill:
+        Canary / staged rollout:
+        Rollback plan:
+        Kill-switch/off-switch:
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure_modes
+    attributes:
+      label: "Failure Modes & Recovery"
+      description: "How this can fail, how we detect it, and how we recover."
+      placeholder: |
+        Failure mode:
+        Detection signal:
+        Containment:
+        Recovery/rollback:
+    validations:
+      required: true
+
+  - type: textarea
+    id: observability_plan
+    attributes:
+      label: "Observability & Operational Readiness"
+      placeholder: |
+        Metrics/SLIs:
+        Alerts:
+        Dashboards:
+        Logs/traces:
+        Runbooks needed/updated:
+        On-call training notes:
+    validations:
+      required: true
+
+  # -------------------------------------------------------
+  # 9) Cost, Dependencies, Open Questions (execution reality)
+  # -------------------------------------------------------
+  - type: dropdown
+    id: effort_estimate
+    attributes:
+      label: "Effort Estimate"
+      options:
+        - "S (≤1 week)"
+        - "M (1–3 weeks)"
+        - "L (3–6 weeks)"
+        - "XL (>6 weeks)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: "Dependencies & Blockers"
+      placeholder: |
+        Depends on:
+        Blocks:
+        Cross-team coordination:
+        Vendor/external dependency:
+    validations:
+      required: false
+
+  - type: textarea
+    id: open_questions
+    attributes:
+      label: "Open Questions (must resolve before acceptance)"
+      placeholder: |
+        - Question:
+          Owner:
+          Needed by:
+    validations:
+      required: false
+
+  # -------------------------------------------------------
+  # 10) Governance & Traceability (BrikByteOS hooks)
+  # -------------------------------------------------------
+  - type: textarea
+    id: governance
+    attributes:
+      label: "Governance & Traceability"
+      placeholder: |
+        ADR to create:
+        Policies impacted (GOV-POLICY-*):
+        REQ-* to create/update:
+        Test strategy / TC-* impacts:
+        RTM rows affected:
+        CI rulesets / quality gates:
+    validations:
+      required: false
+
+  # -------------------------------------------------------
+  # 11) Preflight
+  # -------------------------------------------------------
   - type: checkboxes
     id: checklist
     attributes:
       label: "Pre-Submission Checklist"
-      description: "Confirm before submitting this RFC."
       options:
-        - label: "Problem, context, and motivation are clearly articulated."
+        - label: "Decision request is explicit (what approval means)."
           required: true
-        - label: "At least one alternative solution is considered."
+        - label: "Problem/context/goals/non-goals are clear."
           required: true
-        - label: "Risks and mitigations are documented."
+        - label: "At least two alternatives were evaluated with trade-offs."
           required: true
-        - label: "Traceability into ADR/Policy/RTM is included (or will be created)."
+        - label: "Rollout + rollback + failure modes are documented."
+          required: true
+        - label: "Security/privacy/compliance considerations are addressed."
+          required: true
+        - label: "Operational readiness (alerts/runbooks/SLIs) is included."
           required: true
         - label: "No sensitive or personal data is included."
           required: true
