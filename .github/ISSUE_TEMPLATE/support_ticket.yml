@@ -13,6 +13,7 @@ body:
 
         Capture:
         - Who is affected
+        - What they were trying to do
         - What they’re experiencing
         - Business impact + urgency
         - Enough evidence for engineering/product to act
@@ -75,7 +76,7 @@ body:
       required: true
 
   # -------------------------------------------------------
-  # 2) Classification & Urgency (customer vs internal)
+  # 2) Classification & Urgency
   # -------------------------------------------------------
   - type: dropdown
     id: request_type
@@ -184,13 +185,29 @@ body:
       required: false
 
   # -------------------------------------------------------
-  # 4) The Ask (customer voice) + Evidence
+  # 4) The Ask (customer voice) + JTBD
   # -------------------------------------------------------
   - type: input
     id: summary
     attributes:
       label: "Short Summary (customer POV)"
       placeholder: "Unable to upload documents to shipment record."
+    validations:
+      required: true
+
+  - type: textarea
+    id: jtbd
+    attributes:
+      label: "Job To Be Done (What were they trying to do?)"
+      description: "Capture the real task or progress the customer wanted to make."
+      placeholder: |
+        When [context],
+        the customer/user wanted to [goal/progress],
+        so they could [desired outcome].
+
+        Functional job:
+        Emotional impact:
+        Business/operational importance:
     validations:
       required: true
 
@@ -206,6 +223,16 @@ body:
       required: true
 
   - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: "Expected vs Actual"
+      placeholder: |
+        Expected:
+        Actual:
+    validations:
+      required: false
+
+  - type: textarea
     id: steps_to_reproduce
     attributes:
       label: "Steps to Reproduce (if bug-like)"
@@ -213,16 +240,6 @@ body:
         1.
         2.
         3.
-    validations:
-      required: false
-
-  - type: textarea
-    id: expected_vs_actual
-    attributes:
-      label: "Expected vs Actual"
-      placeholder: |
-        Expected:
-        Actual:
     validations:
       required: false
 
@@ -235,7 +252,7 @@ body:
       required: false
 
   # -------------------------------------------------------
-  # 5) Support Investigation (containment + routing)
+  # 5) Support Investigation
   # -------------------------------------------------------
   - type: textarea
     id: diagnostics
@@ -251,6 +268,25 @@ body:
       required: false
 
   - type: textarea
+    id: evidence_inventory
+    attributes:
+      label: "Evidence Inventory"
+      description: "What evidence do we already have, and what is still missing?"
+      placeholder: |
+        Already collected:
+        - Screenshots:
+        - Error messages:
+        - Timestamps:
+        - Request/correlation IDs:
+        - Tenant/account details:
+        - Browser/device info:
+
+        Still missing:
+        - ...
+    validations:
+      required: false
+
+  - type: textarea
     id: workaround
     attributes:
       label: "Workaround / Mitigation Provided"
@@ -260,6 +296,19 @@ body:
         Temporary configuration:
         Feature flag toggle (if any):
         Customer guidance:
+    validations:
+      required: false
+
+  - type: textarea
+    id: system_impact
+    attributes:
+      label: "Possible System / Workflow Impact"
+      description: "What product area, dependency, or workflow appears involved?"
+      placeholder: |
+        Suspected module:
+        Upstream/downstream dependency:
+        Related workflow:
+        Could this affect other customers/tenants?
     validations:
       required: false
 
@@ -352,10 +401,16 @@ body:
       options:
         - label: "Customer identity/tenant + environment are captured."
           required: true
+        - label: "JTBD/customer goal is clearly described."
+          required: true
         - label: "Impact and urgency reflect the customer’s reality."
           required: true
+        - label: "Expected vs actual is captured where relevant."
+          required: false
         - label: "Workaround/mitigation is included if known."
           required: false
+        - label: "Evidence collected vs missing is clear."
+          required: true
         - label: "No secrets/credentials/PII are included (or they are masked)."
           required: true
         - label: "Suggested routing is selected."

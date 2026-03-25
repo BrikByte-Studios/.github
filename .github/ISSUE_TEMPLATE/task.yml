@@ -31,6 +31,38 @@ body:
     validations:
       required: true
 
+  # 🧠 JTBD Thinking
+  - type: textarea
+    id: jtbd
+    attributes:
+      label: "Job To Be Done (JTBD)"
+      description: "Describe the real job this task supports."
+      placeholder: |
+        When [situation/context],
+        the user/operator/team wants to [goal/progress],
+        so they can [desired outcome].
+
+        Functional job:
+        Emotional job:
+        Organizational job:
+    validations:
+      required: true
+
+  # 🧠 Context Thinking
+  - type: textarea
+    id: job_context
+    attributes:
+      label: "Job Context / Trigger"
+      description: "What workflow event or situation makes this task necessary?"
+      placeholder: |
+        Example:
+        - Before production release
+        - During CI failure triage
+        - While generating audit evidence
+        - During rollback handling
+    validations:
+      required: true
+
   - type: textarea
     id: problem_statement
     attributes:
@@ -57,7 +89,7 @@ body:
     validations:
       required: true
 
-  # --- 2) Classification (What kind of work) ---
+  # --- 2) Classification ---
   - type: dropdown
     id: task_type
     attributes:
@@ -88,19 +120,11 @@ body:
     id: area
     attributes:
       label: "Primary Domain / Area (area:*)"
-      placeholder: "area:auth, area:ci-cd, area:billing, area:evidence"
+      placeholder: "area:auth, area:ci-cd, area:evidence"
     validations:
       required: true
 
-  - type: input
-    id: phase
-    attributes:
-      label: "Delivery Phase (phase/*)"
-      placeholder: "phase/foundation, phase/hardening, phase/enterprise"
-    validations:
-      required: false
-
-  # --- 3) Impact, Priority, Size (Triage discipline) ---
+  # --- 3) Triage ---
   - type: dropdown
     id: impact
     attributes:
@@ -137,302 +161,161 @@ body:
     validations:
       required: true
 
-  - type: input
-    id: estimate
-    attributes:
-      label: "Numeric Estimate"
-      placeholder: "5 pts, 12h"
-    validations:
-      required: false
-
-  # --- 4) Ownership & Traceability (Accountability + links) ---
-  - type: input
-    id: owner
-    attributes:
-      label: "Primary Owner"
-      placeholder: "@platform-lead"
-    validations:
-      required: true
-
-  - type: input
-    id: reporter
-    attributes:
-      label: "Reporter"
-      placeholder: "@thapelomagqazana"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: parent_type
-    attributes:
-      label: "Work Hierarchy"
-      options:
-        - "Standalone"
-        - "Epic"
-        - "Feature"
-        - "Defect"
-        - "Governance"
-      default: 0
-    validations:
-      required: true
-
-  - type: input
-    id: parent_ref
-    attributes:
-      label: "Parent Reference"
-      placeholder: "#123, EPIC-004"
-    validations:
-      required: false
-
-  - type: textarea
-    id: references
-    attributes:
-      label: "References (links)"
-      description: "Anything that proves context: incidents, docs, ADRs, designs, customer tickets."
-      placeholder: |
-        Docs:
-        ADR:
-        Incident:
-        Customer ticket:
-        Related PRs:
-    validations:
-      required: false
-
-  # --- 5) Scope Control (Stop task creep) ---
+  # --- 4) Scope ---
   - type: textarea
     id: scope
     attributes:
       label: "Scope (In / Out)"
-      description: "Be explicit. This keeps it sprint-sized."
       placeholder: |
         In scope:
-        - ...
-        Out of scope / non-goals:
-        - ...
+        Out of scope:
         Assumptions:
-        - ...
         Constraints:
-        - ...
     validations:
       required: true
 
-  # --- 6) Acceptance Criteria (What ‘done’ means) ---
+  # --- 5) Acceptance ---
   - type: textarea
     id: acceptance_criteria
     attributes:
       label: "Acceptance Criteria"
-      description: "Binary, testable statements. Avoid vague wording."
       placeholder: |
         - [ ] Given <context>, when <action>, then <expected outcome>
-        - [ ] Error handling: <what must happen on failure>
-        - [ ] Backward compatibility preserved (if applicable)
-        - [ ] No breaking changes without version bump/migration
+        - [ ] Error handling is defined
+        - [ ] No breaking changes without versioning
     validations:
       required: true
 
-  - type: textarea
-    id: success_metrics
-    attributes:
-      label: "Success Criteria / KPIs (optional but preferred)"
-      placeholder: |
-        - Latency p95 < X ms
-        - Error rate < Y%
-        - Coverage ≥ Z%
-        - Manual steps eliminated: N → 0
-    validations:
-      required: false
-
-  # --- 7) Deliverables (Artifacts checklist) ---
-  - type: textarea
-    id: deliverables
-    attributes:
-      label: "Deliverables"
-      placeholder: |
-        - [ ] Code merged
-        - [ ] Tests added/updated
-        - [ ] Docs updated
-        - [ ] Observability updated (dashboards/alerts)
-        - [ ] Evidence attached (logs/screenshots/results)
-    validations:
-      required: true
-
-  # --- 8) Technical Approach (How) ---
+  # --- 6) Technical Approach ---
   - type: textarea
     id: technical_plan
     attributes:
       label: "Technical Approach"
       placeholder: |
-        Architecture sketch:
-        Affected services/modules:
-        APIs/contracts:
+        Architecture:
+        Modules:
         Data changes:
-        Migration strategy:
-        Backward compatibility:
+        Migration:
     validations:
       required: false
 
+  # 🧠 Contract Thinking
   - type: textarea
-    id: dependencies
+    id: contracts
     attributes:
-      label: "Dependencies (rel/*)"
+      label: "Contracts / Interfaces"
+      description: "Define inputs, outputs, and schemas affected."
       placeholder: |
-        rel/depends-on: #234
-        rel/blocks: #456
-        rel/related: #789
+        Inputs:
+        Outputs:
+        Schemas:
+        API/interface changes:
+        Compatibility guarantees:
     validations:
       required: false
 
-  # --- 9) Test Plan / Scenarios (Proof) ---
+  # 🧠 Trade-off Thinking
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: "Trade-offs Considered"
+      placeholder: |
+        Benefits:
+        Costs:
+        Alternatives rejected:
+        Why this approach:
+    validations:
+      required: false
+
+  # --- 7) Test Plan ---
   - type: textarea
     id: test_plan
     attributes:
-      label: "Test Plan / Scenarios"
-      description: "How you will validate + what evidence will be produced."
+      label: "Test Plan"
       placeholder: |
-        Testing levels:
-        - Unit:
-        - Integration:
-        - E2E:
-        - Manual QA / UAT:
-
-        Core scenarios:
-        - ✅ Positive:
-        - ❌ Negative (fail safely):
-        - ⚠️ Edge:
-        - 🧨 Corner:
-
-        Non-functional (if relevant):
-        - Security:
-        - Performance:
-        - Reliability:
-        - Rollback verification (must be explicit):
-
-        Evidence (required):
-        - Test IDs/files:
-        - Run logs:
-        - Screenshots/recordings:
+        Unit:
+        Integration:
+        Edge cases:
+        Negative tests:
+        Rollback validation:
     validations:
       required: true
 
-  # --- 10) Rollout & Observability (Ship safely) ---
-  - type: textarea
-    id: rollout
+  # 🧠 Determinism Thinking
+  - type: checkboxes
+    id: determinism
     attributes:
-      label: "Rollout Plan"
-      description: "How this change is shipped with control."
+      label: "Determinism / Stability Check"
+      options:
+        - label: "Same input produces same output"
+        - label: "No hidden environment dependencies"
+        - label: "Outputs are stable and reproducible"
+        - label: "Failure behavior is explicit and controlled"
+
+  # 🧠 Inversion Thinking
+  - type: textarea
+    id: failure_modes
+    attributes:
+      label: "Failure Modes / Risks"
       placeholder: |
-        Deployment strategy (flag/canary/phased):
-        Rollback trigger:
-        Rollback steps:
-        Data rollback (if any):
+        What could go wrong:
+        Worst-case impact:
+        Detection signal:
+        Containment:
     validations:
       required: false
 
-  - type: textarea
-    id: observability
-    attributes:
-      label: "Observability Plan"
-      description: "What will you watch in prod to confirm success?"
-      placeholder: |
-        Metrics:
-        Logs:
-        Traces:
-        Dashboards:
-        Alerts:
-    validations:
-      required: false
-
-  # --- 11) Governance, Risk, Compliance (Trust) ---
-  - type: textarea
-    id: governance
-    attributes:
-      label: "Governance & Compliance"
-      placeholder: |
-        ADRs:
-        Policies:
-        RTM links:
-        Audit refs:
-        Data privacy considerations (PII/POPIA):
-    validations:
-      required: false
-
-  - type: textarea
-    id: risks
-    attributes:
-      label: "Risks & Failure Modes"
-      placeholder: |
-        Technical:
-        Product:
-        Operational:
-        Security:
-    validations:
-      required: false
-
-  - type: textarea
-    id: mitigations
-    attributes:
-      label: "Mitigation & Rollback Plan"
-      placeholder: |
-        Feature flags:
-        Canary:
-        Backward compatibility:
-        Rollback steps:
-        Observability hooks:
-    validations:
-      required: false
-
-  # --- 12) Evidence & Implementation Links ---
+  # --- 8) Evidence ---
   - type: textarea
     id: evidence
     attributes:
-      label: "Evidence & Artefacts"
+      label: "Proof / Evidence"
       placeholder: |
         PR:
-        Commit(s):
-        CI run:
         Logs:
+        Test results:
         Screenshots:
-        Benchmarks:
-        Test run links:
     validations:
       required: false
-
-  - type: input
-    id: implementation_ref
-    attributes:
-      label: "PR / Commit"
-      placeholder: "#456, abc123"
-    validations:
-      required: false
-
-  # --- 13) Future Enhancements (Intentional leftovers) ---
+  
+  # --- 9) Future Enhancements (Out of Scope) ---
   - type: textarea
     id: future_enhancements
     attributes:
       label: "Future Enhancements / Expansion (Out of Scope)"
+      description: "Ideas intentionally NOT included in this task."
       placeholder: |
-        - Follow-up improvements:
-        - Architectural evolutions:
-        - Product extensions:
-        - If large, create Epic and reference here.
+        Potential follow-ups:
+        - ...
+
+        Architectural evolutions:
+        - ...
+
+        Product extensions:
+        - ...
+
+        Notes:
+        - If important, create a new task or Epic and reference it here.
     validations:
       required: false
 
-  # --- 14) Preflight (Hard gate before work starts) ---
+  # --- 9) Preflight ---
   - type: checkboxes
     id: preflight
     attributes:
       label: "Preflight Validation"
       options:
-        - label: "Scope is clearly defined (in/out)"
+        - label: "JTBD is clearly defined"
           required: true
-        - label: "Task is sprint-sized (≤5 days) or split planned"
+        - label: "Scope is clear and bounded"
           required: true
-        - label: "Acceptance criteria are binary/testable"
+        - label: "Task is ≤5 days or split"
           required: true
-        - label: "Dependencies identified or explicitly none"
+        - label: "Acceptance criteria are testable"
           required: true
-        - label: "Test plan includes negative + rollback verification"
+        - label: "Test plan includes failure + rollback"
           required: true
         - label: "No sensitive data included"
+          required: true
+        - label: "Future enhancements are NOT included in current scope"
           required: true

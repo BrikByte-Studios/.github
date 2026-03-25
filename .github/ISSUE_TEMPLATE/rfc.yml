@@ -67,6 +67,22 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: jtbd
+    attributes:
+      label: "Job To Be Done (Decision Outcome)"
+      description: "What real user, operator, or organizational job does this decision make easier, safer, or more reliable?"
+      placeholder: |
+        When [context],
+        the user/team/system wants to [goal/progress],
+        so they can [desired outcome].
+
+        Functional job:
+        Emotional/confidence impact:
+        Organizational/governance job:
+    validations:
+      required: true
+
   - type: input
     id: reporter
     attributes:
@@ -102,6 +118,18 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: reversibility
+    attributes:
+      label: "Decision Type / Reversibility"
+      description: "Is this decision easy to reverse, or expensive/hard to unwind?"
+      options:
+        - "Two-way door (reversible)"
+        - "Mostly reversible with planned migration"
+        - "One-way door (hard to reverse)"
+    validations:
+      required: true
+
   # -------------------------------------------------------
   # 2) Context (Reality today)
   # -------------------------------------------------------
@@ -128,6 +156,19 @@ body:
         Constraints/limitations:
     validations:
       required: true
+
+  - type: textarea
+    id: first_principles
+    attributes:
+      label: "First Principles Breakdown"
+      description: "What must be true regardless of implementation, tooling, or vendor?"
+      placeholder: |
+        What is fundamentally required?
+        What constraints are unavoidable?
+        What assumptions should be challenged?
+        What is the simplest true version of the problem?
+    validations:
+      required: false
 
   # -------------------------------------------------------
   # 3) Goals & Non-Goals (Scope control)
@@ -216,6 +257,21 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: contracts
+    attributes:
+      label: "Contracts / Interfaces Affected"
+      description: "Define the interfaces, schemas, boundaries, or APIs that this RFC changes."
+      placeholder: |
+        Inputs:
+        Outputs:
+        Schemas:
+        APIs/interfaces:
+        Stability guarantees:
+        Versioning notes:
+    validations:
+      required: false
+
   # -------------------------------------------------------
   # 5) Alternatives (Real trade-offs)
   # -------------------------------------------------------
@@ -250,6 +306,19 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: decision_rationale
+    attributes:
+      label: "Decision Rationale"
+      description: "Why this proposal is preferred over the alternatives right now."
+      placeholder: |
+        Why this option:
+        Why now:
+        Why not the others:
+        What assumptions make this reasonable:
+    validations:
+      required: false
+
   # -------------------------------------------------------
   # 6) Impact Analysis (People + systems + operations)
   # -------------------------------------------------------
@@ -268,6 +337,21 @@ body:
         Customer impact (if any):
     validations:
       required: true
+
+  - type: textarea
+    id: second_order_effects
+    attributes:
+      label: "Second-Order Effects"
+      description: "What downstream or longer-term consequences could this decision create?"
+      placeholder: |
+        Operational complexity:
+        New coupling or lock-in:
+        Maintenance burden:
+        Organizational/process impact:
+        Future migration cost:
+        Risks created by success/failure:
+    validations:
+      required: false
 
   - type: dropdown
     id: risk_level
@@ -342,6 +426,21 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: validation_strategy
+    attributes:
+      label: "Validation / Proof Strategy"
+      description: "How will we prove this decision worked after implementation?"
+      placeholder: |
+        Test strategy:
+        Pilot/canary validation:
+        Success signals:
+        Failure signals:
+        Evidence to collect:
+        Review checkpoint after rollout:
+    validations:
+      required: false
+
   # -------------------------------------------------------
   # 9) Cost, Dependencies, Open Questions (execution reality)
   # -------------------------------------------------------
@@ -407,9 +506,13 @@ body:
       options:
         - label: "Decision request is explicit (what approval means)."
           required: true
+        - label: "JTBD / decision outcome is clearly described."
+          required: true
         - label: "Problem/context/goals/non-goals are clear."
           required: true
         - label: "At least two alternatives were evaluated with trade-offs."
+          required: true
+        - label: "Reversibility is explicitly assessed."
           required: true
         - label: "Rollout + rollback + failure modes are documented."
           required: true

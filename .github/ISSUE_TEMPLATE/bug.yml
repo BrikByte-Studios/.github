@@ -28,6 +28,23 @@ body:
     validations:
       required: true
 
+  # 🧠 JTBD Impact
+  - type: textarea
+    id: jtbd_impact
+    attributes:
+      label: "JTBD Impact (What job is broken?)"
+      description: "What user/job outcome is blocked or degraded?"
+      placeholder: |
+        When [context],
+        the user wants to [goal],
+        but instead [failure],
+        so they cannot [desired outcome].
+
+        Impact on user confidence:
+        Impact on business:
+    validations:
+      required: true
+
   - type: textarea
     id: impact
     attributes:
@@ -105,9 +122,22 @@ body:
         - Single tenant?
         - All tenants?
         - Region-specific?
-        - Specific feature flag?
+        - Feature flag specific?
     validations:
       required: true
+
+  # 🧠 Systems Thinking
+  - type: textarea
+    id: system_impact
+    attributes:
+      label: "System Impact"
+      description: "What other systems, services, or workflows are affected?"
+      placeholder: |
+        Upstream dependencies:
+        Downstream effects:
+        Cascading failures:
+    validations:
+      required: false
 
   # -------------------------------------------------------
   # 3️⃣ Environment & Versioning
@@ -150,22 +180,6 @@ body:
     validations:
       required: false
 
-  - type: input
-    id: observed_at
-    attributes:
-      label: "Date / Time Observed (UTC)"
-      placeholder: "2026-02-25T14:30:00Z"
-    validations:
-      required: false
-
-  - type: input
-    id: correlation_id
-    attributes:
-      label: "Correlation / Request ID (if available)"
-      placeholder: "x-request-id: 12ab34cd"
-    validations:
-      required: false
-
   # -------------------------------------------------------
   # 4️⃣ Reproduction
   # -------------------------------------------------------
@@ -178,7 +192,6 @@ body:
         1. ...
         2. ...
         3. ...
-        4. ...
     validations:
       required: true
 
@@ -207,26 +220,66 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: regression_details
+  # 🧠 Determinism Thinking
+  - type: checkboxes
+    id: reproducibility_quality
     attributes:
-      label: "If regression, last known working version/date"
+      label: "Reproducibility Quality"
+      options:
+        - label: "Steps consistently reproduce the issue"
+        - label: "Environment conditions are clearly defined"
+        - label: "Inputs/state are controlled and repeatable"
+
+  # -------------------------------------------------------
+  # 5️⃣ Debugging Thinking
+  # -------------------------------------------------------
+
+  # 🧠 Inversion Thinking
+  - type: textarea
+    id: failure_mode
+    attributes:
+      label: "Failure Mode (How the system failed)"
+      placeholder: |
+        What exactly broke?
+        What assumptions failed?
+        Where in the flow did it break?
+    validations:
+      required: false
+
+  # 🧠 Root Cause Thinking
+  - type: textarea
+    id: root_cause
+    attributes:
+      label: "Root Cause Analysis (5 Whys)"
+      placeholder: |
+        Why 1:
+        Why 2:
+        Why 3:
+        Why 4:
+        Why 5:
+    validations:
+      required: false
+
+  # 🧠 Hypothesis Thinking
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: "Debugging Hypothesis"
+      placeholder: |
+        Hypothesis:
+        How to test:
+        Result:
     validations:
       required: false
 
   # -------------------------------------------------------
-  # 5️⃣ Workaround & Urgency
+  # 6️⃣ Workaround & Urgency
   # -------------------------------------------------------
 
   - type: textarea
     id: workaround
     attributes:
       label: "Workaround (if any)"
-      placeholder: |
-        Temporary mitigation steps:
-        - Disable feature flag
-        - Manual intervention
-        - Retry strategy
     validations:
       required: false
 
@@ -236,13 +289,13 @@ body:
       label: "Hotfix Required?"
       options:
         - "Yes — immediate patch required"
-        - "No — can wait for next sprint"
+        - "No — can wait"
         - "Unsure"
     validations:
       required: true
 
   # -------------------------------------------------------
-  # 6️⃣ Diagnostics & Evidence
+  # 7️⃣ Evidence
   # -------------------------------------------------------
 
   - type: textarea
@@ -250,11 +303,6 @@ body:
     attributes:
       label: "Logs & Diagnostics (sanitized)"
       render: shell
-      placeholder: |
-        Server logs:
-        Stack trace:
-        HTTP status:
-        DB errors:
     validations:
       required: false
 
@@ -269,49 +317,11 @@ body:
     id: feature_flags
     attributes:
       label: "Feature Flags / Config"
-      placeholder: |
-        feature.x = enabled
-        ENV_MODE = prod
-    validations:
-      required: false
-
-  - type: textarea
-    id: suspected_cause
-    attributes:
-      label: "Suspected Cause (optional)"
     validations:
       required: false
 
   # -------------------------------------------------------
-  # 7️⃣ Governance & Traceability
-  # -------------------------------------------------------
-
-  - type: textarea
-    id: related_refs
-    attributes:
-      label: "Related Requirements / Test Cases / Incidents"
-      placeholder: |
-        REQ-*
-        TC-*
-        Incident-*
-        RTM row:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 8️⃣ Reporter Metadata
-  # -------------------------------------------------------
-
-  - type: input
-    id: reporter_role
-    attributes:
-      label: "Reporter Role"
-      placeholder: "QA • Support • Customer • Dev"
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 9️⃣ Pre-Flight Validation
+  # 8️⃣ Preflight
   # -------------------------------------------------------
 
   - type: checkboxes
@@ -319,11 +329,11 @@ body:
     attributes:
       label: "Pre-Flight Checklist"
       options:
-        - label: "I searched for duplicates."
+        - label: "Steps to reproduce are clear and deterministic"
           required: true
-        - label: "Steps to reproduce are clear and deterministic."
+        - label: "JTBD impact is clearly described"
           required: true
-        - label: "Logs/screenshots are sanitized."
+        - label: "Logs/screenshots are sanitized"
           required: true
-        - label: "I verified this is not local-only misconfiguration."
+        - label: "This is not local misconfiguration"
           required: false

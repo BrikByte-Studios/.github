@@ -11,8 +11,10 @@ body:
       value: |
         Thanks for proposing a feature for BrikByte Studios 👋
 
-        This form captures **problem**, **value**, **scope**, and **delivery intent** so we can:
+        This form captures **problem**, **value**, **scope**, **risk**, and **delivery intent** so we can:
         triage → prioritize → design → implement → measure success.
+
+        Use this template to describe the **real problem and outcome**, not just a preferred solution.
 
         🔐 Do not include secrets, credentials, or personal information.
 
@@ -23,7 +25,7 @@ body:
     id: summary
     attributes:
       label: "Summary"
-      description: "One paragraph: what you want + why it matters."
+      description: "One paragraph: what is requested + why it matters."
       placeholder: |
         What capability is requested?
         Who benefits?
@@ -45,8 +47,24 @@ body:
       required: true
 
   # -------------------------------------------------------
-  # 2) Product Context (where it lives)
+  # 2) JTBD + Product Context
   # -------------------------------------------------------
+  - type: textarea
+    id: jtbd
+    attributes:
+      label: "Job To Be Done (JTBD)"
+      description: "What real job is the user hiring this feature to do?"
+      placeholder: |
+        When [situation/context],
+        the user wants to [goal/progress],
+        so they can [desired outcome].
+
+        Functional job:
+        Emotional job:
+        Organizational job:
+    validations:
+      required: true
+
   - type: input
     id: product_area
     attributes:
@@ -61,45 +79,13 @@ body:
     attributes:
       label: "Primary Users / Personas"
       placeholder: |
-        - Persona(s):
-        - Tenants / markets:
-        - Internal vs external:
+        Persona(s):
+        Tenants / markets:
+        Internal vs external:
+        Who feels the pain most:
     validations:
       required: true
 
-  # -------------------------------------------------------
-  # 3) Problem Framing (the ‘why’)
-  # -------------------------------------------------------
-  - type: textarea
-    id: problem_statement
-    attributes:
-      label: "Problem / Opportunity"
-      description: "Describe pain and consequences. Avoid prescribing a solution."
-      placeholder: |
-        Current situation:
-        Pain / friction:
-        Who is impacted:
-        What happens if we do nothing:
-    validations:
-      required: true
-
-  - type: textarea
-    id: evidence
-    attributes:
-      label: "Evidence (if available)"
-      description: "Attach proof: tickets, analytics, user quotes, screenshots, competitor links."
-      placeholder: |
-        - Support ticket volume:
-        - Customer quotes:
-        - Funnel drop-off:
-        - Incident / escalations:
-        - Competitor reference:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 4) Use Cases (what users actually do)
-  # -------------------------------------------------------
   - type: textarea
     id: user_story
     attributes:
@@ -117,7 +103,63 @@ body:
       required: true
 
   # -------------------------------------------------------
-  # 5) Business Value (why we prioritize it)
+  # 3) Problem Framing (the ‘why’)
+  # -------------------------------------------------------
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: "Problem / Opportunity"
+      description: "Describe the pain and consequences. Avoid prescribing a solution."
+      placeholder: |
+        Current situation:
+        Pain / friction:
+        Who is impacted:
+        What happens if we do nothing:
+    validations:
+      required: true
+
+  - type: textarea
+    id: first_principles
+    attributes:
+      label: "First Principles Breakdown"
+      description: "What is the fundamental problem independent of current tools or implementations?"
+      placeholder: |
+        What must be true regardless of implementation?
+        What is the core constraint?
+        What is the simplest version of this problem?
+    validations:
+      required: false
+
+  - type: textarea
+    id: current_workaround
+    attributes:
+      label: "Current Workaround / Alternative"
+      description: "How are users solving this today?"
+      placeholder: |
+        Manual steps:
+        Current tools/process:
+        Pain points:
+        Why this is insufficient:
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "Evidence (if available)"
+      description: "Attach proof: tickets, analytics, user quotes, screenshots, competitor links."
+      placeholder: |
+        Support ticket volume:
+        Customer quotes:
+        Funnel drop-off:
+        Incident / escalations:
+        Competitor reference:
+        Analytics / dashboards:
+    validations:
+      required: false
+
+  # -------------------------------------------------------
+  # 4) Business Value (why we prioritize it)
   # -------------------------------------------------------
   - type: textarea
     id: business_value
@@ -130,6 +172,18 @@ body:
         Time sensitivity / deadline:
     validations:
       required: true
+
+  - type: textarea
+    id: opportunity_cost
+    attributes:
+      label: "Opportunity Cost"
+      description: "What are we NOT doing by building this?"
+      placeholder: |
+        Deferred work:
+        Competing priorities:
+        Why this feature is more important now:
+    validations:
+      required: false
 
   - type: dropdown
     id: impact
@@ -167,7 +221,7 @@ body:
       required: true
 
   # -------------------------------------------------------
-  # 6) Scope Control (stop scope creep)
+  # 5) Scope Control (stop scope creep)
   # -------------------------------------------------------
   - type: textarea
     id: scope
@@ -191,14 +245,27 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: system_impact
+    attributes:
+      label: "System Impact"
+      description: "How does this feature affect other systems, workflows, or users?"
+      placeholder: |
+        Affected components:
+        Downstream effects:
+        Upstream dependencies:
+        Risk of unintended side effects:
+    validations:
+      required: false
+
   # -------------------------------------------------------
-  # 7) Acceptance Criteria (binary + testable)
+  # 6) Acceptance Criteria (binary + testable)
   # -------------------------------------------------------
   - type: textarea
     id: acceptance_criteria
     attributes:
       label: "Acceptance Criteria"
-      description: "Testable conditions for ‘done’."
+      description: "Testable conditions for 'done'."
       placeholder: |
         - [ ] Given <context>, when <action>, then <expected outcome>.
         - [ ] Negative: when <bad input>, system <fails safely>.
@@ -221,7 +288,7 @@ body:
       required: false
 
   # -------------------------------------------------------
-  # 8) Delivery & Measurement (ship + prove)
+  # 7) Delivery & Measurement (ship + prove)
   # -------------------------------------------------------
   - type: textarea
     id: rollout_plan
@@ -239,7 +306,7 @@ body:
     id: success_metrics
     attributes:
       label: "Success Metrics & Measurement Plan"
-      description: "How we’ll know it worked (and where we’ll measure it)."
+      description: "How we'll know it worked (and where we'll measure it)."
       placeholder: |
         Leading metrics (adoption, activation, time-on-task):
         Lagging metrics (revenue, churn, tickets):
@@ -254,7 +321,7 @@ body:
     id: telemetry_requirements
     attributes:
       label: "Telemetry Requirements (preferred)"
-      description: "Define events/logs/metrics needed as part of ‘done’."
+      description: "Define events/logs/metrics needed as part of 'done'."
       placeholder: |
         Events to emit:
         - event_name:
@@ -267,7 +334,7 @@ body:
       required: false
 
   # -------------------------------------------------------
-  # 9) Dependencies / Governance (enterprise hooks)
+  # 8) Dependencies / Governance (enterprise hooks)
   # -------------------------------------------------------
   - type: textarea
     id: dependencies_rel
@@ -294,7 +361,7 @@ body:
       required: false
 
   # -------------------------------------------------------
-  # 10) Solution Notes (optional — keep non-binding)
+  # 9) Solution Notes (optional — keep non-binding)
   # -------------------------------------------------------
   - type: textarea
     id: design_ideas
@@ -321,6 +388,18 @@ body:
       required: false
 
   - type: textarea
+    id: tradeoffs
+    attributes:
+      label: "Trade-offs Considered"
+      placeholder: |
+        What are we optimizing for?
+        What are we sacrificing?
+        Alternatives rejected:
+        Why this is the best choice now:
+    validations:
+      required: false
+
+  - type: textarea
     id: risks_constraints
     attributes:
       label: "Risks, Constraints & Open Questions"
@@ -328,6 +407,23 @@ body:
         Risks:
         Constraints:
         Open questions:
+    validations:
+      required: false
+
+  - type: textarea
+    id: failure_modes
+    attributes:
+      label: "Failure Modes (How this could go wrong)"
+      placeholder: |
+        Possible failure scenarios:
+        - Feature misuse
+        - Performance degradation
+        - Security risks
+        - UX confusion
+
+        Worst-case outcome:
+        Detection signals:
+        Containment strategy:
     validations:
       required: false
 
@@ -346,7 +442,7 @@ body:
       required: false
 
   # -------------------------------------------------------
-  # 11) Reporter Metadata & Preflight
+  # 10) Reporter Metadata & Preflight
   # -------------------------------------------------------
   - type: input
     id: reporter_role
@@ -363,11 +459,17 @@ body:
       options:
         - label: "I searched existing issues to avoid duplicates."
           required: true
+        - label: "JTBD is clearly defined (user outcome, not just feature)."
+          required: true
         - label: "Problem + business value are clear (not just the solution)."
+          required: true
+        - label: "Current workaround and pain are clearly described."
           required: true
         - label: "Acceptance criteria are included and testable."
           required: true
         - label: "Scope includes explicit non-goals to prevent creep."
+          required: true
+        - label: "This request solves a real problem, not just adds complexity."
           required: true
         - label: "No secrets, credentials, or personal data included."
           required: true

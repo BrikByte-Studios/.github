@@ -32,6 +32,23 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: jtbd_impact
+    attributes:
+      label: "JTBD / User Job Impact"
+      description: "What important user, operator, or business job was interrupted?"
+      placeholder: |
+        When [context],
+        the user/customer/team wanted to [goal],
+        but instead [failure/degradation],
+        so they could not [desired outcome].
+
+        Functional job affected:
+        Customer confidence impact:
+        Business/organizational impact:
+    validations:
+      required: true
+
   - type: dropdown
     id: severity
     attributes:
@@ -92,11 +109,11 @@ body:
     attributes:
       label: "Affected Products / Services / Tenants"
       placeholder: |
-        - Products:
-        - Services/components:
-        - Tenants/customers:
-        - Regions:
-        - Entry points (API/URL/jobs):
+        Products:
+        Services/components:
+        Tenants/customers:
+        Regions:
+        Entry points (API/URL/jobs):
     validations:
       required: true
 
@@ -118,11 +135,25 @@ body:
       label: "Impact Quantification (if available)"
       description: "Enough to reason about severity + SLO impact."
       placeholder: |
-        - Duration of impact (minutes):
-        - Error rate (%):
-        - Failed requests (#):
-        - Latency impact (p95/p99):
-        - Revenue/ops impact estimate:
+        Duration of impact (minutes):
+        Error rate (%):
+        Failed requests (#):
+        Latency impact (p95/p99):
+        Revenue/ops impact estimate:
+    validations:
+      required: false
+
+  - type: textarea
+    id: second_order_effects
+    attributes:
+      label: "Second-Order Effects"
+      description: "What downstream or longer-tail impact did this create?"
+      placeholder: |
+        Delayed jobs or retries:
+        Support load increase:
+        Customer trust impact:
+        Follow-on failures:
+        Compliance/reporting impact:
     validations:
       required: false
 
@@ -245,12 +276,27 @@ body:
   - type: textarea
     id: decision_log
     attributes:
-      label: "Decision Log (why we chose rollback/flag/scale/etc.)"
+      label: "Decision Log"
+      description: "Why rollback/flag/scale/retry/cutover was chosen."
       placeholder: |
-        - Decision:
-          Reason:
-          Alternatives considered:
-          Risks:
+        Decision:
+        Reason:
+        Alternatives considered:
+        Risks accepted:
+    validations:
+      required: false
+
+  - type: textarea
+    id: system_failure_chain
+    attributes:
+      label: "System Failure Chain"
+      description: "Describe how the failure propagated through the system."
+      placeholder: |
+        Triggering event:
+        First component affected:
+        Downstream propagation:
+        Customer-visible failure point:
+        Why protections did not stop propagation:
     validations:
       required: false
 
@@ -312,6 +358,19 @@ body:
       required: false
 
   - type: textarea
+    id: failure_mode
+    attributes:
+      label: "Failure Mode (Inversion Thinking)"
+      description: "How exactly did the system fail?"
+      placeholder: |
+        What assumption failed?
+        What control failed?
+        What safety boundary was crossed?
+        What made the failure customer-visible?
+    validations:
+      required: false
+
+  - type: textarea
     id: logs_and_diagnostics
     attributes:
       label: "Logs & Diagnostics (sanitized)"
@@ -345,11 +404,11 @@ body:
     attributes:
       label: "Mitigation Steps (stop the bleeding)"
       placeholder: |
-        - Rollback:
-        - Disable flag:
-        - Scale up/out:
-        - Rate limit / circuit breaker:
-        - Traffic reroute:
+        Rollback:
+        Disable flag:
+        Scale up/out:
+        Rate limit / circuit breaker:
+        Traffic reroute:
     validations:
       required: false
 
@@ -369,12 +428,13 @@ body:
     id: verification
     attributes:
       label: "Recovery Verification"
-      description: "How we proved recovery (not just 'it looks fine')."
+      description: "How recovery was proved, not merely assumed."
       placeholder: |
-        - Metrics returned to baseline:
-        - Synthetic checks passing:
-        - Error rate normalized:
-        - Customer confirmation (if any):
+        Metrics returned to baseline:
+        Synthetic checks passing:
+        Error rate normalized:
+        Customer confirmation (if any):
+        Queue/job backlog cleared:
     validations:
       required: false
 
@@ -402,6 +462,7 @@ body:
         Latency/error spikes:
         Resource saturation:
         Notable correlations:
+        Missing signals or blind spots:
     validations:
       required: false
 
@@ -425,6 +486,20 @@ body:
 
         Governance/quality:
         - [ ] Create tasks/bugs:
+    validations:
+      required: false
+
+  - type: textarea
+    id: prevention_strategy
+    attributes:
+      label: "Prevention Strategy"
+      description: "What will prevent or contain this class of incident in future?"
+      placeholder: |
+        Design changes:
+        Guardrails:
+        Better tests:
+        Better limits/timeouts/retries:
+        Better runbooks:
     validations:
       required: false
 
@@ -494,11 +569,15 @@ body:
       options:
         - label: "Impact and severity are clear and quantified where possible."
           required: true
+        - label: "JTBD/user-job impact is clearly described."
+          required: true
         - label: "Timeline includes at least detect/ack/mitigate/resolved (best-effort)."
           required: true
         - label: "Logs and evidence are sanitized (no secrets/PII)."
           required: true
         - label: "Mitigation is separated from root-cause resolution."
+          required: true
+        - label: "Recovery is verified with evidence, not assumption."
           required: true
         - label: "Follow-up actions are listed or linked."
           required: false
