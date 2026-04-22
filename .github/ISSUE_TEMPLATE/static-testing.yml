@@ -1,0 +1,392 @@
+name: "🔎 Static Testing / Task Review"
+description: "Professionally review a proposed task using first principles to detect ambiguity, missing clarity, weak scope, and weak acceptance criteria."
+title: "[STATIC-TEST] "
+labels:
+  - "type:review"
+  - "type:static-testing"
+  - "status:triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## BrikByte Studios Static Testing / Task Review
+
+        Use this template to review a task **before implementation**.
+
+        This is a **quality gate for task definition**.
+        The goal is not to code yet.
+        The goal is to determine whether the task is:
+        - clear
+        - bounded
+        - testable
+        - unambiguous
+        - implementation-ready
+
+        ---
+        ## Core Principle
+
+        > A vague task produces vague code.
+        > A precise task produces deterministic execution.
+
+        ---
+        ## Review Outcomes
+
+        Every static test review should produce:
+        - identified ambiguities
+        - identified gaps / risks
+        - a revised version of the task
+        - stronger acceptance criteria
+        - a readiness verdict
+
+        ---
+        ## Readiness Verdict
+
+        - ✅ READY
+        - ⚠️ NEEDS REVISION
+        - ❌ NOT READY
+
+  - type: input
+    id: task_summary
+    attributes:
+      label: Task summary
+      description: One-line summary of the task being reviewed.
+      placeholder: "Implement release score summary output for inspect command"
+    validations:
+      required: true
+
+  - type: textarea
+    id: original_task
+    attributes:
+      label: Original task definition
+      description: Paste the task exactly as currently written.
+      placeholder: |
+        Paste the full original task here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: task_intent
+    attributes:
+      label: Intended outcome
+      description: What is this task trying to achieve?
+      placeholder: |
+        Intended outcome:
+        - ...
+
+        Why this task exists:
+        - ...
+    validations:
+      required: true
+
+  - type: input
+    id: repository_area
+    attributes:
+      label: Repository / Area
+      description: Primary repository and subsystem affected.
+      placeholder: "brikbyteos-cli / internal/inspect"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: Task type
+      description: Select the type of work being reviewed.
+      options:
+        - Feature
+        - Improvement
+        - Refactor
+        - Bug Fix
+        - Reliability
+        - Performance
+        - Security
+        - Documentation
+        - DX
+        - Build / CI
+        - Test Infrastructure
+        - Governance
+        - UI / UX
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope_review
+    attributes:
+      label: Scope review
+      description: Assess whether the task scope is clear and bounded.
+      placeholder: |
+        Scope observations:
+        - What is clearly in scope?
+        - What appears implied but unstated?
+        - What may accidentally expand?
+        - What should be explicitly out of scope?
+    validations:
+      required: true
+
+  - type: textarea
+    id: ambiguity_review
+    attributes:
+      label: Ambiguity review
+      description: Identify unclear, vague, overloaded, or non-testable wording.
+      placeholder: |
+        Ambiguous terms / phrases:
+        - "robust"
+        - "improve"
+        - "handle properly"
+        - "user-friendly"
+
+        Why ambiguous:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: assumptions_review
+    attributes:
+      label: Hidden assumptions
+      description: Identify assumptions that the task currently relies on but does not state.
+      placeholder: |
+        Hidden assumptions:
+        - A schema already exists
+        - The command output format is already agreed
+        - Consumers can tolerate changed output
+        - The data source is always available
+    validations:
+      required: true
+
+  - type: textarea
+    id: missing_information
+    attributes:
+      label: Missing information
+      description: List information needed for the task to be executable without guesswork.
+      placeholder: |
+        Missing information:
+        - Input contract
+        - Output examples
+        - Error behavior
+        - Ordering rules
+        - Compatibility expectations
+    validations:
+      required: true
+
+  - type: textarea
+    id: interface_contract_review
+    attributes:
+      label: Contract / interface review
+      description: Review inputs, outputs, schemas, side effects, invariants, and dependencies.
+      placeholder: |
+        Inputs:
+        - ...
+
+        Outputs:
+        - ...
+
+        Side effects:
+        - ...
+
+        Invariants:
+        - ...
+
+        Dependencies:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: risk_review
+    attributes:
+      label: Risk review
+      description: Identify risks if the task is implemented as currently written.
+      placeholder: |
+        Risks:
+        - Inconsistent interpretation by developer
+        - Breaking contract consumers
+        - Missing edge-case behavior
+        - Scope creep
+        - Untestable completion
+    validations:
+      required: true
+
+  - type: textarea
+    id: first_principles_questions
+    attributes:
+      label: First principles questions
+      description: Ask the fundamental questions that must be answered for the task to be sound.
+      placeholder: |
+        First principles questions:
+        - What exact problem is being solved?
+        - What is the minimal correct outcome?
+        - What input(s) drive this behavior?
+        - What output proves success?
+        - What must remain unchanged?
+        - What can fail, and how must failure appear?
+    validations:
+      required: true
+
+  - type: textarea
+    id: testability_review
+    attributes:
+      label: Testability review
+      description: Evaluate whether the task can be validated objectively.
+      placeholder: |
+        Testability observations:
+        - Can success be proven?
+        - Are acceptance criteria binary?
+        - Can unit / integration / regression tests be derived?
+        - Are fixtures / examples needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: issues_found
+    attributes:
+      label: Issues found
+      description: Summarize the concrete issues found during static testing.
+      placeholder: |
+        Issues found:
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: clarification_requests
+    attributes:
+      label: Required clarifications
+      description: List the exact clarifications required to make the task stronger.
+      placeholder: |
+        Clarifications needed:
+        - Define input source
+        - Define output ordering
+        - Define failure behavior
+        - Define compatibility constraints
+    validations:
+      required: true
+
+  - type: textarea
+    id: revised_task
+    attributes:
+      label: Revised task definition
+      description: Rewrite the task into a clearer, implementation-ready version.
+      placeholder: |
+        Revised task:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: revised_scope
+    attributes:
+      label: Revised scope
+      description: Clearly restate in-scope and out-of-scope items.
+      placeholder: |
+        In scope:
+        - ...
+
+        Out of scope:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: quality_criteria
+    attributes:
+      label: Quality criteria
+      description: Define the quality bar for implementation.
+      placeholder: |
+        Quality criteria:
+        - Deterministic output
+        - Explicit error behavior
+        - No hidden side effects
+        - Contract-safe changes
+        - Test coverage for positive / negative / edge cases
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria_revised
+    attributes:
+      label: Revised acceptance criteria
+      description: Provide stronger binary, testable acceptance criteria.
+      placeholder: |
+        - [ ] Input contract is explicitly defined
+        - [ ] Output format is explicitly defined with examples
+        - [ ] Missing-data behavior is specified
+        - [ ] Output ordering is deterministic
+        - [ ] Regression tests prove unchanged existing behavior where required
+        - [ ] Documentation is updated if contract-visible behavior changes
+    validations:
+      required: true
+
+  - type: textarea
+    id: recommended_tests
+    attributes:
+      label: Recommended tests
+      description: List the tests that should exist if this task proceeds.
+      placeholder: |
+        Recommended tests:
+        - Positive case
+        - Negative case
+        - Edge case
+        - Determinism test
+        - Compatibility regression test
+    validations:
+      required: true
+
+  - type: dropdown
+    id: readiness_verdict
+    attributes:
+      label: Readiness verdict
+      description: Is the task ready for implementation after review?
+      options:
+        - READY
+        - NEEDS REVISION
+        - NOT READY
+    validations:
+      required: true
+
+  - type: textarea
+    id: next_action
+    attributes:
+      label: Next action
+      description: What should happen next?
+      placeholder: |
+        Next action:
+        - Approve for implementation
+        - Revise task and resubmit
+        - Split task into smaller units
+        - Create ADR / schema / contract task first
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: review_checklist
+    attributes:
+      label: Review checklist
+      description: Confirm the task has been professionally static tested.
+      options:
+        - label: Ambiguous wording has been identified
+        - label: Hidden assumptions have been identified
+        - label: Missing information has been identified
+        - label: Scope has been bounded
+        - label: Contracts / interfaces have been reviewed
+        - label: Risks have been identified
+        - label: A revised task definition has been produced
+        - label: Revised acceptance criteria are binary and testable
+        - label: A readiness verdict has been given
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Related tasks, ADRs, docs, schemas, issues, or PRs.
+      placeholder: |
+        - ADR-000x
+        - Related task: #
+        - Schema doc: ...
+        - PR: ...
+    validations:
+      required: false

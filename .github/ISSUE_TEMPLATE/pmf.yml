@@ -1,0 +1,265 @@
+name: "🎯 Product-Market Fit (PMF)"
+description: "Evaluate and measure whether a product or feature has real demand, traction, and user pull."
+title: "[PMF] "
+labels:
+  - "type:pmf"
+  - "type:strategy"
+  - "status:triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## BrikByte Studios PMF Engine
+
+        Use this template to determine whether your product or feature has:
+
+        - real demand
+        - real user pull
+        - real retention
+        - real willingness to adopt
+
+        ---
+        ## Core Principle
+
+        > PMF is not what you think.
+        > PMF is what users DO repeatedly without being forced.
+
+        ---
+        ## PMF Signals
+
+        Strong PMF looks like:
+        - Users come back without reminders
+        - Users recommend it to others
+        - Users feel pain when it's removed
+        - Users integrate it into workflows
+
+        ---
+        ## Outcome
+
+        Every evaluation must conclude:
+        - 🚀 STRONG PMF
+        - ⚠️ WEAK PMF
+        - ❌ NO PMF
+
+  - type: input
+    id: summary
+    attributes:
+      label: Product / Feature summary
+      description: What are you evaluating?
+      placeholder: "BrikByteOS CLI for release certification"
+    validations:
+      required: true
+
+  - type: textarea
+    id: target_user
+    attributes:
+      label: Target user segment
+      description: Who is this for?
+      placeholder: |
+        Primary users:
+        - DevOps engineers
+        - QA leads
+
+        Context:
+        - CI/CD workflows
+    validations:
+      required: true
+
+  - type: textarea
+    id: core_problem
+    attributes:
+      label: Core problem
+      description: What painful problem does this solve?
+      placeholder: |
+        Problem:
+        - Fragmented tools
+        - False confidence in pipelines
+
+        Pain level:
+        - High / Medium / Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current user behavior
+      description: How users currently solve the problem.
+      placeholder: |
+        Current tools:
+        - Jenkins
+        - GitHub Actions
+
+        Workarounds:
+        - Manual checks
+        - Spreadsheets
+    validations:
+      required: true
+
+  - type: textarea
+    id: value_realization
+    attributes:
+      label: Value realization
+      description: What value users actually experience.
+      placeholder: |
+        Users get:
+        - Confidence in releases
+        - Clear decision making
+
+        Evidence:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: usage_metrics
+    attributes:
+      label: Usage metrics
+      description: How often and how deeply users use the product.
+      placeholder: |
+        Metrics:
+        - Daily usage
+        - Runs per user
+        - Feature usage
+
+        Observations:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: retention
+    attributes:
+      label: Retention
+      description: Do users come back?
+      placeholder: |
+        Retention:
+        - % returning users
+        - Frequency of use
+
+        Observation:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: pull_signal
+    attributes:
+      label: User pull signals
+      description: Are users pulling the product?
+      placeholder: |
+        Signals:
+        - Asking for features
+        - Recommending to others
+        - Integrating into workflows
+    validations:
+      required: true
+
+  - type: textarea
+    id: qualitative_feedback
+    attributes:
+      label: Qualitative feedback
+      description: What users say about the product.
+      placeholder: |
+        Feedback:
+        - "This saves us time"
+        - "We rely on this"
+
+        Negative feedback:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: willingness_to_pay
+    attributes:
+      label: Willingness to pay
+      description: Are users willing to pay or invest effort?
+      placeholder: |
+        Signals:
+        - Direct payment
+        - Time investment
+        - Integration effort
+    validations:
+      required: false
+
+  - type: textarea
+    id: pmf_score
+    attributes:
+      label: PMF Score (0–10)
+      description: Score overall product-market fit.
+      placeholder: |
+        Score: 6/10
+
+        Why:
+        - Good usage
+        - Weak retention
+    validations:
+      required: true
+
+  - type: textarea
+    id: pmf_gaps
+    attributes:
+      label: PMF Gaps
+      description: What is missing for strong PMF?
+      placeholder: |
+        Gaps:
+        - Not sticky enough
+        - Not obvious value
+        - Not integrated deeply
+    validations:
+      required: true
+
+  - type: textarea
+    id: pmf_upgrade
+    attributes:
+      label: Path to Strong PMF
+      description: What must change to reach strong PMF?
+      placeholder: |
+        Improvements:
+        - Increase stickiness
+        - Improve onboarding
+        - Show value faster
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pmf_decision
+    attributes:
+      label: PMF Decision
+      options:
+        - STRONG PMF
+        - WEAK PMF
+        - NO PMF
+    validations:
+      required: true
+
+  - type: textarea
+    id: next_actions
+    attributes:
+      label: Next actions
+      description: What happens next?
+      placeholder: |
+        If STRONG:
+        - Scale
+
+        If WEAK:
+        - Iterate
+
+        If NONE:
+        - Pivot or kill
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: Real users are involved
+        - label: Metrics are based on behavior (not opinion)
+        - label: Retention is measured
+        - label: Feedback is captured
+        - label: Decision is evidence-based
