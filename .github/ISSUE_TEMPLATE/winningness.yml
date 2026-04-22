@@ -1,0 +1,317 @@
+name: "🏆 Winningness Evaluation"
+description: "Evaluate, stress-test, and upgrade a proposed solution to achieve 10/10 Value Proposition and 10/10 Moat."
+title: "[WIN] "
+labels:
+  - "type:strategy"
+  - "type:evaluation"
+  - "status:triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## BrikByte Studios Winningness Engine
+
+        Use this template BEFORE building anything significant.
+
+        This ensures:
+        - The idea is worth building
+        - The value proposition is undeniable
+        - The moat is strong and compounding
+
+        ---
+        ## Core Principle
+
+        > If it is not a 10/10, it is not ready.
+
+        ---
+        ## Outcome
+
+        Every evaluation must end with:
+        - 🚀 BUILD (10/10 ready)
+        - 🔁 UPGRADE (not strong enough yet)
+        - ❌ DROP (not worth pursuing)
+
+  - type: input
+    id: summary
+    attributes:
+      label: Solution summary
+      description: One-line description of the solution.
+      placeholder: "CLI that provides deterministic release certification using unified schema and policy engine"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem clarity
+      description: Define the problem precisely.
+      placeholder: |
+        Problem:
+        - ...
+
+        Why painful:
+        - ...
+
+        Current alternatives:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: target_user
+    attributes:
+      label: Target user
+      description: Who is this for?
+      placeholder: |
+        Primary user:
+        - ...
+
+        Context:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What are you building?
+      placeholder: |
+        Solution:
+        - ...
+
+        Core capability:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: value_proposition
+    attributes:
+      label: Value proposition (core)
+      description: Why this is valuable.
+      placeholder: |
+        This solution enables:
+        - ...
+
+        Compared to alternatives:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: value_uniqueness
+    attributes:
+      label: Why this is 10x better
+      description: What makes it significantly better?
+      placeholder: |
+        10x advantage:
+        - Speed
+        - Accuracy
+        - Cost
+        - Simplicity
+    validations:
+      required: true
+
+  - type: textarea
+    id: proof
+    attributes:
+      label: Proof / evidence
+      description: Evidence that this value is real.
+      placeholder: |
+        Evidence:
+        - User feedback
+        - Experiments
+        - Observations
+    validations:
+      required: false
+
+  - type: textarea
+    id: vp_score
+    attributes:
+      label: Value Proposition Score (0–10)
+      description: Score and justify.
+      placeholder: |
+        Score: 7/10
+
+        Why:
+        - Strong technically
+        - Not yet obvious to users
+    validations:
+      required: true
+
+  - type: textarea
+    id: vp_gaps
+    attributes:
+      label: Value Proposition Gaps
+      description: What prevents it from being 10/10?
+      placeholder: |
+        Gaps:
+        - Not obvious
+        - Requires explanation
+        - Not urgent enough
+    validations:
+      required: true
+
+  - type: textarea
+    id: vp_upgrades
+    attributes:
+      label: Upgrade to 10/10 Value Proposition
+      description: What must change?
+      placeholder: |
+        Improvements:
+        - Make outcome visible instantly
+        - Reduce cognitive load
+        - Show immediate ROI
+    validations:
+      required: true
+
+  - type: textarea
+    id: moat
+    attributes:
+      label: Moat description
+      description: What protects this solution?
+      placeholder: |
+        Moat:
+        - ...
+
+        Type:
+        - Data / ecosystem / switching cost / etc
+    validations:
+      required: true
+
+  - type: textarea
+    id: moat_strength
+    attributes:
+      label: Why hard to copy
+      description: Why competitors cannot easily replicate.
+      placeholder: |
+        Reasons:
+        - Requires deep integration
+        - Requires ecosystem
+    validations:
+      required: true
+
+  - type: textarea
+    id: moat_compounding
+    attributes:
+      label: Compounding effect
+      description: How moat strengthens over time.
+      placeholder: |
+        Over time:
+        - More users → more data
+        - More adapters → stronger lock-in
+    validations:
+      required: true
+
+  - type: textarea
+    id: moat_score
+    attributes:
+      label: Moat Score (0–10)
+      description: Score and justify.
+      placeholder: |
+        Score: 6/10
+
+        Why:
+        - Strong foundation
+        - Needs adoption to strengthen
+    validations:
+      required: true
+
+  - type: textarea
+    id: moat_gaps
+    attributes:
+      label: Moat Gaps
+      description: What weakens defensibility?
+      placeholder: |
+        Gaps:
+        - Easy to replicate
+        - No lock-in yet
+    validations:
+      required: true
+
+  - type: textarea
+    id: moat_upgrades
+    attributes:
+      label: Upgrade to 10/10 Moat
+      description: What must be built to strengthen moat?
+      placeholder: |
+        Actions:
+        - Build ecosystem
+        - Add historical data layer
+        - Standardize schema publicly
+    validations:
+      required: true
+
+  - type: textarea
+    id: competition
+    attributes:
+      label: Competition analysis
+      description: Who else solves this problem?
+      placeholder: |
+        Competitors:
+        - ...
+
+        Why they win:
+        - ...
+
+        Why they lose:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: unfair_advantage
+    attributes:
+      label: Unfair advantage
+      description: Why YOU specifically can win.
+      placeholder: |
+        Advantage:
+        - Unique insight
+        - Execution speed
+        - Technical depth
+    validations:
+      required: true
+
+  - type: dropdown
+    id: decision
+    attributes:
+      label: Final decision
+      options:
+        - BUILD (10/10 ready)
+        - UPGRADE (needs improvement)
+        - DROP (not worth it)
+    validations:
+      required: true
+
+  - type: textarea
+    id: next_steps
+    attributes:
+      label: Next steps
+      description: What happens next?
+      placeholder: |
+        If BUILD:
+        - Create tasks
+
+        If UPGRADE:
+        - Refine value prop
+        - Strengthen moat
+
+        If DROP:
+        - Archive idea
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: Problem is real and painful
+        - label: Value is obvious and compelling
+        - label: Solution is significantly better
+        - label: Moat is defined and defensible
+        - label: Compounding advantage exists
+        - label: Clear path to 10/10 exists
