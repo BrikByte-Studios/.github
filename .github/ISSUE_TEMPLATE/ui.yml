@@ -1,0 +1,280 @@
+name: "🎨 UI / UX Task"
+description: "Design, implement, or improve user interface and user experience components."
+title: "[UI] "
+labels:
+  - "type:ui"
+  - "status:triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## BrikByte Studios UI / UX Work Item
+
+        Use this template for **UI and UX related work**.
+
+        This includes:
+        - CLI output formatting
+        - Web UI components
+        - Dashboards
+        - Visualizations
+        - Layout and interaction design
+        - UX flows and usability improvements
+
+        **Core UI Principles (BrikByteOS)**
+        - UI must be deterministic (same input → same output)
+        - UI must reflect system truth (no fabricated state)
+        - UI must be driven by contracts (schema-first)
+        - UI must be testable (no hidden logic)
+        - UI must separate data, state, and rendering
+
+  - type: input
+    id: summary
+    attributes:
+      label: UI Task summary
+      description: One-line description of the UI work.
+      placeholder: "Implement deterministic score summary panel in CLI output"
+    validations:
+      required: true
+
+  - type: textarea
+    id: intent
+    attributes:
+      label: Intent / Why
+      description: Why this UI change is needed.
+      placeholder: |
+        This UI work exists to...
+        Current UX problem:
+        Impact on users:
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_flow
+    attributes:
+      label: User flow / interaction
+      description: Describe how the user interacts with this UI.
+      placeholder: |
+        Step-by-step flow:
+        1. User runs / opens ...
+        2. User sees ...
+        3. User interacts with ...
+        4. System responds by ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_ui
+    attributes:
+      label: Current UI behavior
+      description: Describe the existing UI (if applicable).
+      placeholder: |
+        Current behavior:
+        - ...
+
+        Issues:
+        - Confusing
+        - Non-deterministic
+        - Missing information
+    validations:
+      required: false
+
+  - type: textarea
+    id: desired_ui
+    attributes:
+      label: Desired UI behavior
+      description: Describe how the UI should behave after implementation.
+      placeholder: |
+        Desired behavior:
+        - UI renders ...
+        - User sees ...
+        - Interaction results in ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ui_type
+    attributes:
+      label: UI Type
+      description: What type of UI is affected?
+      options:
+        - CLI Output
+        - Web UI Component
+        - Dashboard / Analytics View
+        - Visualization (charts, graphs)
+        - Form / Input Flow
+        - Navigation / Layout
+        - Design System / Styling
+        - Accessibility Improvement
+        - UX Flow Improvement
+    validations:
+      required: true
+
+  - type: input
+    id: area
+    attributes:
+      label: Repository / Area
+      description: Where this UI lives.
+      placeholder: "brikbyteos-cli / internal/ui OR ui/src/components"
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_contract
+    attributes:
+      label: Data contract / inputs
+      description: Define the exact data inputs the UI consumes.
+      placeholder: |
+        Input data structure:
+        - score: number
+        - status: string
+        - reasons: []
+
+        Source:
+        - manifest.json
+        - normalized outputs
+    validations:
+      required: true
+
+  - type: textarea
+    id: rendering_rules
+    attributes:
+      label: Rendering rules (deterministic)
+      description: Define how UI should render given inputs.
+      placeholder: |
+        Rules:
+        - Sort items alphabetically
+        - Display status in fixed order
+        - No random ordering
+        - Missing values handled as ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: states
+    attributes:
+      label: UI states
+      description: Define all possible states the UI must handle.
+      placeholder: |
+        States:
+        - Loading
+        - Empty
+        - Success
+        - Error
+        - Partial data
+
+        Behavior for each:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: edge_cases
+    attributes:
+      label: Edge cases
+      description: Define unusual or boundary scenarios.
+      placeholder: |
+        Edge cases:
+        - No data available
+        - Large dataset
+        - Invalid input
+        - Partial failure
+    validations:
+      required: true
+
+  - type: textarea
+    id: accessibility
+    attributes:
+      label: Accessibility considerations
+      description: Ensure usability for all users.
+      placeholder: |
+        - Keyboard navigation
+        - Screen reader support
+        - Color contrast
+        - Clear labeling
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Binary, testable UI conditions.
+      placeholder: |
+        - [ ] UI renders consistently for identical inputs
+        - [ ] All states are handled explicitly
+        - [ ] No nondeterministic ordering
+        - [ ] UI reflects underlying data accurately
+        - [ ] Edge cases are handled
+        - [ ] UI tests pass
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test plan
+      description: How this UI will be validated.
+      placeholder: |
+        Tests:
+        - Snapshot tests
+        - Visual regression tests
+        - CLI output comparison
+        - Manual verification steps
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: Concrete outputs expected.
+      placeholder: |
+        - UI component / CLI formatter
+        - Tests
+        - Updated styles
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / trade-offs
+      description: Potential issues or trade-offs.
+      placeholder: |
+        Risks:
+        - UI inconsistency
+        - Performance impact
+        - Breaking existing output
+
+        Mitigation:
+        - ...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: UI behavior is clearly defined
+        - label: Data inputs are explicitly defined
+        - label: Rendering rules are deterministic
+        - label: Edge cases are considered
+        - label: Acceptance criteria are testable
+        - label: No hidden state or implicit behavior
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Links, designs, mockups, or related tasks.
+      placeholder: |
+        - Design mockups
+        - Related task #
+        - ADR
+        - UI spec doc
+    validations:
+      required: false

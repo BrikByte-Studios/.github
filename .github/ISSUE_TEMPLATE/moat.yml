@@ -1,0 +1,247 @@
+name: "🏰 Moat / Competitive Advantage"
+description: "Define, analyze, and strengthen defensibility of a product, feature, or system capability."
+title: "[MOAT] "
+labels:
+  - "type:strategy"
+  - "type:moat"
+  - "status:triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## BrikByte Studios Moat Design
+
+        Use this template to define and strengthen **defensibility**.
+
+        This is not about building features.
+        This is about ensuring:
+        - competitors cannot easily replicate
+        - your product compounds in value over time
+        - your system becomes harder to replace
+
+        ---
+        ## Core Principle
+
+        > A feature is temporary. A moat compounds.
+
+        ---
+        ## Types of Moats (reference)
+
+        - Data moat
+        - Workflow lock-in
+        - Ecosystem / integrations
+        - Network effects
+        - Brand / category ownership
+        - Switching cost
+        - Speed / execution
+        - Distribution advantage
+        - Regulatory / compliance
+        - Economic advantage
+
+  - type: input
+    id: summary
+    attributes:
+      label: Moat summary
+      description: One-line description of the moat.
+      placeholder: "Unified normalized schema across all tools creates high switching cost"
+    validations:
+      required: true
+
+  - type: textarea
+    id: asset
+    attributes:
+      label: Core asset
+      description: What is the underlying asset or capability?
+      placeholder: |
+        Asset:
+        - e.g. normalized schema
+        - deterministic pipeline
+        - policy engine
+    validations:
+      required: true
+
+  - type: textarea
+    id: moat_type
+    attributes:
+      label: Moat type(s)
+      description: Identify which moat categories apply.
+      placeholder: |
+        - Data moat
+        - Switching cost
+        - Ecosystem lock-in
+        - Brand / category
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem_solved
+    attributes:
+      label: Problem solved
+      description: What painful problem does this moat anchor on?
+      placeholder: |
+        Problem:
+        - Tool fragmentation
+        - False confidence in CI pipelines
+    validations:
+      required: true
+
+  - type: textarea
+    id: why_hard_to_copy
+    attributes:
+      label: Why hard to copy
+      description: Why can competitors not easily replicate this?
+      placeholder: |
+        Reasons:
+        - Requires deep integration across tools
+        - Requires schema standardization
+        - Requires behavioral change
+    validations:
+      required: true
+
+  - type: textarea
+    id: compounding_effect
+    attributes:
+      label: Compounding effect
+      description: How does this moat get stronger over time?
+      placeholder: |
+        Over time:
+        - More adapters → stronger ecosystem
+        - More runs → richer data
+        - More policies → deeper governance
+    validations:
+      required: true
+
+  - type: textarea
+    id: switching_cost
+    attributes:
+      label: Switching cost
+      description: What makes it hard for users to leave?
+      placeholder: |
+        Switching cost:
+        - Data dependency
+        - Workflow integration
+        - Policy reliance
+    validations:
+      required: true
+
+  - type: textarea
+    id: network_effect
+    attributes:
+      label: Network / ecosystem effects
+      description: Does value increase as usage grows?
+      placeholder: |
+        Example:
+        - More adapters → more users
+        - More users → more standardization
+    validations:
+      required: false
+
+  - type: textarea
+    id: distribution
+    attributes:
+      label: Distribution advantage
+      description: How does this reach users better than competitors?
+      placeholder: |
+        Channels:
+        - CLI adoption
+        - GitHub integration
+        - CI/CD pipelines
+    validations:
+      required: false
+
+  - type: textarea
+    id: economic_advantage
+    attributes:
+      label: Economic advantage
+      description: Does this reduce cost or increase efficiency?
+      placeholder: |
+        Advantage:
+        - Reduce tool sprawl cost
+        - Reduce release risk cost
+    validations:
+      required: false
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Moat risks
+      description: What could weaken or destroy this moat?
+      placeholder: |
+        Risks:
+        - Open standard competitors
+        - Big tech copying
+        - Lack of adoption
+    validations:
+      required: true
+
+  - type: textarea
+    id: strengthening_actions
+    attributes:
+      label: Strengthening actions
+      description: What actions will deepen this moat?
+      placeholder: |
+        Actions:
+        - Open schema adoption
+        - Build adapter ecosystem
+        - Publish standards
+        - Create community
+    validations:
+      required: true
+
+  - type: textarea
+    id: competitors
+    attributes:
+      label: Competitive landscape
+      description: Who are competitors and why they are weaker here?
+      placeholder: |
+        Competitors:
+        - GitHub Actions
+        - Jenkins
+        - Datadog
+
+        Weakness:
+        - No unified schema
+        - No policy-driven release certification
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Moat validation
+      description: How will you know this moat is real?
+      placeholder: |
+        Signals:
+        - Users rely on system deeply
+        - Hard to replace
+        - Competitors cannot match behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: score
+    attributes:
+      label: Moat strength score (0–10)
+      description: Rate the strength of this moat.
+      placeholder: |
+        Score: 7/10
+
+        Reason:
+        - Strong technically
+        - Needs more adoption
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: This is not just a feature
+        - label: The moat is tied to a real problem
+        - label: It becomes stronger over time
+        - label: It is difficult to replicate
+        - label: It creates switching cost or lock-in
+        - label: It aligns with long-term strategy

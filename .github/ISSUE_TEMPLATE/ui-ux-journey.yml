@@ -1,0 +1,297 @@
+name: "🧭 UI/UX Journey Design"
+description: "Design or improve a user journey with detailed UX flow, visual structure, and system interaction."
+title: "[UI/UX] "
+labels:
+  - "type:ui"
+  - "type:ux"
+  - "status:triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## BrikByte Studios UI/UX Journey Design
+
+        This template is used to design **complete user journeys**, not just UI components.
+
+        It forces:
+        - step-by-step user simulation
+        - system → UI → user mapping
+        - visual structure (even without mockups)
+        - deterministic behavior
+
+        ⚠️ Principle:
+        > If you cannot simulate the journey clearly, you cannot build it correctly.
+
+        ---
+        ## Core Model
+
+        Every step must define:
+        - What the **user does**
+        - What the **system does**
+        - What the **user sees**
+        - What the **user feels (UX)**
+
+        ---
+        ## Think in this format:
+
+        USER ACTION → SYSTEM RESPONSE → UI OUTPUT → USER UNDERSTANDING
+
+  - type: input
+    id: summary
+    attributes:
+      label: Journey summary
+      description: One-line description of the journey.
+      placeholder: "User runs `bb score` and interprets release decision"
+    validations:
+      required: true
+
+  - type: textarea
+    id: persona
+    attributes:
+      label: User persona
+      description: Who is the user going through this journey?
+      placeholder: |
+        Role:
+        Experience level:
+        Goals:
+        Frustrations:
+        Context of use:
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: User goal
+      description: What is the user trying to achieve?
+      placeholder: |
+        The user wants to:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: entry_point
+    attributes:
+      label: Entry point
+      description: How does the user enter this journey?
+      placeholder: |
+        Entry:
+        - CLI command
+        - Web UI page
+        - API trigger
+    validations:
+      required: true
+
+  - type: textarea
+    id: full_journey
+    attributes:
+      label: Full user journey (step-by-step simulation)
+      description: Simulate the journey in detail.
+      placeholder: |
+        STEP 1:
+        User action:
+        System behavior:
+        UI output:
+        User perception:
+
+        STEP 2:
+        User action:
+        System behavior:
+        UI output:
+        User perception:
+
+        STEP 3:
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: visual_structure
+    attributes:
+      label: Visual layout (textual wireframe)
+      description: Describe what the UI looks like in structure form.
+      placeholder: |
+        CLI Example:
+        --------------------------------
+        SCORE: 92
+        STATUS: APPROVED
+
+        REASONS:
+        - Tests passed
+        - No vulnerabilities
+
+        --------------------------------
+
+        Web UI Example:
+        - Header: Score + Status
+        - Left panel: Summary
+        - Right panel: Details
+        - Bottom: Logs / Evidence
+    validations:
+      required: true
+
+  - type: textarea
+    id: state_transitions
+    attributes:
+      label: State transitions
+      description: Define how the UI changes over time.
+      placeholder: |
+        States:
+        - Loading → Display spinner
+        - Success → Show results
+        - Error → Show structured error
+        - Empty → Show fallback
+
+        Transitions:
+        - Loading → Success
+        - Loading → Error
+    validations:
+      required: true
+
+  - type: textarea
+    id: system_mapping
+    attributes:
+      label: System → UI mapping
+      description: Map backend data to UI elements.
+      placeholder: |
+        Data:
+        - score → displayed as large number
+        - status → badge (APPROVED / REJECTED)
+        - reasons → bullet list
+
+        Source:
+        - manifest.json
+        - policy_eval.json
+    validations:
+      required: true
+
+  - type: textarea
+    id: decision_points
+    attributes:
+      label: Decision points
+      description: Where the user makes decisions based on UI.
+      placeholder: |
+        Decision:
+        - Proceed with deployment?
+        - Investigate failure?
+
+        UI must clearly show:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure_modes
+    attributes:
+      label: Failure modes (UX)
+      description: What happens when things go wrong?
+      placeholder: |
+        Failure cases:
+        - Missing data
+        - Partial execution
+        - Tool failure
+
+        UX handling:
+        - Show clear error
+        - Preserve context
+        - Provide next steps
+    validations:
+      required: true
+
+  - type: textarea
+    id: edge_cases
+    attributes:
+      label: Edge cases
+      description: Rare or boundary scenarios.
+      placeholder: |
+        - Empty results
+        - Very large datasets
+        - Conflicting data
+    validations:
+      required: true
+
+  - type: textarea
+    id: emotional_ux
+    attributes:
+      label: Emotional UX (user perception)
+      description: How the user should feel at each stage.
+      placeholder: |
+        Desired feelings:
+        - Clarity
+        - Confidence
+        - Trust
+        - Control
+
+        Avoid:
+        - Confusion
+        - Ambiguity
+    validations:
+      required: true
+
+  - type: textarea
+    id: accessibility
+    attributes:
+      label: Accessibility considerations
+      description: Ensure usability for all users.
+      placeholder: |
+        - Readable text
+        - Color contrast
+        - Keyboard navigation
+        - Screen reader support
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Binary conditions for completion.
+      placeholder: |
+        - [ ] Full journey is reproducible step-by-step
+        - [ ] UI reflects system state accurately
+        - [ ] All states are handled explicitly
+        - [ ] No ambiguous or hidden behavior
+        - [ ] Decision points are clear
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test plan
+      description: How to validate the journey.
+      placeholder: |
+        - Simulate full journey manually
+        - Snapshot CLI output
+        - UI regression tests
+        - Edge case validation
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: What will be produced.
+      placeholder: |
+        - UI components / CLI output
+        - Journey documentation
+        - Tests
+        - Sample outputs
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: Journey is fully simulated step-by-step
+        - label: UI is derived from system data (not invented)
+        - label: Visual layout is clearly described
+        - label: All states are defined
+        - label: Decision points are explicit
+        - label: UX is clear and unambiguous

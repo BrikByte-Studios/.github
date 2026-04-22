@@ -1,321 +1,377 @@
 name: "🧰 Task / Work Item"
 description: "Plan, implement, and govern a concrete engineering work item."
-title: "[TASK] <concise, action-oriented summary>"
+title: "[TASK] "
 labels:
   - "type:task"
   - "status:triage"
+assignees: []
 
 body:
   - type: markdown
     attributes:
       value: |
-        👋 Welcome to BrikByte Studios Engineering.
+        ## BrikByte Studios Engineering Task
 
-        Use this template for **well-scoped, sprint-sized work items**:
-        - Feature slices, bug fixes, refactors, platform improvements, enablement work
+        Use this form to define a **production-grade engineering work item**.
 
-        ⛔ If this item exceeds **5 days**, split it or create an Epic.
+        This template is designed to ensure:
+        - clear intent
+        - deterministic implementation scope
+        - testable acceptance criteria
+        - governance and traceability
+        - explicit rollout and evidence capture
 
-        🔐 Do not include secrets, credentials, or personal data.
+        **Important rules**
+        - Write in concrete, testable language.
+        - Avoid vague phrases like "improve", "handle better", or "make robust" without measurable definitions.
+        - Acceptance criteria must be binary.
+        - Keep implementation aligned with architecture, ADRs, and repository conventions.
 
-  # --- 1) Intent (Why) ---
-  - type: textarea
+  - type: input
     id: summary
     attributes:
-      label: "Task Summary (Executive)"
-      description: "One paragraph: what, why, outcome."
-      placeholder: |
-        What is being done?
-        Why is it needed now?
-        What measurable outcome is expected?
+      label: Task summary
+      description: One-line description of the work item.
+      placeholder: "Implement..."
     validations:
       required: true
 
-  # 🧠 JTBD Thinking
+  - type: textarea
+    id: intent
+    attributes:
+      label: Intent / Why
+      description: Explain why this work exists and why it matters now.
+      placeholder: |
+        This task exists to ensure...
+        Without this work...
+        This is needed now because...
+    validations:
+      required: true
+
   - type: textarea
     id: jtbd
     attributes:
-      label: "Job To Be Done (JTBD)"
-      description: "Describe the real job this task supports."
+      label: Job To Be Done (JTBD)
+      description: Describe the job this task enables in user/system terms.
       placeholder: |
-        When [situation/context],
-        the user/operator/team wants to [goal/progress],
-        so they can [desired outcome].
-
-        Functional job:
-        Emotional job:
-        Organizational job:
-    validations:
-      required: true
-
-  # 🧠 Context Thinking
-  - type: textarea
-    id: job_context
-    attributes:
-      label: "Job Context / Trigger"
-      description: "What workflow event or situation makes this task necessary?"
-      placeholder: |
-        Example:
-        - Before production release
-        - During CI failure triage
-        - While generating audit evidence
-        - During rollback handling
+        When ...
+        I want ...
+        So that ...
     validations:
       required: true
 
   - type: textarea
     id: problem_statement
     attributes:
-      label: "Problem Statement"
-      description: "Describe the current pain/failure mode in concrete terms."
+      label: Problem statement
+      description: Define the concrete problem, gap, failure mode, or missing capability.
       placeholder: |
-        Current behavior:
-        Who is affected:
-        Evidence (logs, metrics, user reports):
-        Why it matters (cost/risk/delay):
+        Current state:
+        Observed gap:
+        Risk if not fixed:
+        Known failure modes:
     validations:
       required: true
 
   - type: textarea
-    id: objective
+    id: desired_outcome
     attributes:
-      label: "Objective (Outcome)"
-      description: "What will be measurably better after this task?"
+      label: Desired outcome
+      description: Describe the expected end state after this task is completed.
       placeholder: |
-        After this task:
-        - Capability added:
-        - Risk reduced:
-        - Constraint improved (speed, reliability, cost, compliance):
+        After this task is complete:
+        - ...
+        - ...
+        - ...
     validations:
       required: true
 
-  # --- 2) Classification ---
   - type: dropdown
-    id: task_type
+    id: work_type
     attributes:
-      label: "Work Classification (type:*)"
+      label: Work classification
+      description: Select the type that best describes this task.
       options:
-        - "type:feature"
-        - "type:improvement"
-        - "type:bug"
-        - "type:refactor"
-        - "type:chore"
-        - "type:spike"
-        - "type:docs"
-        - "type:test"
-        - "type:governance"
-      default: 0
-    validations:
-      required: true
-
-  - type: input
-    id: project
-    attributes:
-      label: "Project / Platform (proj/*)"
-      placeholder: "proj/brikbyteos, proj/stackcraft-ts, proj/cargopulse"
-    validations:
-      required: true
-
-  - type: input
-    id: area
-    attributes:
-      label: "Primary Domain / Area (area:*)"
-      placeholder: "area:auth, area:ci-cd, area:evidence"
-    validations:
-      required: true
-
-  # --- 3) Triage ---
-  - type: dropdown
-    id: impact
-    attributes:
-      label: "Impact"
-      options:
-        - "High — customer/prod risk or major capability"
-        - "Medium — noticeable improvement / important debt"
-        - "Low — localized / internal"
+        - Feature
+        - Improvement
+        - Refactor
+        - Bug Fix
+        - Reliability
+        - Performance
+        - Security
+        - Compliance
+        - Documentation
+        - Developer Experience
+        - Test Infrastructure
+        - Build / CI
+        - Release Engineering
+        - Governance
+        - Research / Spike
     validations:
       required: true
 
   - type: dropdown
     id: priority
     attributes:
-      label: "Priority"
+      label: Priority
+      description: Delivery urgency and business/engineering importance.
       options:
-        - "P0 — Production Blocker"
-        - "P1 — Critical"
-        - "P2 — Important"
-        - "P3 — Nice-to-have"
+        - P0 - Critical
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: Expected effect of this task if completed successfully.
+      options:
+        - High
+        - Medium
+        - Low
     validations:
       required: true
 
   - type: dropdown
     id: size
     attributes:
-      label: "Estimated Size"
+      label: Size / Effort
+      description: Rough delivery size estimate.
       options:
-        - "XS (≤1 day)"
-        - "S (1–2 days)"
-        - "M (2–3 days)"
-        - "L (3–5 days)"
-        - "XL (>5 days — split)"
+        - XS
+        - S
+        - M
+        - L
+        - XL
     validations:
       required: true
 
-  # --- 4) Scope ---
-  - type: textarea
-    id: scope
+  - type: input
+    id: repo_area
     attributes:
-      label: "Scope (In / Out)"
-      placeholder: |
-        In scope:
-        Out of scope:
-        Assumptions:
-        Constraints:
+      label: Repository / Area
+      description: Primary repository and/or subsystem affected.
+      placeholder: "brikbyteos-cli / internal/scoring"
     validations:
       required: true
 
-  # --- 5) Acceptance ---
+  - type: input
+    id: phase_milestone
+    attributes:
+      label: Phase / Milestone
+      description: Delivery phase, milestone, or release target.
+      placeholder: "Phase 0 / Milestone 0.14 / MVP"
+    validations:
+      required: false
+
+  - type: textarea
+    id: in_scope
+    attributes:
+      label: In scope
+      description: List what this task explicitly includes.
+      placeholder: |
+        - Add canonical model...
+        - Persist structured output...
+        - Add unit tests...
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: List what this task explicitly does not include.
+      placeholder: |
+        - No UI redesign
+        - No schema v2 changes
+        - No historical migration
+    validations:
+      required: true
+
+  - type: textarea
+    id: assumptions_constraints
+    attributes:
+      label: Assumptions and constraints
+      description: Note required assumptions, fixed constraints, or non-negotiable rules.
+      placeholder: |
+        Assumptions:
+        - ...
+
+        Constraints:
+        - Must remain deterministic
+        - Must not introduce dynamic plugin loading
+        - Must preserve current schema contract
+    validations:
+      required: true
+
+  - type: textarea
+    id: inputs_dependencies
+    attributes:
+      label: Inputs / Dependencies
+      description: Upstream tasks, ADRs, schemas, docs, or repos this work depends on.
+      placeholder: |
+        - ADR-0003
+        - Schema v0.1
+        - Task 0.13.4
+        - brikbyteos-schema definitions
+    validations:
+      required: false
+
+  - type: textarea
+    id: technical_approach
+    attributes:
+      label: Technical approach
+      description: Describe the intended implementation approach at a concrete level.
+      placeholder: |
+        Proposed approach:
+        1. ...
+        2. ...
+        3. ...
+
+        Key design notes:
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: architecture_governance
+    attributes:
+      label: Architecture / Governance alignment
+      description: Explain how this work aligns with architectural rules, ADRs, standards, and engineering policy.
+      placeholder: |
+        Alignment notes:
+        - Conforms to ADR-...
+        - Preserves deterministic execution order
+        - Avoids shell injection and hidden side effects
+        - Keeps contracts explicit and serializable
+    validations:
+      required: true
+
   - type: textarea
     id: acceptance_criteria
     attributes:
-      label: "Acceptance Criteria"
+      label: Acceptance criteria
+      description: Provide binary, testable conditions for completion.
       placeholder: |
-        - [ ] Given <context>, when <action>, then <expected outcome>
-        - [ ] Error handling is defined
-        - [ ] No breaking changes without versioning
+        - [ ] A canonical output model exists for ...
+        - [ ] JSON serialization is deterministic across repeated runs
+        - [ ] Invalid inputs fail with explicit structured errors
+        - [ ] Unit tests cover positive, negative, and edge cases
+        - [ ] Documentation is updated where required
     validations:
       required: true
 
-  # --- 6) Technical Approach ---
-  - type: textarea
-    id: technical_plan
-    attributes:
-      label: "Technical Approach"
-      placeholder: |
-        Architecture:
-        Modules:
-        Data changes:
-        Migration:
-    validations:
-      required: false
-
-  # 🧠 Contract Thinking
-  - type: textarea
-    id: contracts
-    attributes:
-      label: "Contracts / Interfaces"
-      description: "Define inputs, outputs, and schemas affected."
-      placeholder: |
-        Inputs:
-        Outputs:
-        Schemas:
-        API/interface changes:
-        Compatibility guarantees:
-    validations:
-      required: false
-
-  # 🧠 Trade-off Thinking
-  - type: textarea
-    id: tradeoffs
-    attributes:
-      label: "Trade-offs Considered"
-      placeholder: |
-        Benefits:
-        Costs:
-        Alternatives rejected:
-        Why this approach:
-    validations:
-      required: false
-
-  # --- 7) Test Plan ---
   - type: textarea
     id: test_plan
     attributes:
-      label: "Test Plan"
+      label: Test plan
+      description: Define how the task will be validated before completion.
       placeholder: |
-        Unit:
-        Integration:
-        Edge cases:
+        Positive tests:
+        - ...
+
         Negative tests:
-        Rollback validation:
+        - ...
+
+        Edge cases:
+        - ...
+
+        Regression checks:
+        - ...
     validations:
       required: true
 
-  # 🧠 Determinism Thinking
+  - type: textarea
+    id: observability_rollout
+    attributes:
+      label: Rollout / Observability
+      description: Describe release, monitoring, logging, metrics, or rollback considerations.
+      placeholder: |
+        Rollout:
+        - Behind flag / direct release / phased enablement
+
+        Observability:
+        - Logs
+        - Metrics
+        - Artifacts
+        - Validation signals
+
+        Rollback:
+        - Revert commit / disable path / restore previous contract
+    validations:
+      required: false
+
+  - type: textarea
+    id: risks_mitigations
+    attributes:
+      label: Risks / Mitigations
+      description: Identify major risks and how they will be reduced.
+      placeholder: |
+        Risk:
+        - ...
+
+        Mitigation:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: List the concrete files, modules, documents, tests, or outputs expected.
+      placeholder: |
+        - internal/scoring/result.go
+        - internal/scoring/result_test.go
+        - docs/scoring.md
+        - updated schema fixtures
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_artifacts
+    attributes:
+      label: Evidence / Artifacts
+      description: List the proof expected to show the task is complete.
+      placeholder: |
+        - PR link
+        - Test output
+        - Screenshots
+        - Sample artifacts
+        - Benchmark result
+        - Policy evaluation result
+    validations:
+      required: false
+
   - type: checkboxes
-    id: determinism
+    id: preflight_checklist
     attributes:
-      label: "Determinism / Stability Check"
+      label: Preflight checklist
+      description: Confirm the task has been properly shaped before implementation starts.
       options:
-        - label: "Same input produces same output"
-        - label: "No hidden environment dependencies"
-        - label: "Outputs are stable and reproducible"
-        - label: "Failure behavior is explicit and controlled"
+        - label: The problem is concrete and not vague
+        - label: The scope is explicitly bounded
+        - label: Acceptance criteria are binary and testable
+        - label: Dependencies are identified
+        - label: Risks have been considered
+        - label: Architecture / ADR alignment has been considered
+        - label: Test strategy has been defined
+        - label: Rollout or rollback implications have been considered
 
-  # 🧠 Inversion Thinking
   - type: textarea
-    id: failure_modes
+    id: references
     attributes:
-      label: "Failure Modes / Risks"
+      label: References
+      description: Add links or identifiers for supporting material.
       placeholder: |
-        What could go wrong:
-        Worst-case impact:
-        Detection signal:
-        Containment:
+        - ADR-0001
+        - RFC-0002
+        - PR #123
+        - docs/architecture/...
+        - schema/.../contract.json
     validations:
       required: false
-
-  # --- 8) Evidence ---
-  - type: textarea
-    id: evidence
-    attributes:
-      label: "Proof / Evidence"
-      placeholder: |
-        PR:
-        Logs:
-        Test results:
-        Screenshots:
-    validations:
-      required: false
-  
-  # --- 9) Future Enhancements (Out of Scope) ---
-  - type: textarea
-    id: future_enhancements
-    attributes:
-      label: "Future Enhancements / Expansion (Out of Scope)"
-      description: "Ideas intentionally NOT included in this task."
-      placeholder: |
-        Potential follow-ups:
-        - ...
-
-        Architectural evolutions:
-        - ...
-
-        Product extensions:
-        - ...
-
-        Notes:
-        - If important, create a new task or Epic and reference it here.
-    validations:
-      required: false
-
-  # --- 9) Preflight ---
-  - type: checkboxes
-    id: preflight
-    attributes:
-      label: "Preflight Validation"
-      options:
-        - label: "JTBD is clearly defined"
-          required: true
-        - label: "Scope is clear and bounded"
-          required: true
-        - label: "Task is ≤5 days or split"
-          required: true
-        - label: "Acceptance criteria are testable"
-          required: true
-        - label: "Test plan includes failure + rollback"
-          required: true
-        - label: "No sensitive data included"
-          required: true
-        - label: "Future enhancements are NOT included in current scope"
-          required: true

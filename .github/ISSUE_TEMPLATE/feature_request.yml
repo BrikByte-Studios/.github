@@ -1,475 +1,424 @@
 name: "✨ Feature Request"
-description: "Propose a new feature or enhancement for a BrikByte product."
-title: "[FEAT] <short summary>"
+description: "Propose a new capability, enhancement, or product improvement."
+title: "[FEATURE] "
 labels:
   - "type:feature"
   - "status:triage"
+assignees: []
 
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for proposing a feature for BrikByte Studios 👋
+        ## BrikByte Studios Feature Request
 
-        This form captures **problem**, **value**, **scope**, **risk**, and **delivery intent** so we can:
-        triage → prioritize → design → implement → measure success.
+        Use this form to propose a **new capability**, **meaningful enhancement**, or **product/system improvement**.
 
-        Use this template to describe the **real problem and outcome**, not just a preferred solution.
+        This template is designed to ensure feature requests are:
+        - clearly motivated
+        - rooted in a real user or system need
+        - scoped before implementation
+        - aligned with architecture and governance
+        - shaped into something delivery teams can execute deterministically
 
-        🔐 Do not include secrets, credentials, or personal information.
+        **Before submitting**
+        - Be concrete.
+        - Explain the problem, not just the idea.
+        - Describe who benefits.
+        - Separate desired outcome from implementation details.
+        - Avoid vague requests like "make it smarter" or "improve UX" without measurable meaning.
 
-  # -------------------------------------------------------
-  # 1) Executive Summary (fast triage)
-  # -------------------------------------------------------
-  - type: textarea
+  - type: input
     id: summary
     attributes:
-      label: "Summary"
-      description: "One paragraph: what is requested + why it matters."
+      label: Feature summary
+      description: One-line description of the feature.
+      placeholder: "Add canonical `bb validate` command for schema contract validation"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Opportunity
+      description: Explain the problem, gap, or opportunity this feature addresses.
       placeholder: |
-        What capability is requested?
-        Who benefits?
-        What outcome improves?
+        Current problem:
+        - ...
+
+        Why this matters:
+        - ...
+
+        Opportunity unlocked:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: users_beneficiaries
+    attributes:
+      label: Who benefits?
+      description: Describe the users, operators, teams, or systems that would benefit.
+      placeholder: |
+        Primary users:
+        - ...
+
+        Secondary users / systems:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: jtbd
+    attributes:
+      label: Job To Be Done (JTBD)
+      description: Describe the underlying job this feature helps accomplish.
+      placeholder: |
+        When ...
+        I want ...
+        So that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the desired end state if this feature exists and works well.
+      placeholder: |
+        With this feature in place:
+        - ...
+        - ...
+        - ...
     validations:
       required: true
 
   - type: dropdown
     id: feature_type
     attributes:
-      label: "Request Type"
+      label: Feature classification
+      description: Select the type that best fits the request.
       options:
-        - "New feature"
-        - "Enhancement of existing feature"
-        - "Technical capability / platform feature"
-        - "Experiment / A/B test"
-        - "Other"
+        - New capability
+        - Enhancement to existing capability
+        - User experience improvement
+        - Developer experience improvement
+        - Platform / infrastructure capability
+        - Security capability
+        - Compliance capability
+        - Reliability improvement
+        - Performance improvement
+        - Observability improvement
+        - API / contract enhancement
+        - Workflow / automation enhancement
+        - Governance enhancement
     validations:
       required: true
-
-  # -------------------------------------------------------
-  # 2) JTBD + Product Context
-  # -------------------------------------------------------
-  - type: textarea
-    id: jtbd
-    attributes:
-      label: "Job To Be Done (JTBD)"
-      description: "What real job is the user hiring this feature to do?"
-      placeholder: |
-        When [situation/context],
-        the user wants to [goal/progress],
-        so they can [desired outcome].
-
-        Functional job:
-        Emotional job:
-        Organizational job:
-    validations:
-      required: true
-
-  - type: input
-    id: product_area
-    attributes:
-      label: "Product / Repo / Area"
-      description: "Use BrikByte taxonomy where possible."
-      placeholder: "CargoPulse Web • proj/cargopulse • area:shipments"
-    validations:
-      required: true
-
-  - type: textarea
-    id: target_users
-    attributes:
-      label: "Primary Users / Personas"
-      placeholder: |
-        Persona(s):
-        Tenants / markets:
-        Internal vs external:
-        Who feels the pain most:
-    validations:
-      required: true
-
-  - type: textarea
-    id: user_story
-    attributes:
-      label: "User Story / Use Cases"
-      placeholder: |
-        As a <role>,
-        I want <capability>,
-        So that <value>.
-
-        Use cases:
-        1)
-        2)
-        3)
-    validations:
-      required: true
-
-  # -------------------------------------------------------
-  # 3) Problem Framing (the ‘why’)
-  # -------------------------------------------------------
-  - type: textarea
-    id: problem_statement
-    attributes:
-      label: "Problem / Opportunity"
-      description: "Describe the pain and consequences. Avoid prescribing a solution."
-      placeholder: |
-        Current situation:
-        Pain / friction:
-        Who is impacted:
-        What happens if we do nothing:
-    validations:
-      required: true
-
-  - type: textarea
-    id: first_principles
-    attributes:
-      label: "First Principles Breakdown"
-      description: "What is the fundamental problem independent of current tools or implementations?"
-      placeholder: |
-        What must be true regardless of implementation?
-        What is the core constraint?
-        What is the simplest version of this problem?
-    validations:
-      required: false
-
-  - type: textarea
-    id: current_workaround
-    attributes:
-      label: "Current Workaround / Alternative"
-      description: "How are users solving this today?"
-      placeholder: |
-        Manual steps:
-        Current tools/process:
-        Pain points:
-        Why this is insufficient:
-    validations:
-      required: true
-
-  - type: textarea
-    id: evidence
-    attributes:
-      label: "Evidence (if available)"
-      description: "Attach proof: tickets, analytics, user quotes, screenshots, competitor links."
-      placeholder: |
-        Support ticket volume:
-        Customer quotes:
-        Funnel drop-off:
-        Incident / escalations:
-        Competitor reference:
-        Analytics / dashboards:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 4) Business Value (why we prioritize it)
-  # -------------------------------------------------------
-  - type: textarea
-    id: business_value
-    attributes:
-      label: "Business Value & Outcomes"
-      placeholder: |
-        Business drivers:
-        Expected impact (revenue/cost/risk/NPS/retention):
-        Who is asking (customer/internal/regulatory):
-        Time sensitivity / deadline:
-    validations:
-      required: true
-
-  - type: textarea
-    id: opportunity_cost
-    attributes:
-      label: "Opportunity Cost"
-      description: "What are we NOT doing by building this?"
-      placeholder: |
-        Deferred work:
-        Competing priorities:
-        Why this feature is more important now:
-    validations:
-      required: false
 
   - type: dropdown
-    id: impact
+    id: strategic_alignment
     attributes:
-      label: "Impact"
+      label: Strategic alignment
+      description: How does this feature align with product or platform strategy?
       options:
-        - "High — major revenue/risk reduction/core capability"
-        - "Medium — meaningful improvement"
-        - "Low — small/localized improvement"
+        - Core product / MVP
+        - Near-term roadmap
+        - Customer / pilot need
+        - Internal platform enablement
+        - Technical foundation
+        - Competitive differentiation
+        - Compliance / enterprise readiness
+        - Research / exploration
     validations:
       required: true
 
   - type: dropdown
     id: priority
     attributes:
-      label: "Priority (triage signal)"
+      label: Priority
+      description: Relative urgency of this request.
       options:
-        - "P0 — Must do now (deadline / production risk)"
-        - "P1 — High"
-        - "P2 — Medium"
-        - "P3 — Low / backlog"
+        - P0 - Critical
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
     validations:
       required: true
 
   - type: dropdown
-    id: confidence
+    id: impact
     attributes:
-      label: "Confidence in value"
-      description: "How sure are we this will produce the intended outcome?"
+      label: Impact
+      description: Expected value if this feature is delivered successfully.
       options:
-        - "High — data-backed / customer committed"
-        - "Medium — strong hypothesis"
-        - "Low — speculative / needs discovery"
+        - High
+        - Medium
+        - Low
     validations:
       required: true
 
-  # -------------------------------------------------------
-  # 5) Scope Control (stop scope creep)
-  # -------------------------------------------------------
-  - type: textarea
-    id: scope
+  - type: dropdown
+    id: size
     attributes:
-      label: "Scope (In / Out / Assumptions)"
-      placeholder: |
-        In scope:
-        - UI:
-        - API:
-        - Data/reporting:
-        - Integrations:
+      label: Estimated size / effort
+      description: Rough estimate of implementation size.
+      options:
+        - XS
+        - S
+        - M
+        - L
+        - XL
+        - Unknown
+    validations:
+      required: true
 
-        Out of scope / non-goals:
+  - type: input
+    id: repository_area
+    attributes:
+      label: Repository / Area
+      description: Primary repo, subsystem, or product area affected.
+      placeholder: "brikbyteos-cli / validation / schema"
+    validations:
+      required: true
+
+  - type: input
+    id: phase_milestone
+    attributes:
+      label: Phase / Milestone / Roadmap target
+      description: Optional delivery phase, milestone, or target release.
+      placeholder: "Phase 1 / MVP+1 / Release 0.2"
+    validations:
+      required: false
+
+  - type: textarea
+    id: current_workarounds
+    attributes:
+      label: Current workaround or alternative
+      description: Describe how users currently solve this problem today, if at all.
+      placeholder: |
+        Current workaround:
         - ...
 
+        Limitations of workaround:
+        - ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: proposed_capability
+    attributes:
+      label: Proposed capability
+      description: Describe the feature in concrete terms without overcommitting to a final implementation.
+      placeholder: |
+        Proposed capability:
+        - ...
+
+        Core behaviors:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In scope
+      description: List what this feature request explicitly includes.
+      placeholder: |
+        - Add command / endpoint / workflow ...
+        - Support structured validation output ...
+        - Document expected behavior ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out of scope
+      description: List what this feature request explicitly does not include.
+      placeholder: |
+        - No UI redesign
+        - No policy engine rewrite
+        - No backward-incompatible schema migration
+    validations:
+      required: true
+
+  - type: textarea
+    id: assumptions_constraints
+    attributes:
+      label: Assumptions and constraints
+      description: Capture assumptions, non-negotiable rules, and architectural limits.
+      placeholder: |
         Assumptions:
         - ...
 
-        Constraints (time, legal, platform):
-        - ...
+        Constraints:
+        - Must remain deterministic
+        - Must preserve current contract stability
+        - Must avoid hidden runtime side effects
     validations:
       required: true
 
   - type: textarea
-    id: system_impact
+    id: architecture_alignment
     attributes:
-      label: "System Impact"
-      description: "How does this feature affect other systems, workflows, or users?"
+      label: Architecture / Governance alignment
+      description: Explain how this feature fits existing architecture, ADRs, schemas, and engineering rules.
       placeholder: |
-        Affected components:
-        Downstream effects:
-        Upstream dependencies:
-        Risk of unintended side effects:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 6) Acceptance Criteria (binary + testable)
-  # -------------------------------------------------------
-  - type: textarea
-    id: acceptance_criteria
-    attributes:
-      label: "Acceptance Criteria"
-      description: "Testable conditions for 'done'."
-      placeholder: |
-        - [ ] Given <context>, when <action>, then <expected outcome>.
-        - [ ] Negative: when <bad input>, system <fails safely>.
-        - [ ] Permissions/RBAC: <who can do what>.
-        - [ ] Backward compatibility preserved (if applicable).
+        Alignment notes:
+        - Conforms to ADR-...
+        - Uses explicit contracts
+        - Preserves deterministic execution
+        - Does not violate repository boundaries
     validations:
       required: true
-
-  - type: textarea
-    id: non_functional_requirements
-    attributes:
-      label: "Non-Functional Requirements (NFRs)"
-      placeholder: |
-        Performance:
-        Security/Privacy (POPIA/GDPR):
-        Reliability (flags, rollback, idempotency):
-        UX/Accessibility:
-        Observability/monitoring expectations:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 7) Delivery & Measurement (ship + prove)
-  # -------------------------------------------------------
-  - type: textarea
-    id: rollout_plan
-    attributes:
-      label: "Rollout & Release Strategy"
-      placeholder: |
-        Feature flag name:
-        Phased rollout / beta cohort:
-        Migration/backfill (if any):
-        Rollback plan:
-    validations:
-      required: false
 
   - type: textarea
     id: success_metrics
     attributes:
-      label: "Success Metrics & Measurement Plan"
-      description: "How we'll know it worked (and where we'll measure it)."
+      label: Success metrics
+      description: Define how success will be measured once the feature exists.
       placeholder: |
-        Leading metrics (adoption, activation, time-on-task):
-        Lagging metrics (revenue, churn, tickets):
-        Tracking requirements (events, properties):
-        Dashboards/alerts to add:
-        Baseline today:
-        Target after launch:
+        Success indicators:
+        - ...
+        - ...
+        - ...
+
+        Example:
+        - 100% of invalid payloads fail with structured validation errors
+        - Command output is stable across repeated identical runs
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Binary, testable conditions that define completion.
+      placeholder: |
+        - [ ] The system supports ...
+        - [ ] Output conforms to documented contract
+        - [ ] Failure paths are structured and explicit
+        - [ ] Tests cover positive, negative, and edge cases
+        - [ ] Documentation is updated
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Suggested implementation notes
+      description: Optional technical ideas, interfaces, or design hints.
+      placeholder: |
+        Possible implementation notes:
+        - Add module ...
+        - Extend schema ...
+        - Introduce command ...
+        - Reuse existing normalization path ...
     validations:
       required: false
 
   - type: textarea
-    id: telemetry_requirements
+    id: dependencies
     attributes:
-      label: "Telemetry Requirements (preferred)"
-      description: "Define events/logs/metrics needed as part of 'done'."
+      label: Dependencies / Related work
+      description: List ADRs, tasks, PRs, schemas, docs, or upstream work related to this feature.
       placeholder: |
-        Events to emit:
-        - event_name:
-          props:
-
-        Metrics:
-        Logs (PII-safe):
-        Traces (span names):
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 8) Dependencies / Governance (enterprise hooks)
-  # -------------------------------------------------------
-  - type: textarea
-    id: dependencies_rel
-    attributes:
-      label: "Dependencies & Relationships"
-      placeholder: |
-        Depends on:
-        Impacts:
-        Related issues/epics:
-        External vendors/systems:
+        - ADR-000x
+        - Related task: ...
+        - Related PR: ...
+        - Schema dependency: ...
     validations:
       required: false
 
   - type: textarea
-    id: governance
+    id: risks_tradeoffs
     attributes:
-      label: "Governance / Traceability"
-      placeholder: |
-        Requirements / RTM:
-        ADR needed? (Y/N) If yes, why:
-        Compliance considerations:
-        Audit/evidence needs:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 9) Solution Notes (optional — keep non-binding)
-  # -------------------------------------------------------
-  - type: textarea
-    id: design_ideas
-    attributes:
-      label: "Design Notes / Proposed Approach (optional)"
-      description: "Helpful hints only; final design may differ."
-      placeholder: |
-        UX notes / Figma link:
-        API shape ideas:
-        Data model thoughts:
-        Feature flag/config:
-    validations:
-      required: false
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: "Alternatives Considered"
-      placeholder: |
-        Alternative 1:
-        Alternative 2:
-        Why this proposal is preferred:
-    validations:
-      required: false
-
-  - type: textarea
-    id: tradeoffs
-    attributes:
-      label: "Trade-offs Considered"
-      placeholder: |
-        What are we optimizing for?
-        What are we sacrificing?
-        Alternatives rejected:
-        Why this is the best choice now:
-    validations:
-      required: false
-
-  - type: textarea
-    id: risks_constraints
-    attributes:
-      label: "Risks, Constraints & Open Questions"
+      label: Risks / Trade-offs
+      description: Identify important trade-offs or risks introduced by this feature.
       placeholder: |
         Risks:
-        Constraints:
-        Open questions:
+        - ...
+
+        Trade-offs:
+        - ...
+
+        Mitigations:
+        - ...
     validations:
-      required: false
+      required: true
 
   - type: textarea
-    id: failure_modes
+    id: rollout_observability
     attributes:
-      label: "Failure Modes (How this could go wrong)"
+      label: Rollout / Observability
+      description: Describe release, adoption, monitoring, rollback, or feature-flag considerations.
       placeholder: |
-        Possible failure scenarios:
-        - Feature misuse
-        - Performance degradation
-        - Security risks
-        - UX confusion
+        Rollout plan:
+        - ...
 
-        Worst-case outcome:
-        Detection signals:
-        Containment strategy:
-    validations:
-      required: false
-
-  - type: textarea
-    id: mitigations
-    attributes:
-      label: "Mitigations / Safeguards"
-      placeholder: |
-        Feature flag:
-        Canary:
-        Rate limits:
-        Validation/testing strategy:
         Observability:
-        Contingency (rollback/off-switch):
+        - logs
+        - metrics
+        - traces
+        - artifacts
+
+        Rollback / disable path:
+        - ...
     validations:
       required: false
 
-  # -------------------------------------------------------
-  # 10) Reporter Metadata & Preflight
-  # -------------------------------------------------------
-  - type: input
-    id: reporter_role
+  - type: textarea
+    id: deliverables
     attributes:
-      label: "Your Role / Team"
-      placeholder: "Product • QA • Customer • Support • Engineering"
+      label: Expected deliverables
+      description: List the concrete outputs expected if this feature is approved and implemented.
+      placeholder: |
+        - command / endpoint / module
+        - tests
+        - docs
+        - schema update
+        - sample fixtures
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_needed
+    attributes:
+      label: Evidence needed for completion
+      description: Describe the proof expected to show the feature is complete and working.
+      placeholder: |
+        - PR link
+        - test results
+        - screenshots / CLI output
+        - sample artifacts
+        - benchmark or validation evidence
     validations:
       required: false
 
   - type: checkboxes
     id: preflight
     attributes:
-      label: "Pre-Flight Checklist"
+      label: Preflight checklist
+      description: Confirm the request is shaped well enough for triage and planning.
       options:
-        - label: "I searched existing issues to avoid duplicates."
-          required: true
-        - label: "JTBD is clearly defined (user outcome, not just feature)."
-          required: true
-        - label: "Problem + business value are clear (not just the solution)."
-          required: true
-        - label: "Current workaround and pain are clearly described."
-          required: true
-        - label: "Acceptance criteria are included and testable."
-          required: true
-        - label: "Scope includes explicit non-goals to prevent creep."
-          required: true
-        - label: "This request solves a real problem, not just adds complexity."
-          required: true
-        - label: "No secrets, credentials, or personal data included."
-          required: true
+        - label: I described the real problem, not just the solution idea
+        - label: I identified who benefits from this feature
+        - label: I bounded the scope with clear in-scope and out-of-scope items
+        - label: I considered constraints and architecture implications
+        - label: I defined success in measurable or testable terms
+        - label: I included acceptance criteria that can later drive implementation tasks
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Add related issues, PRs, ADRs, roadmap items, docs, designs, or customer notes.
+      placeholder: |
+        - Related issue: #
+        - Related PR: #
+        - ADR-000x
+        - Roadmap item
+        - Design doc
+        - Customer feedback / pilot request
+    validations:
+      required: false

@@ -1,339 +1,355 @@
 name: "🐞 Bug Report"
-description: "Report a defect so we can triage, reproduce, and fix it efficiently."
-title: "[BUG] <short summary>"
+description: "Report a defect, regression, failure mode, or unintended system behavior."
+title: "[BUG] "
 labels:
   - "type:bug"
   - "status:triage"
+assignees: []
 
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug.
+        ## BrikByte Studios Bug Report
 
-        The more precise you are, the faster we can fix it.
+        Use this form to report a **real defect** in the system.
 
-        🔐 Remove or mask any sensitive data (keys, tokens, personal data).
+        This template is designed to make bugs:
+        - reproducible
+        - diagnosable
+        - testable
+        - triageable
+        - traceable to engineering and governance decisions
 
-  # -------------------------------------------------------
-  # 1️⃣ Executive Summary & Business Context
-  # -------------------------------------------------------
+        **Before submitting**
+        - Confirm this is a bug and not a feature request or support question.
+        - Be precise.
+        - Include the exact observed behavior.
+        - Include expected behavior.
+        - Provide reproduction steps whenever possible.
+        - Attach logs, artifacts, screenshots, or sample payloads where relevant.
 
-  - type: textarea
+  - type: input
     id: summary
     attributes:
-      label: "Summary"
-      description: "Short, clear description of the defect."
-      placeholder: "e.g., Cannot submit payment form when selecting Ozow on mobile."
-    validations:
-      required: true
-
-  # 🧠 JTBD Impact
-  - type: textarea
-    id: jtbd_impact
-    attributes:
-      label: "JTBD Impact (What job is broken?)"
-      description: "What user/job outcome is blocked or degraded?"
-      placeholder: |
-        When [context],
-        the user wants to [goal],
-        but instead [failure],
-        so they cannot [desired outcome].
-
-        Impact on user confidence:
-        Impact on business:
+      label: Bug summary
+      description: One-line description of the defect.
+      placeholder: "bb score returns empty run_id in JSON output"
     validations:
       required: true
 
   - type: textarea
-    id: impact
+    id: impact_statement
     attributes:
-      label: "Business Impact"
+      label: Impact statement
+      description: Explain why this bug matters and what it affects.
       placeholder: |
-        Affected users/tenants:
-        Revenue impact:
-        Operational impact:
-        Customer-visible? (Y/N):
-        Release-blocking? (Y/N):
-    validations:
-      required: true
-
-  - type: dropdown
-    id: severity
-    attributes:
-      label: "Severity (S*)"
-      options:
-        - "S0 - Critical (data loss, security breach, system down)"
-        - "S1 - High (core flow broken; no workaround)"
-        - "S2 - Medium (workaround exists)"
-        - "S3 - Low (cosmetic / minor edge case)"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: data_integrity
-    attributes:
-      label: "Data Integrity Impact"
-      options:
-        - "No data impact"
-        - "Incorrect data displayed"
-        - "Incorrect data stored"
-        - "Data corruption risk"
-        - "Data loss occurred"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: security_impact
-    attributes:
-      label: "Security / Compliance Impact"
-      options:
-        - "None"
-        - "Potential sensitive data exposure"
-        - "Auth/RBAC bypass"
-        - "Compliance risk (POPIA/GDPR/etc.)"
-        - "Confirmed security incident"
-    validations:
-      required: true
-
-  # -------------------------------------------------------
-  # 2️⃣ Frequency & Blast Radius
-  # -------------------------------------------------------
-
-  - type: dropdown
-    id: frequency
-    attributes:
-      label: "Frequency"
-      options:
-        - "Every time"
-        - "Often"
-        - "Sometimes"
-        - "Rare"
-        - "Unable to reproduce consistently"
+        This bug affects...
+        It blocks / degrades / corrupts...
+        User or system impact includes...
     validations:
       required: true
 
   - type: textarea
-    id: blast_radius
+    id: current_behavior
     attributes:
-      label: "Blast Radius"
+      label: Current behavior
+      description: Describe what actually happens.
       placeholder: |
-        Scope of impact:
-        - Single tenant?
-        - All tenants?
-        - Region-specific?
-        - Feature flag specific?
-    validations:
-      required: true
+        Observed behavior:
+        - ...
 
-  # 🧠 Systems Thinking
-  - type: textarea
-    id: system_impact
-    attributes:
-      label: "System Impact"
-      description: "What other systems, services, or workflows are affected?"
-      placeholder: |
-        Upstream dependencies:
-        Downstream effects:
-        Cascading failures:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 3️⃣ Environment & Versioning
-  # -------------------------------------------------------
-
-  - type: dropdown
-    id: environment
-    attributes:
-      label: "Environment"
-      options:
-        - "Production"
-        - "Staging / UAT"
-        - "QA"
-        - "Development"
-        - "Local"
-    validations:
-      required: true
-
-  - type: input
-    id: product_area
-    attributes:
-      label: "Product / Repo / Area"
-      placeholder: "proj/brikbyteos • area:billing"
-    validations:
-      required: true
-
-  - type: input
-    id: version_build
-    attributes:
-      label: "Version / Build / Tag"
-      placeholder: "v2.1.0 (build 2310)"
-    validations:
-      required: false
-
-  - type: input
-    id: commit_sha
-    attributes:
-      label: "Commit SHA (if known)"
-      placeholder: "abc123def"
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 4️⃣ Reproduction
-  # -------------------------------------------------------
-
-  - type: textarea
-    id: steps_to_reproduce
-    attributes:
-      label: "Steps to Reproduce"
-      placeholder: |
-        1. ...
-        2. ...
-        3. ...
+        Actual output / result:
+        - ...
     validations:
       required: true
 
   - type: textarea
     id: expected_behavior
     attributes:
-      label: "Expected Behavior"
+      label: Expected behavior
+      description: Describe what should happen instead.
+      placeholder: |
+        Expected behavior:
+        - ...
+
+        Expected output / result:
+        - ...
     validations:
       required: true
 
   - type: textarea
-    id: actual_behavior
+    id: reproduction_steps
     attributes:
-      label: "Actual Behavior"
+      label: Reproduction steps
+      description: Provide a deterministic sequence of steps to reproduce the issue.
+      placeholder: |
+        1. Run ...
+        2. Execute ...
+        3. Observe ...
     validations:
       required: true
 
-  - type: dropdown
-    id: regression
-    attributes:
-      label: "Regression?"
-      options:
-        - "Yes (previously working)"
-        - "No (newly discovered behavior)"
-        - "Unknown"
-    validations:
-      required: true
-
-  # 🧠 Determinism Thinking
-  - type: checkboxes
-    id: reproducibility_quality
-    attributes:
-      label: "Reproducibility Quality"
-      options:
-        - label: "Steps consistently reproduce the issue"
-        - label: "Environment conditions are clearly defined"
-        - label: "Inputs/state are controlled and repeatable"
-
-  # -------------------------------------------------------
-  # 5️⃣ Debugging Thinking
-  # -------------------------------------------------------
-
-  # 🧠 Inversion Thinking
   - type: textarea
-    id: failure_mode
+    id: minimal_repro
     attributes:
-      label: "Failure Mode (How the system failed)"
+      label: Minimal reproduction input
+      description: Provide the smallest reproducible input, payload, fixture, command, or scenario.
       placeholder: |
-        What exactly broke?
-        What assumptions failed?
-        Where in the flow did it break?
-    validations:
-      required: false
+        Command:
+        ```bash
+        bb score --run-id ...
+        ```
 
-  # 🧠 Root Cause Thinking
-  - type: textarea
-    id: root_cause
-    attributes:
-      label: "Root Cause Analysis (5 Whys)"
-      placeholder: |
-        Why 1:
-        Why 2:
-        Why 3:
-        Why 4:
-        Why 5:
-    validations:
-      required: false
-
-  # 🧠 Hypothesis Thinking
-  - type: textarea
-    id: hypothesis
-    attributes:
-      label: "Debugging Hypothesis"
-      placeholder: |
-        Hypothesis:
-        How to test:
-        Result:
-    validations:
-      required: false
-
-  # -------------------------------------------------------
-  # 6️⃣ Workaround & Urgency
-  # -------------------------------------------------------
-
-  - type: textarea
-    id: workaround
-    attributes:
-      label: "Workaround (if any)"
+        Payload / fixture:
+        ```json
+        {}
+        ```
     validations:
       required: false
 
   - type: dropdown
-    id: hotfix_required
+    id: bug_type
     attributes:
-      label: "Hotfix Required?"
+      label: Bug classification
+      description: Select the type that best fits the defect.
       options:
-        - "Yes — immediate patch required"
-        - "No — can wait"
-        - "Unsure"
+        - Functional defect
+        - Regression
+        - Reliability issue
+        - Performance issue
+        - Security issue
+        - Data integrity issue
+        - Validation issue
+        - CLI / UX issue
+        - Build / CI issue
+        - Documentation defect
+        - Observability defect
+        - Compatibility issue
     validations:
       required: true
 
-  # -------------------------------------------------------
-  # 7️⃣ Evidence
-  # -------------------------------------------------------
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How serious is the defect?
+      options:
+        - Sev 0 - Production outage / critical integrity issue
+        - Sev 1 - Major functionality broken
+        - Sev 2 - Significant but workaround exists
+        - Sev 3 - Minor defect
+        - Sev 4 - Cosmetic / low impact
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Delivery urgency for fixing the bug.
+      options:
+        - P0 - Critical
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      description: How often does this issue occur?
+      options:
+        - Always
+        - Often
+        - Intermittent
+        - Rare
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: affected_area
+    attributes:
+      label: Affected repository / area
+      description: Primary repo, package, module, subsystem, or feature area.
+      placeholder: ""
+    validations:
+      required: true
+
+  - type: input
+    id: introduced_in
+    attributes:
+      label: Introduced in version / commit / release
+      description: Known version, tag, PR, or commit where the issue appeared.
+      placeholder: "v0.1.0 / PR #142 / commit abc1234"
+    validations:
+      required: false
+
+  - type: input
+    id: last_known_good
+    attributes:
+      label: Last known good version
+      description: Last version or commit where behavior was correct.
+      placeholder: "v0.0.9 / commit def5678"
+    validations:
+      required: false
 
   - type: textarea
-    id: logs
+    id: environment
     attributes:
-      label: "Logs & Diagnostics (sanitized)"
+      label: Environment
+      description: Specify runtime context needed to understand the bug.
+      placeholder: |
+        OS:
+        Architecture:
+        Runtime / language version:
+        CLI version:
+        Browser (if applicable):
+        CI provider (if applicable):
+        Feature flags:
+        Config details:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs_errors
+    attributes:
+      label: Logs / errors / stack traces
+      description: Paste the exact error output, structured logs, or trace snippets.
+      placeholder: |
+        Paste logs or errors here.
+        Redact secrets before submitting.
       render: shell
     validations:
       required: false
 
   - type: textarea
-    id: screenshots
+    id: artifacts_evidence
     attributes:
-      label: "Screenshots / Recordings"
+      label: Artifacts / evidence
+      description: Link or describe artifacts that prove the issue.
+      placeholder: |
+        - Screenshot
+        - Failing test output
+        - Manifest
+        - Normalized artifact
+        - CI job URL
+        - Sample input/output
     validations:
       required: false
 
   - type: textarea
-    id: feature_flags
+    id: suspected_cause
     attributes:
-      label: "Feature Flags / Config"
+      label: Suspected cause
+      description: Optional initial hypothesis about the source of the defect.
+      placeholder: |
+        Possible cause:
+        - ...
+
+        Relevant code path:
+        - ...
     validations:
       required: false
 
-  # -------------------------------------------------------
-  # 8️⃣ Preflight
-  # -------------------------------------------------------
+  - type: textarea
+    id: scope_of_impact
+    attributes:
+      label: Scope of impact
+      description: Describe affected users, flows, data, or dependent systems.
+      placeholder: |
+        Affected scope:
+        - CLI users
+        - Score pipeline
+        - JSON consumers
+        - CI workflows
+        - Audit manifests
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Known workaround
+      description: If a workaround exists, describe it clearly.
+      placeholder: |
+        Temporary workaround:
+        - ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance_criteria_fix
+    attributes:
+      label: Fix acceptance criteria
+      description: Define the binary conditions that must be true for this bug to be considered fixed.
+      placeholder: |
+        - [ ] The bug is reproducible before the fix and not reproducible after the fix
+        - [ ] A regression test is added
+        - [ ] Structured output matches the documented contract
+        - [ ] Error handling remains deterministic
+        - [ ] No related regressions are introduced
+    validations:
+      required: true
+
+  - type: textarea
+    id: regression_test_plan
+    attributes:
+      label: Regression test plan
+      description: Specify how the fix will be validated.
+      placeholder: |
+        Tests to add / update:
+        - Unit test
+        - Integration test
+        - End-to-end test
+        - Snapshot / golden test
+
+        Validation steps:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks_mitigations
+    attributes:
+      label: Risks / mitigations
+      description: Note risks involved in fixing this bug and how they will be controlled.
+      placeholder: |
+        Risk:
+        - ...
+
+        Mitigation:
+        - ...
+    validations:
+      required: false
 
   - type: checkboxes
     id: preflight
     attributes:
-      label: "Pre-Flight Checklist"
+      label: Preflight checklist
+      description: Confirm the report is actionable.
       options:
-        - label: "Steps to reproduce are clear and deterministic"
-          required: true
-        - label: "JTBD impact is clearly described"
-          required: true
-        - label: "Logs/screenshots are sanitized"
-          required: true
-        - label: "This is not local misconfiguration"
-          required: false
+        - label: I have described the actual behavior clearly
+        - label: I have described the expected behavior clearly
+        - label: I have provided reproducible steps or explained why reproduction is difficult
+        - label: I have included relevant environment details
+        - label: I have removed or redacted secrets from logs and attachments
+        - label: I have checked whether this issue may be a regression
+        - label: I have included evidence or artifacts where relevant
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Add related issues, PRs, ADRs, tasks, docs, or incidents.
+      placeholder: |
+        - Related issue: #
+        - Related PR: #
+        - ADR-000x
+        - Incident / postmortem
+        - Docs / schema link
+    validations:
+      required: false
