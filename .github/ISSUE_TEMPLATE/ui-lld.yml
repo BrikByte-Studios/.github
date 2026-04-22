@@ -1,0 +1,284 @@
+name: "🎨 UI LLD (Low-Level Design)"
+description: "Define a detailed, implementation-ready UI design for a specific user story."
+title: "[UI-LLD] "
+labels:
+  - "type:ui"
+  - "type:lld"
+  - "status:triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## BrikByte Studios UI LLD (Low-Level Design)
+
+        Use this template to translate a **user story into an implementation-ready UI design**.
+
+        This is NOT a high-level design.
+        This is:
+        - precise
+        - structured
+        - deterministic
+        - developer-ready
+
+        ---
+        ## Core Principle
+
+        > UI = Pure function of data
+
+        UI must:
+        - not invent state
+        - not hide logic
+        - reflect system truth
+        - be testable
+
+        ---
+        ## Flow
+
+        User Story → UX Flow → UI Structure → Data Contract → Rendering Rules → Tests
+
+  - type: input
+    id: user_story
+    attributes:
+      label: User story
+      description: The exact user story being implemented.
+      placeholder: "As a DevOps engineer, I want to see a release score so that I can decide whether to deploy."
+    validations:
+      required: true
+
+  - type: textarea
+    id: story_context
+    attributes:
+      label: Context / scenario
+      description: When and where this UI is used.
+      placeholder: |
+        Context:
+        - CLI / Web dashboard
+        - During CI/CD pipeline
+        - After running bb run
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_goal
+    attributes:
+      label: User goal
+      description: What the user wants to achieve.
+      placeholder: |
+        Goal:
+        - Understand release readiness quickly
+        - Make a deployment decision
+    validations:
+      required: true
+
+  - type: textarea
+    id: ux_flow
+    attributes:
+      label: UX flow (step-by-step)
+      description: Step-by-step interaction.
+      placeholder: |
+        1. User runs command
+        2. System processes data
+        3. UI displays score
+        4. User interprets result
+    validations:
+      required: true
+
+  - type: textarea
+    id: screen_structure
+    attributes:
+      label: UI structure (textual wireframe)
+      description: Layout of the UI.
+      placeholder: |
+        CLI:
+        ----------------------
+        SCORE: 92
+        STATUS: APPROVED
+
+        REASONS:
+        - All tests passed
+        - No vulnerabilities
+        ----------------------
+
+        Web:
+        - Header: Score + Status
+        - Left: Summary
+        - Right: Details
+    validations:
+      required: true
+
+  - type: textarea
+    id: components
+    attributes:
+      label: UI components
+      description: Break UI into components.
+      placeholder: |
+        Components:
+        - ScoreDisplay
+        - StatusBadge
+        - ReasonList
+        - ErrorMessage
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_contract
+    attributes:
+      label: Data contract
+      description: Define exact input data structure.
+      placeholder: |
+        {
+          score: number,
+          status: "approved" | "rejected",
+          reasons: string[]
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_source
+    attributes:
+      label: Data source
+      description: Where the data comes from.
+      placeholder: |
+        Source:
+        - manifest.json
+        - score.json
+        - policy_eval.json
+    validations:
+      required: true
+
+  - type: textarea
+    id: rendering_rules
+    attributes:
+      label: Rendering rules
+      description: Deterministic rendering logic.
+      placeholder: |
+        Rules:
+        - Score displayed as integer
+        - Status always uppercase
+        - Reasons sorted alphabetically
+        - No random ordering
+    validations:
+      required: true
+
+  - type: textarea
+    id: state_handling
+    attributes:
+      label: UI states
+      description: Define all states.
+      placeholder: |
+        States:
+        - Loading → show spinner
+        - Success → show score
+        - Error → show error message
+        - Empty → show fallback text
+    validations:
+      required: true
+
+  - type: textarea
+    id: interactions
+    attributes:
+      label: User interactions
+      description: Any interactive behavior.
+      placeholder: |
+        - Click to expand details
+        - Hover shows explanation
+    validations:
+      required: false
+
+  - type: textarea
+    id: edge_cases
+    attributes:
+      label: Edge cases
+      description: Handle unusual scenarios.
+      placeholder: |
+        - Missing score
+        - Partial data
+        - Extremely large dataset
+    validations:
+      required: true
+
+  - type: textarea
+    id: error_handling
+    attributes:
+      label: Error handling
+      description: Define error behavior.
+      placeholder: |
+        Errors:
+        - Missing data → show "No data available"
+        - Failed run → show structured error
+    validations:
+      required: true
+
+  - type: textarea
+    id: accessibility
+    attributes:
+      label: Accessibility
+      description: Accessibility requirements.
+      placeholder: |
+        - Screen reader labels
+        - High contrast
+        - Keyboard navigation
+    validations:
+      required: false
+
+  - type: textarea
+    id: performance
+    attributes:
+      label: Performance considerations
+      description: Performance expectations.
+      placeholder: |
+        - Render under 100ms
+        - Handle large datasets efficiently
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Binary testable criteria.
+      placeholder: |
+        - [ ] UI renders correctly for valid data
+        - [ ] All states handled
+        - [ ] Output deterministic
+        - [ ] No hidden logic
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test plan
+      description: How to validate UI.
+      placeholder: |
+        - Snapshot tests
+        - CLI output comparison
+        - Edge case tests
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: Expected outputs.
+      placeholder: |
+        - UI component(s)
+        - Tests
+        - Documentation
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: UI derived from data contract
+        - label: Rendering rules are deterministic
+        - label: All states defined
+        - label: Edge cases handled
+        - label: Acceptance criteria are testable
