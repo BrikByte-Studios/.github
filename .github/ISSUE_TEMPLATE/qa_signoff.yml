@@ -1,0 +1,132 @@
+name: QA Sign-Off
+description: Provide QA approval, conditional approval, or rejection for a release or feature.
+title: "[QA SIGN-OFF]: "
+labels:
+  - qa-signoff
+  - qa
+assignees: []
+
+body:
+  - type: input
+    id: release_or_feature
+    attributes:
+      label: Release / Feature / Build
+      placeholder: "Example: v1.4.0, Checkout Redesign, RC-2026.05.25"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope_verified
+    attributes:
+      label: Scope Verified
+      placeholder: |
+        Features verified:
+        User stories verified:
+        APIs verified:
+        Browsers/devices verified:
+        Integrations verified:
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_summary
+    attributes:
+      label: Test Summary
+      placeholder: |
+        Planned:
+        Executed:
+        Passed:
+        Failed:
+        Blocked:
+        Not run:
+    validations:
+      required: true
+
+  - type: textarea
+    id: open_defects
+    attributes:
+      label: Open Defects
+      placeholder: |
+        Critical:
+        High:
+        Medium:
+        Low:
+
+        Issue links:
+        - #123
+        - #124
+    validations:
+      required: false
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Known Risks / Limitations
+      placeholder: |
+        - Limited device coverage
+        - Third-party sandbox instability
+        - Some non-critical scenarios not automated
+        - Known defect accepted by product
+    validations:
+      required: false
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      placeholder: |
+        Test execution report:
+        CI runs:
+        Screenshots/videos:
+        Release notes:
+        Test dashboard:
+        Automation report:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: qa_decision
+    attributes:
+      label: QA Decision
+      options:
+        - Approved
+        - Conditionally approved
+        - Rejected
+        - Blocked
+        - Needs more testing
+    validations:
+      required: true
+
+  - type: textarea
+    id: decision_reason
+    attributes:
+      label: Decision Reason
+      placeholder: "Explain why QA approved, conditionally approved, rejected, or blocked this release."
+    validations:
+      required: true
+
+  - type: textarea
+    id: conditions
+    attributes:
+      label: Conditions for Approval
+      placeholder: |
+        Required before release:
+        - Fix #...
+        - Retest ...
+        - Product owner accepts risk ...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: signoff_checklist
+    attributes:
+      label: QA Sign-Off Checklist
+      options:
+        - label: Critical path testing has been completed or explicitly documented as not completed.
+          required: true
+        - label: Open defects and risks are documented.
+          required: true
+        - label: Evidence is attached or linked.
+          required: true
+        - label: QA decision is clear.
+          required: true

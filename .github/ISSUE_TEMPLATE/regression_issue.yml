@@ -1,0 +1,118 @@
+name: Regression Issue
+description: Report behavior that worked before but is now broken.
+title: "[REGRESSION]: "
+labels:
+  - regression
+  - bug
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when a feature previously worked but has broken after a change, merge, deployment, dependency update, or release.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Regression Summary
+      placeholder: "Describe what worked before and what is broken now."
+    validations:
+      required: true
+
+  - type: input
+    id: last_known_good
+    attributes:
+      label: Last Known Good Version / Commit / Build
+      placeholder: "Example: v1.2.0, build 2026.05.24.1, commit abc123"
+    validations:
+      required: true
+
+  - type: input
+    id: first_known_bad
+    attributes:
+      label: First Known Bad Version / Commit / Build
+      placeholder: "Example: v1.2.1, build 2026.05.25.3, commit def456"
+    validations:
+      required: true
+
+  - type: textarea
+    id: changed_recently
+    attributes:
+      label: Recent Changes Suspected
+      placeholder: |
+        - Recent PR:
+        - Dependency update:
+        - Config change:
+        - Deployment change:
+        - Feature flag change:
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      placeholder: |
+        1. Test on last known good version
+        2. Confirm behavior works
+        3. Test on current version
+        4. Observe broken behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_previous_behavior
+    attributes:
+      label: Expected / Previous Behavior
+      placeholder: "Describe the behavior that used to work."
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current Broken Behavior
+      placeholder: "Describe the current failure."
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      placeholder: |
+        Last good evidence:
+        Current failed evidence:
+        Logs:
+        Screenshots:
+        CI runs:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: release_impact
+    attributes:
+      label: Release Impact
+      options:
+        - Blocks release
+        - Should fix before release
+        - Can release with documented workaround
+        - Needs product decision
+        - Needs engineering triage
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Regression Checklist
+      options:
+        - label: I confirmed this worked in a previous version/build.
+          required: true
+        - label: I included both last known good and first known bad versions where possible.
+          required: true
+        - label: I included clear reproduction steps.
+          required: true

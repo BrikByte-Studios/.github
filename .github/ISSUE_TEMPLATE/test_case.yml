@@ -1,0 +1,196 @@
+name: Test Case
+description: Create or propose a manual or automated test case.
+title: "[TEST CASE]: "
+labels:
+  - test-case
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to document a repeatable test case.
+
+        A strong test case is specific, measurable, traceable, and has a clear expected result.
+
+  - type: input
+    id: test_case_id
+    attributes:
+      label: Test Case ID
+      placeholder: "Example: TC-AUTH-LOGIN-001"
+    validations:
+      required: true
+
+  - type: input
+    id: requirement_reference
+    attributes:
+      label: Requirement / User Story Reference
+      placeholder: "Example: US-AUTH-001, FR-LOGIN-002, AC-003"
+    validations:
+      required: false
+
+  - type: input
+    id: feature_area
+    attributes:
+      label: Feature / Area Under Test
+      placeholder: "Example: Authentication, Billing, User API, bb doctor"
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Test Objective
+      placeholder: "Verify that a valid user can sign in successfully using correct credentials."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: test_level
+    attributes:
+      label: Test Level
+      options:
+        - Unit
+        - Integration
+        - API
+        - UI
+        - End-to-End
+        - System
+        - Acceptance
+        - Smoke
+        - Regression
+    validations:
+      required: true
+
+  - type: dropdown
+    id: test_type
+    attributes:
+      label: Test Type
+      options:
+        - Positive
+        - Negative
+        - Boundary
+        - Edge Case
+        - Error Handling
+        - Compatibility
+        - Accessibility
+        - Security
+        - Performance
+        - Usability
+        - Data Validation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: execution_type
+    attributes:
+      label: Execution Type
+      options:
+        - Manual
+        - Automated
+        - Manual now, automation candidate later
+        - Exploratory support case
+    validations:
+      required: true
+
+  - type: textarea
+    id: preconditions
+    attributes:
+      label: Preconditions
+      placeholder: |
+        - Application is deployed to QA
+        - Test user exists
+        - User has verified email
+        - Browser cache is cleared
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_data
+    attributes:
+      label: Test Data
+      description: Use safe test data only.
+      placeholder: |
+        Username:
+        Role:
+        Input payload:
+        File:
+        Config:
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Test Steps
+      placeholder: |
+        1. Open the login page
+        2. Enter a valid email
+        3. Enter a valid password
+        4. Click Sign in
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_result
+    attributes:
+      label: Expected Result
+      placeholder: |
+        - User is authenticated successfully
+        - User is redirected to the dashboard
+        - Session token is created
+        - No error message is displayed
+    validations:
+      required: true
+
+  - type: textarea
+    id: postconditions
+    attributes:
+      label: Postconditions / Cleanup
+      placeholder: |
+        - Logout user
+        - Delete generated test data
+        - Reset feature flag
+    validations:
+      required: false
+
+  - type: textarea
+    id: automation_notes
+    attributes:
+      label: Automation Notes
+      placeholder: |
+        Suggested framework:
+        Mocking/stubbing needed:
+        Stable selectors:
+        API endpoints:
+        Assertions:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Test Priority
+      options:
+        - Critical path
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Test Case Quality Checklist
+      options:
+        - label: The test has a clear objective.
+          required: true
+        - label: The expected result is measurable.
+          required: true
+        - label: The test can be repeated by another tester.
+          required: true
+        - label: The test avoids real customer data and secrets.
+          required: true

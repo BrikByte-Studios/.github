@@ -1,0 +1,127 @@
+name: Security Test Finding
+description: Report a non-sensitive security finding discovered during QA testing.
+title: "[SECURITY TEST]: "
+labels:
+  - security
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, passwords, tokens, private keys, real exploit payloads, or sensitive customer data.
+
+        If this is a serious or exploitable vulnerability, use private security reporting instead of creating a public issue.
+
+  - type: input
+    id: affected_area
+    attributes:
+      label: Affected Area
+      placeholder: "Example: Login, file upload, API authorization, CLI config loading"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Security Category
+      options:
+        - Authentication
+        - Authorization / access control
+        - Input validation
+        - Sensitive data exposure
+        - Secret leakage
+        - Unsafe file handling
+        - Unsafe command execution
+        - Dependency vulnerability
+        - Logging/monitoring weakness
+        - Rate limiting / abuse prevention
+        - Session management
+        - Configuration weakness
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Finding Summary
+      placeholder: "Describe the security concern safely and clearly."
+    validations:
+      required: true
+
+  - type: textarea
+    id: safe_reproduction
+    attributes:
+      label: Safe Reproduction Notes
+      description: Keep this high-level. Do not include harmful exploit steps or sensitive payloads.
+      placeholder: |
+        1. Login as a normal user
+        2. Attempt to access an admin-only area
+        3. Observe that access is not correctly blocked
+    validations:
+      required: true
+
+  - type: textarea
+    id: potential_impact
+    attributes:
+      label: Potential Impact
+      placeholder: |
+        - What could an attacker or unauthorized user do?
+        - What data or workflow could be affected?
+        - Is there compliance or privacy risk?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: QA Severity Estimate
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+        - Needs security review
+    validations:
+      required: true
+
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommended Mitigation
+      placeholder: |
+        - Add server-side authorization checks
+        - Validate input
+        - Redact sensitive logs
+        - Restrict file paths
+        - Apply least privilege
+        - Add automated security regression test
+    validations:
+      required: false
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Safe Evidence
+      placeholder: |
+        Screenshots with sensitive data hidden:
+        Logs with secrets removed:
+        Test account role:
+        Environment:
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: safety_checklist
+    attributes:
+      label: Security Reporting Safety Checklist
+      options:
+        - label: I did not include passwords, tokens, secrets, private keys, or sensitive customer data.
+          required: true
+        - label: I kept reproduction steps safe and high-level.
+          required: true
+        - label: I used private disclosure instead if this is a serious vulnerability.
+          required: true

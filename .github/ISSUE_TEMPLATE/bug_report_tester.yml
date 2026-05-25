@@ -1,0 +1,213 @@
+name: Bug Report
+description: Report a confirmed product defect discovered during testing.
+title: "[BUG]: "
+labels:
+  - bug
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for confirmed defects where the actual result differs from the expected result.
+
+        A good bug report should be reproducible, evidence-backed, and clear enough for a developer to investigate without guessing.
+
+  - type: input
+    id: feature_area
+    attributes:
+      label: Feature / Area
+      description: Which product area, module, screen, API, command, or workflow is affected?
+      placeholder: "Example: Login, Checkout, User API, bb gate, Dashboard filters"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug Summary
+      description: Explain the defect in one or two clear sentences.
+      placeholder: "Example: The release gate returns APPROVED even when critical security findings exist."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Severity describes product/user impact, not how fast it should be fixed.
+      options:
+        - S1 - Critical: system unusable, data loss, security risk, unsafe release, no workaround
+        - S2 - High: major workflow broken, significant impact, workaround difficult
+        - S3 - Medium: important issue, workaround available
+        - S4 - Low: minor defect, cosmetic issue, small inconvenience
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority_recommendation
+    attributes:
+      label: QA Priority Recommendation
+      description: Priority describes how soon QA recommends this should be handled.
+      options:
+        - P0 - Immediate attention required
+        - P1 - Fix before next release
+        - P2 - Fix soon
+        - P3 - Fix when capacity allows
+        - Needs product/engineering triage
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: Reproducibility
+      options:
+        - Always
+        - Often
+        - Sometimes
+        - Rarely
+        - Could not reproduce again
+    validations:
+      required: true
+
+  - type: textarea
+    id: preconditions
+    attributes:
+      label: Preconditions
+      description: What must be true before reproducing the issue?
+      placeholder: |
+        - User is logged in as Admin
+        - Test data exists
+        - Feature flag is enabled
+        - Environment is staging
+    validations:
+      required: false
+
+  - type: textarea
+    id: test_data
+    attributes:
+      label: Test Data Used
+      description: Provide safe test data only. Do not include passwords, secrets, tokens, private keys, or real user data.
+      placeholder: |
+        Account type:
+        Test user:
+        Input values:
+        File used:
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Provide exact steps another tester or developer can follow.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. Enter ...
+        4. Submit ...
+        5. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_result
+    attributes:
+      label: Expected Result
+      description: What should have happened?
+      placeholder: "Example: The system should reject the release and explain which policy failed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_result
+    attributes:
+      label: Actual Result
+      description: What actually happened?
+      placeholder: "Example: The system approved the release even though the security policy failed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Add screenshots, videos, logs, command output, stack traces, CI links, or artifact paths.
+      placeholder: |
+        Screenshots:
+        Logs:
+        CI run:
+        Artifact path:
+        Console output:
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide enough context to reproduce the issue.
+      placeholder: |
+        Environment: Local / Dev / QA / Staging / Production
+        OS:
+        Browser:
+        Browser version:
+        Device:
+        App version:
+        Build number:
+        Commit SHA:
+        API version:
+        Database seed/version:
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: User / Business / Release Impact
+      description: Explain why this defect matters.
+      placeholder: |
+        - Who is affected?
+        - What workflow is blocked?
+        - Could this affect release approval?
+        - Is there a customer, compliance, security, or revenue impact?
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Is there a temporary way to avoid or recover from the issue?
+      placeholder: "Example: Rerun the command with --clean, or manually refresh the page."
+    validations:
+      required: false
+
+  - type: textarea
+    id: related_items
+    attributes:
+      label: Related Issues / PRs / Requirements
+      placeholder: |
+        Related issue:
+        Related PR:
+        Requirement/User story:
+        Test case ID:
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: qa_checks
+    attributes:
+      label: QA Reporter Checklist
+      options:
+        - label: I searched for duplicate issues before creating this report.
+          required: true
+        - label: I included clear reproduction steps.
+          required: true
+        - label: I included expected and actual results.
+          required: true
+        - label: I removed secrets, credentials, tokens, and sensitive user data.
+          required: true

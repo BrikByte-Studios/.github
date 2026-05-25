@@ -1,0 +1,135 @@
+name: Exploratory Testing Charter
+description: Define a focused exploratory testing session.
+title: "[EXPLORATORY]: "
+labels:
+  - exploratory-testing
+  - qa
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to guide exploratory testing.
+
+        Exploratory testing is not random clicking. It is a focused investigation with a mission, risks, observations, and evidence.
+
+  - type: input
+    id: charter_title
+    attributes:
+      label: Charter Title
+      placeholder: "Example: Explore failure handling in payment checkout"
+    validations:
+      required: true
+
+  - type: textarea
+    id: mission
+    attributes:
+      label: Mission
+      description: What are you trying to learn, challenge, or discover?
+      placeholder: "Explore how the system behaves when payment providers timeout, fail, or return inconsistent responses."
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      placeholder: |
+        In scope:
+        - Checkout payment flow
+        - Timeout responses
+        - Retry behavior
+        - User-facing error messages
+
+        Out of scope:
+        - Refund processing
+        - Admin reporting
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / Questions
+      placeholder: |
+        - Can users be charged twice?
+        - Does the UI explain failure clearly?
+        - Are failed transactions logged?
+        - Can the user retry safely?
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_ideas
+    attributes:
+      label: Test Ideas
+      placeholder: |
+        - Simulate slow network
+        - Refresh during payment
+        - Submit duplicate requests
+        - Use expired card
+        - Interrupt API response
+    validations:
+      required: true
+
+  - type: input
+    id: timebox
+    attributes:
+      label: Timebox
+      placeholder: "Example: 60 minutes"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        Environment:
+        Browser:
+        Device:
+        Build:
+        Feature flags:
+        Test account:
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Session Notes / Observations
+      placeholder: |
+        Observation 1:
+        Observation 2:
+        Suspicious behavior:
+        Questions:
+        Follow-up tests:
+    validations:
+      required: false
+
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings / Issues Created
+      placeholder: |
+        Bugs found:
+        Risks found:
+        Follow-up issues:
+        Evidence:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Session Outcome
+      options:
+        - Not started
+        - In progress
+        - Completed - no issues found
+        - Completed - issues found
+        - Blocked
+        - Needs follow-up session
+    validations:
+      required: true

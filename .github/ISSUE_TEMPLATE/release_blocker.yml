@@ -1,0 +1,130 @@
+name: Release Blocker
+description: Report an issue that may block a release.
+title: "[RELEASE BLOCKER]: "
+labels:
+  - release-blocker
+  - priority-critical
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template only for issues that may block a release.
+
+        This should be used when shipping may create serious user, business, security, compliance, reliability, or quality risk.
+
+  - type: input
+    id: release_version
+    attributes:
+      label: Target Release / Version
+      placeholder: "Example: v1.4.0, RC-2026.05.25, Sprint 18 release"
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocker_summary
+    attributes:
+      label: Blocker Summary
+      placeholder: "Explain why this issue may block the release."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: blocker_type
+    attributes:
+      label: Blocker Type
+      options:
+        - Critical functional defect
+        - Failed smoke test
+        - Failed regression test
+        - Failed release gate
+        - Security risk
+        - Data integrity risk
+        - Performance/reliability risk
+        - Compliance/legal risk
+        - Missing release evidence
+        - Environment instability
+        - CI/CD failure
+        - Product owner decision required
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      placeholder: |
+        Failed tests:
+        Bug links:
+        Logs:
+        Screenshots/videos:
+        CI runs:
+        Monitoring:
+        Test report:
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact_if_released
+    attributes:
+      label: Impact If Released
+      placeholder: |
+        - What could go wrong if this ships?
+        - Who is affected?
+        - Is there customer, security, financial, legal, or reputational risk?
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround / Risk Mitigation
+      placeholder: |
+        Workaround:
+        Risk mitigation:
+        Feature flag option:
+        Rollback option:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: qa_recommendation
+    attributes:
+      label: QA Recommendation
+      options:
+        - Block release
+        - Conditional release with approved risk acceptance
+        - Fix and retest before release
+        - Needs engineering triage
+        - Needs product owner decision
+    validations:
+      required: true
+
+  - type: textarea
+    id: exit_criteria
+    attributes:
+      label: Release Unblock Criteria
+      placeholder: |
+        Release can proceed when:
+        - Defect is fixed
+        - Regression test passes
+        - Smoke test passes
+        - Evidence is attached
+        - QA signs off
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Release Blocker Checklist
+      options:
+        - label: I included evidence that supports blocking the release.
+          required: true
+        - label: I explained the impact if released.
+          required: true
+        - label: I provided clear unblock criteria.
+          required: true

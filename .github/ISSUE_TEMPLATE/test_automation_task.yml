@@ -1,0 +1,122 @@
+name: Test Automation Task
+description: Request or track automated test work.
+title: "[AUTOMATION]: "
+labels:
+  - test-automation
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: dropdown
+    id: automation_task_type
+    attributes:
+      label: Automation Task Type
+      options:
+        - New automated test
+        - Improve existing automated test
+        - Fix broken automated test
+        - Add missing assertions
+        - Add test data setup/cleanup
+        - Add CI integration
+        - Refactor test suite
+        - Increase coverage
+    validations:
+      required: true
+
+  - type: input
+    id: feature_area
+    attributes:
+      label: Feature / Area Under Test
+      placeholder: "Example: Authentication API, Checkout UI, bb run --all"
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      placeholder: "Explain what this automation task should achieve."
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario
+      placeholder: |
+        Given:
+        When:
+        Then:
+    validations:
+      required: true
+
+  - type: textarea
+    id: assertions
+    attributes:
+      label: Required Assertions
+      placeholder: |
+        - Response status should be 200
+        - User should be redirected to dashboard
+        - Error message should be visible
+        - Artifact should be generated
+        - Database record should be created
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_data
+    attributes:
+      label: Test Data / Fixtures Needed
+      placeholder: |
+        Test user:
+        Seed data:
+        Mock response:
+        File fixture:
+        Cleanup requirement:
+    validations:
+      required: false
+
+  - type: textarea
+    id: technical_notes
+    attributes:
+      label: Technical Notes
+      placeholder: |
+        Suggested framework:
+        Test location:
+        Existing helper functions:
+        Selectors:
+        API endpoints:
+        Mocking/stubbing:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: value
+    attributes:
+      label: Automation Value
+      options:
+        - Critical release gate coverage
+        - High-value regression coverage
+        - Reduces manual testing effort
+        - Covers previously escaped defect
+        - Improves CI confidence
+        - Nice to have
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: done_definition
+    attributes:
+      label: Definition of Done
+      options:
+        - label: Test is deterministic and repeatable.
+          required: true
+        - label: Test has clear assertions.
+          required: true
+        - label: Test includes setup and cleanup where needed.
+          required: true
+        - label: Test can run in CI.
+          required: true
+        - label: Test does not depend on real customer data or secrets.
+          required: true

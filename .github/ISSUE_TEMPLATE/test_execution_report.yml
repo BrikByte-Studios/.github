@@ -1,0 +1,135 @@
+name: Test Execution Report
+description: Report the result of a QA test execution cycle.
+title: "[TEST EXECUTION]: "
+labels:
+  - test-execution
+  - qa
+assignees: []
+
+body:
+  - type: input
+    id: test_cycle
+    attributes:
+      label: Test Cycle / Sprint / Release
+      placeholder: "Example: Sprint 12 Regression, v1.4.0 Release Candidate"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope Tested
+      placeholder: |
+        Features tested:
+        User stories tested:
+        APIs tested:
+        Browsers/devices tested:
+        Integrations tested:
+    validations:
+      required: true
+
+  - type: textarea
+    id: not_tested
+    attributes:
+      label: Not Tested / Out of Scope
+      placeholder: |
+        - Feature X was not tested because ...
+        - Browser Y was not covered because ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Test Environment
+      placeholder: |
+        Environment:
+        Build number:
+        Commit SHA:
+        Deployment date:
+        Test data version:
+        Feature flags:
+    validations:
+      required: true
+
+  - type: textarea
+    id: execution_summary
+    attributes:
+      label: Execution Summary
+      placeholder: |
+        Total planned:
+        Executed:
+        Passed:
+        Failed:
+        Blocked:
+        Not run:
+    validations:
+      required: true
+
+  - type: textarea
+    id: defects
+    attributes:
+      label: Defects Found
+      placeholder: |
+        Critical:
+        High:
+        Medium:
+        Low:
+
+        Issue links:
+        - #123
+        - #124
+    validations:
+      required: false
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Remaining Risks
+      placeholder: |
+        - Limited browser coverage
+        - Payment provider sandbox unstable
+        - Some edge cases not automated
+    validations:
+      required: false
+
+  - type: dropdown
+    id: qa_recommendation
+    attributes:
+      label: QA Recommendation
+      options:
+        - Pass - acceptable for release
+        - Conditional pass - release with known risks
+        - Fail - do not release
+        - Blocked - cannot give recommendation
+        - Needs more testing
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / Attachments
+      placeholder: |
+        Test report:
+        Screenshots:
+        Videos:
+        Logs:
+        CI runs:
+        Dashboard links:
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: QA Execution Checklist
+      options:
+        - label: I documented what was tested.
+          required: true
+        - label: I documented what was not tested.
+          required: true
+        - label: I documented defects and remaining risks.
+          required: true
+        - label: I gave a clear QA recommendation.
+          required: true

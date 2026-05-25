@@ -1,0 +1,107 @@
+name: Flaky Test Report
+description: Report an automated test that passes and fails inconsistently.
+title: "[FLAKY TEST]: "
+labels:
+  - flaky-test
+  - test-automation
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: input
+    id: test_name
+    attributes:
+      label: Test Name / File
+      placeholder: "Example: auth.spec.ts - should login with valid credentials"
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure_summary
+    attributes:
+      label: Failure Summary
+      placeholder: "Explain how the test fails and why it appears flaky."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Failure Frequency
+      options:
+        - Very frequent
+        - Frequent
+        - Occasional
+        - Rare
+        - Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      placeholder: |
+        Failed CI runs:
+        Passed CI runs:
+        Screenshots:
+        Videos:
+        Trace files:
+        Logs:
+    validations:
+      required: true
+
+  - type: textarea
+    id: suspected_cause
+    attributes:
+      label: Suspected Cause
+      placeholder: |
+        - Timing/wait issue
+        - Shared test data
+        - Network dependency
+        - Race condition
+        - Environment instability
+        - Incorrect selector
+        - Test order dependency
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        CI/local:
+        Browser:
+        OS:
+        Runner:
+        Parallelism:
+        Test retries:
+        Build:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks CI/release confidence
+        - Causes frequent false failures
+        - Slows down QA/development
+        - Low impact but should be fixed
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Flaky Test Checklist
+      options:
+        - label: I included at least one failed run or log.
+          required: true
+        - label: I checked whether the product itself may actually be failing.
+          required: true
+        - label: I included environment details.
+          required: true

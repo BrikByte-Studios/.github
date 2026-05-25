@@ -1,0 +1,113 @@
+name: Test Environment Issue
+description: Report problems with QA, staging, local, CI, test data, or external dependencies.
+title: "[ENV]: "
+labels:
+  - test-environment
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: dropdown
+    id: environment_type
+    attributes:
+      label: Environment Type
+      options:
+        - Local development
+        - QA environment
+        - Staging environment
+        - Production-like environment
+        - CI/CD pipeline
+        - Test data
+        - External service / sandbox
+        - Docker/container
+        - Database
+        - Network/VPN
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Description
+      placeholder: "Describe the environment issue clearly."
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Testing Impact
+      placeholder: |
+        - Which tests are blocked?
+        - Which team is affected?
+        - Does this affect release validation?
+        - Is there a workaround?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Observe
+      placeholder: |
+        1. Open ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment_details
+    attributes:
+      label: Environment Details
+      placeholder: |
+        Environment URL:
+        Build:
+        Commit:
+        Database:
+        Config:
+        Feature flags:
+        CI runner:
+        Docker image:
+        Browser/device:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Evidence
+      placeholder: |
+        Error:
+        Logs:
+        Screenshots:
+        Monitoring links:
+        CI links:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency
+      options:
+        - Critical - QA blocked
+        - High - release testing affected
+        - Medium - partial workaround exists
+        - Low - minor inconvenience
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Environment Issue Checklist
+      options:
+        - label: I explained how this affects testing.
+          required: true
+        - label: I included environment/build details.
+          required: true
+        - label: I included logs or evidence where available.
+          required: false

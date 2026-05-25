@@ -1,0 +1,135 @@
+name: Performance Test Finding
+description: Report slow, unstable, resource-heavy, or scalability-related behavior.
+title: "[PERF]: "
+labels:
+  - performance
+  - qa
+  - needs-triage
+assignees: []
+
+body:
+  - type: input
+    id: area
+    attributes:
+      label: Area Tested
+      placeholder: "Example: Search API, Dashboard load, bb run --all, Checkout submission"
+    validations:
+      required: true
+
+  - type: textarea
+    id: finding
+    attributes:
+      label: Performance Finding
+      placeholder: "Describe the performance issue clearly."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: performance_type
+    attributes:
+      label: Performance Type
+      options:
+        - Slow response time
+        - High memory usage
+        - High CPU usage
+        - Timeout
+        - Degraded throughput
+        - Poor scalability
+        - Slow page load
+        - Large bundle/resource size
+        - Database/query performance
+        - CI/runtime performance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurement
+    attributes:
+      label: Measurement / Benchmark
+      placeholder: |
+        Scenario:
+        Users/requests:
+        Dataset size:
+        Duration:
+        Average response time:
+        P95:
+        P99:
+        Error rate:
+        CPU:
+        Memory:
+        Network:
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_performance
+    attributes:
+      label: Expected Performance
+      placeholder: "Example: Search should return results within 500ms for 10,000 records."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_performance
+    attributes:
+      label: Actual Performance
+      placeholder: "Example: Search takes 4.8 seconds and occasionally times out."
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Test Environment
+      placeholder: |
+        Environment:
+        Build:
+        Machine/runner:
+        CPU:
+        RAM:
+        Browser:
+        Network:
+        Dataset:
+        Tool used:
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      placeholder: |
+        Test report:
+        Graph:
+        Logs:
+        Screenshots:
+        Tool output:
+        CI link:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks release
+        - High user/business impact
+        - Medium impact with workaround
+        - Low impact
+        - Needs investigation
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Performance Finding Checklist
+      options:
+        - label: I included actual measurements, not only opinions.
+          required: true
+        - label: I described the test environment.
+          required: true
+        - label: I included expected vs actual performance.
+          required: true
