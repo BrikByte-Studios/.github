@@ -1,5 +1,5 @@
 name: "🔎 Static Testing / Task Review"
-description: "Professionally review a proposed task using first principles to detect ambiguity, missing clarity, weak scope, and weak acceptance criteria."
+description: "Review a proposed task before implementation to detect ambiguity, weak scope, missing contracts, and untestable acceptance criteria."
 title: "[STATIC-TEST] "
 labels:
   - "type:review"
@@ -16,31 +16,41 @@ body:
         Use this template to review a task **before implementation**.
 
         This is a **quality gate for task definition**.
-        The goal is not to code yet.
+
+        The goal is not to code yet.  
         The goal is to determine whether the task is:
+
         - clear
         - bounded
         - testable
         - unambiguous
         - implementation-ready
+        - production-grade
 
         ---
+
         ## Core Principle
 
-        > A vague task produces vague code.
+        > A vague task produces vague code.  
         > A precise task produces deterministic execution.
 
         ---
+
         ## Review Outcomes
 
         Every static test review should produce:
+
         - identified ambiguities
         - identified gaps / risks
-        - a revised version of the task
+        - identified assumptions
+        - reviewed contracts / interfaces
+        - a revised production-grade task definition
         - stronger acceptance criteria
+        - recommended tests
         - a readiness verdict
 
         ---
+
         ## Readiness Verdict
 
         - ✅ READY
@@ -83,9 +93,9 @@ body:
   - type: input
     id: repository_area
     attributes:
-      label: Repository / Area
+      label: Repository / area
       description: Primary repository and subsystem affected.
-      placeholder: "brikbyteos-cli / internal/inspect"
+      placeholder: "bb-cli / internal/reporting"
     validations:
       required: true
 
@@ -103,7 +113,7 @@ body:
         - Performance
         - Security
         - Documentation
-        - DX
+        - Developer Experience
         - Build / CI
         - Test Infrastructure
         - Governance
@@ -117,11 +127,17 @@ body:
       label: Scope review
       description: Assess whether the task scope is clear and bounded.
       placeholder: |
-        Scope observations:
-        - What is clearly in scope?
-        - What appears implied but unstated?
-        - What may accidentally expand?
-        - What should be explicitly out of scope?
+        In scope:
+        - ...
+
+        Implied but unstated:
+        - ...
+
+        Potential scope creep:
+        - ...
+
+        Should be out of scope:
+        - ...
     validations:
       required: true
 
@@ -131,13 +147,13 @@ body:
       label: Ambiguity review
       description: Identify unclear, vague, overloaded, or non-testable wording.
       placeholder: |
-        Ambiguous terms / phrases:
+        Ambiguous wording:
         - "robust"
         - "improve"
         - "handle properly"
         - "user-friendly"
 
-        Why ambiguous:
+        Why it is ambiguous:
         - ...
     validations:
       required: true
@@ -146,13 +162,13 @@ body:
     id: assumptions_review
     attributes:
       label: Hidden assumptions
-      description: Identify assumptions that the task currently relies on but does not state.
+      description: Identify assumptions that the task relies on but does not explicitly state.
       placeholder: |
         Hidden assumptions:
-        - A schema already exists
-        - The command output format is already agreed
-        - Consumers can tolerate changed output
-        - The data source is always available
+        - A schema already exists.
+        - The command output format is already agreed.
+        - Consumers can tolerate changed output.
+        - The data source is always available.
     validations:
       required: true
 
@@ -164,10 +180,11 @@ body:
       placeholder: |
         Missing information:
         - Input contract
-        - Output examples
+        - Output format
         - Error behavior
         - Ordering rules
         - Compatibility expectations
+        - Examples / fixtures
     validations:
       required: true
 
@@ -181,6 +198,9 @@ body:
         - ...
 
         Outputs:
+        - ...
+
+        Schemas:
         - ...
 
         Side effects:
@@ -202,26 +222,28 @@ body:
       placeholder: |
         Risks:
         - Inconsistent interpretation by developer
-        - Breaking contract consumers
+        - Breaking existing consumers
         - Missing edge-case behavior
         - Scope creep
         - Untestable completion
+        - Weak regression protection
     validations:
       required: true
 
   - type: textarea
     id: first_principles_questions
     attributes:
-      label: First principles questions
+      label: First-principles questions
       description: Ask the fundamental questions that must be answered for the task to be sound.
       placeholder: |
-        First principles questions:
+        First-principles questions:
         - What exact problem is being solved?
         - What is the minimal correct outcome?
-        - What input(s) drive this behavior?
+        - What inputs drive this behavior?
         - What output proves success?
         - What must remain unchanged?
-        - What can fail, and how must failure appear?
+        - What can fail?
+        - How must failure appear?
     validations:
       required: true
 
@@ -234,8 +256,10 @@ body:
         Testability observations:
         - Can success be proven?
         - Are acceptance criteria binary?
-        - Can unit / integration / regression tests be derived?
-        - Are fixtures / examples needed?
+        - Can unit tests be derived?
+        - Can integration tests be derived?
+        - Can regression tests be derived?
+        - Are fixtures or golden files needed?
     validations:
       required: true
 
@@ -259,28 +283,33 @@ body:
       description: List the exact clarifications required to make the task stronger.
       placeholder: |
         Clarifications needed:
-        - Define input source
-        - Define output ordering
-        - Define failure behavior
-        - Define compatibility constraints
+        - Define input source.
+        - Define output ordering.
+        - Define failure behavior.
+        - Define compatibility constraints.
     validations:
       required: true
 
   - type: textarea
     id: revised_task
     attributes:
-      label: Revised task definition
-      description: Rewrite the task into a clearer, implementation-ready version.
+      label: Refined production-grade task definition
+      description: Rewrite the task into a clear, implementation-ready, production-grade version.
       placeholder: |
-        Revised task:
-        - ...
+        Refined task definition:
+
+        Implement ...
+
+        The implementation must ...
+
+        The task is complete when ...
     validations:
       required: true
 
   - type: textarea
     id: revised_scope
     attributes:
-      label: Revised scope
+      label: Refined scope
       description: Clearly restate in-scope and out-of-scope items.
       placeholder: |
         In scope:
@@ -292,32 +321,39 @@ body:
       required: true
 
   - type: textarea
-    id: quality_criteria
+    id: non_functional_requirements
     attributes:
-      label: Quality criteria
-      description: Define the quality bar for implementation.
+      label: Non-functional requirements
+      description: Define production-grade quality expectations.
       placeholder: |
-        Quality criteria:
-        - Deterministic output
-        - Explicit error behavior
+        Non-functional requirements:
+        - Deterministic behavior
+        - Clear error handling
+        - Backward-compatible output where required
         - No hidden side effects
-        - Contract-safe changes
-        - Test coverage for positive / negative / edge cases
+        - Safe defaults
+        - Maintainable implementation
+        - Observable failure modes
+        - Tests for positive, negative, edge, and regression cases
     validations:
       required: true
 
   - type: textarea
     id: acceptance_criteria_revised
     attributes:
-      label: Revised acceptance criteria
-      description: Provide stronger binary, testable acceptance criteria.
+      label: Refined acceptance criteria
+      description: Provide binary, testable, deterministic acceptance criteria.
       placeholder: |
-        - [ ] Input contract is explicitly defined
-        - [ ] Output format is explicitly defined with examples
-        - [ ] Missing-data behavior is specified
-        - [ ] Output ordering is deterministic
-        - [ ] Regression tests prove unchanged existing behavior where required
-        - [ ] Documentation is updated if contract-visible behavior changes
+        - [ ] Input contract is explicitly defined.
+        - [ ] Output format is explicitly defined with examples.
+        - [ ] Missing-data behavior is specified.
+        - [ ] Error behavior is specified.
+        - [ ] Output ordering is deterministic.
+        - [ ] Existing behavior remains unchanged unless explicitly stated.
+        - [ ] Unit tests cover positive, negative, and edge cases.
+        - [ ] Integration tests cover the main user workflow where applicable.
+        - [ ] Regression tests protect existing contracts.
+        - [ ] Documentation is updated if user-visible behavior changes.
     validations:
       required: true
 
@@ -328,11 +364,12 @@ body:
       description: List the tests that should exist if this task proceeds.
       placeholder: |
         Recommended tests:
-        - Positive case
-        - Negative case
-        - Edge case
-        - Determinism test
-        - Compatibility regression test
+        - Positive case:
+        - Negative case:
+        - Edge case:
+        - Regression case:
+        - Determinism test:
+        - Contract compatibility test:
     validations:
       required: true
 
@@ -355,10 +392,12 @@ body:
       description: What should happen next?
       placeholder: |
         Next action:
-        - Approve for implementation
-        - Revise task and resubmit
-        - Split task into smaller units
-        - Create ADR / schema / contract task first
+        - Approve for implementation.
+        - Revise task and resubmit.
+        - Split task into smaller tasks.
+        - Create ADR first.
+        - Define schema / contract first.
+        - Add missing examples / fixtures first.
     validations:
       required: true
 
@@ -368,15 +407,17 @@ body:
       label: Review checklist
       description: Confirm the task has been professionally static tested.
       options:
-        - label: Ambiguous wording has been identified
-        - label: Hidden assumptions have been identified
-        - label: Missing information has been identified
-        - label: Scope has been bounded
-        - label: Contracts / interfaces have been reviewed
-        - label: Risks have been identified
-        - label: A revised task definition has been produced
-        - label: Revised acceptance criteria are binary and testable
-        - label: A readiness verdict has been given
+        - label: Ambiguous wording has been identified.
+        - label: Hidden assumptions have been identified.
+        - label: Missing information has been identified.
+        - label: Scope has been bounded.
+        - label: Contracts and interfaces have been reviewed.
+        - label: Risks have been identified.
+        - label: The refined task definition is production-grade.
+        - label: The refined task is implementation-ready.
+        - label: Acceptance criteria are binary and testable.
+        - label: Recommended tests have been defined.
+        - label: A readiness verdict has been given.
 
   - type: textarea
     id: references
@@ -385,7 +426,7 @@ body:
       description: Related tasks, ADRs, docs, schemas, issues, or PRs.
       placeholder: |
         - ADR-000x
-        - Related task: #
+        - Related issue: #
         - Schema doc: ...
         - PR: ...
     validations:
